@@ -7,7 +7,7 @@ suite (
 )
 
 
---Guests table
+--Guests tables
 guest (
   id                  SERIAL PRIMARY KEY,
   first_name          TEXT NOT NULL,

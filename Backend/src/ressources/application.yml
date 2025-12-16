@@ -1,0 +1,17 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/hotel
+    username: hotel_user
+    password: hotel_pass
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+  flyway:
+    enabled: true
+
+
+
+CREATE DATABASE hotel;
+CREATE USER hotel_user WITH PASSWORD 'hotel_pass';
+GRANT ALL PRIVILEGES ON DATABASE hotel TO hotel_user;
