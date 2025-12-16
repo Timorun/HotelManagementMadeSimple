@@ -1,45 +1,45 @@
 --Room/suite table
 suite (
-  id
-  name
-  capacity
-  active
+  id              SERIAL PRIMARY KEY,
+  name            TEXT NOT NULL,
+  capacity        INT NOT NULL,
+  active          BOOLEAN DEFAULT true
 )
+
 
 --Guests table
 guest (
-  id
-  first_name
-  last_name
-  email
-  phone
-  nationality
-  notes
-  marketing_consent --GDPR
-  created_at        --GDPR
+  id                  SERIAL PRIMARY KEY,
+  first_name          TEXT NOT NULL,
+  last_name           TEXT NOT NULL,
+  email               TEXT,
+  phone               TEXT,
+  nationality         TEXT,
+  notes               TEXT,
+  marketing_consent   BOOLEAN DEFAULT false,    --GDPR
+  created_at          TIMESTAMP DEFAULT now(),  --GDPR
+  anonymized_at       TIMESTAMP                 --future GDPR delete
 )
 
-
---Reservations table
 reservation (
-  id
-  suite_id
-  guest_id
-  check_in
-  check_out
-  num_guests
-  price_total
-  channel       --Reservation channel (ie Booking.com, Airbnb, direct)
-  status
-  created_at
+  id              SERIAL PRIMARY KEY,
+  suite_id        INT REFERENCES suite(id),
+  guest_id        INT REFERENCES guest(id),
+  check_in        DATE NOT NULL,
+  check_out       DATE NOT NULL,
+  num_guests      INT NOT NULL,
+  price_total     NUMERIC(10,2),
+  channel         TEXT,     -- Reservation channel (ie Booking.com, Airbnb, direct)
+  status          TEXT,     -- confirmed | completed | cancelled | no_show
+  created_at      TIMESTAMP DEFAULT now()
 )
 
 --Login users
 user (
-  id
-  name
-  email
-  password_hash
+  id              SERIAL PRIMARY KEY,
+  name            TEXT NOT NULL,
+  email           TEXT UNIQUE NOT NULL,
+  password_hash   TEXT NOT NULL
 )
 
 --Operating costs (add later)
