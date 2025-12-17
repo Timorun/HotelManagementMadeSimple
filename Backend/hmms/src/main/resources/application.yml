@@ -14,7 +14,6 @@ spring:
 
 
 
-
 #  CREATE DATABASE hotel;
 #  CREATE USER hotel_user WITH PASSWORD 'hotel_pass';
 #  GRANT ALL PRIVILEGES ON DATABASE hotel TO hotel_user;

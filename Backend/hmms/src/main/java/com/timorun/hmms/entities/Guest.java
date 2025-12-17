@@ -4,13 +4,14 @@ import jakarta.annotation.Nonnull;
 import jakarta.persistence.*;
 
 import java.time.Instant;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Entity
+//@Table(name = "guests")
 public class Guest {
 
     @Id
-    @GeneratedValue
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     private String firstName;
@@ -20,7 +21,8 @@ public class Guest {
     private String phone;
 
     @ManyToOne
-    private String nationality_id;
+//    @JoinColumn(name = "nationality_code") // This matches your SQL schema
+    private Nationality nationality;
 
     private String notes;
 
@@ -29,5 +31,5 @@ public class Guest {
 
     private Instant createdAt;
 
-    private LocalDate anonymizedAt;
+    private LocalDateTime anonymizedAt;
 }

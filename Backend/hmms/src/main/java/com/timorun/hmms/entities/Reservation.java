@@ -6,10 +6,11 @@ import java.time.Instant;
 import java.time.LocalDate;
 
 @Entity
+//@Table(name = "reservations")
 public class Reservation {
 
     @Id
-    @GeneratedValue
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne
