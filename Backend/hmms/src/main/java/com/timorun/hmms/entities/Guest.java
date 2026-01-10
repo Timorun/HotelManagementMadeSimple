@@ -1,35 +1,33 @@
 package com.timorun.hmms.entities;
 
-import jakarta.annotation.Nonnull;
 import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
-import java.time.Instant;
 import java.time.LocalDateTime;
 
 @Entity
-//@Table(name = "guests")
+@Table(name = "guests")
+@Getter
+@Setter
+@NoArgsConstructor
 public class Guest {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private Long guestId;
 
     private String firstName;
     private String lastName;
-
     private String email;
     private String phone;
 
     @ManyToOne
-//    @JoinColumn(name = "nationality_code") // This matches your SQL schema
+    @JoinColumn(name = "nationality_code")
     private Nationality nationality;
 
     private String notes;
-
-    @Nonnull
-    private Boolean marketingConsent = false;
-
-    private Instant createdAt;
-
+    private Boolean marketingConsent;
+    private LocalDateTime createdAt;
     private LocalDateTime anonymizedAt;
 }

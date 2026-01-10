@@ -1,18 +1,19 @@
 package com.timorun.hmms.entities;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 
 @Entity
-//@Table(name = "nationalities")
+@Table(name = "nationalities")
+@Getter
+@Setter
+@NoArgsConstructor
 public class Nationality {
-
     @Id
-    @Column(name = "nationality_code") // Matches the snake_case in your SQL
-    private String nationalityCode;
+    private String nationalityCode; // No GeneratedValue because codes are manual (e.g., 'US', 'NL')
 
     private String name;
 }

@@ -1,19 +1,16 @@
 package com.timorun.hmms.entities;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-
+import jakarta.persistence.*;
 
 @Entity
+@Table(name = "suites")
 public class Suite {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private Long suiteId;
 
-    private String name;
+    private String suiteName;
+    private Integer capacity;
 
-    private int capacity;
+    // Getters and Setters
 }
