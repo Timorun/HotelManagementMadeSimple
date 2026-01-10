@@ -21,5 +21,4 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
     // Find reservations that overlap with a specific date range
     List<Reservation> findByCheckInBeforeAndCheckOutAfter(LocalDate checkOut, LocalDate checkIn);
 }
-}
 
