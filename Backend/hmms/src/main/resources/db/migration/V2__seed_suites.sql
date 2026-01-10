@@ -1,4 +1,4 @@
-INSERT INTO suites (name, capacity) VALUES
+INSERT INTO suites (suite_name, capacity) VALUES
 ('Suite 1', 2),
 ('Suite 2', 2),
 ('Suite 3', 3),
