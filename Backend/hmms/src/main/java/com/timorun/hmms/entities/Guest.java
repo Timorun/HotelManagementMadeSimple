@@ -6,6 +6,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Entity
 @Table(name = "guests")
@@ -30,4 +31,7 @@ public class Guest {
     private Boolean marketingConsent;
     private LocalDateTime createdAt;
     private LocalDateTime anonymizedAt;
+
+    @OneToMany(mappedBy = "guest") // "guest" refers to the field name in the Reservation class
+    private List<Reservation> reservations;
 }
