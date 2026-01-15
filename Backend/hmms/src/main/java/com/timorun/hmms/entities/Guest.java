@@ -8,6 +8,8 @@ import lombok.Setter;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 @Entity
 @Table(name = "guests")
 @Getter
@@ -33,5 +35,6 @@ public class Guest {
     private LocalDateTime anonymizedAt;
 
     @OneToMany(mappedBy = "guest") // "guest" refers to the field name in the Reservation class
+    @JsonIgnore // Prevent circular references during serialization
     private List<Reservation> reservations;
 }

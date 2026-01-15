@@ -1,6 +1,9 @@
 package com.timorun.hmms.entities;
 
 import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -8,6 +11,9 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "reservations")
+@Getter
+@Setter
+@NoArgsConstructor
 public class Reservation {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -28,6 +34,12 @@ public class Reservation {
     private String channel;
     private String status;
     private LocalDateTime createdAt;
-
-    // Getters and Setters
+    
+    // Audit fields
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+    
+    @ManyToOne
+    @JoinColumn(name = "updated_by")
+    private AppUser updatedBy;
 }
