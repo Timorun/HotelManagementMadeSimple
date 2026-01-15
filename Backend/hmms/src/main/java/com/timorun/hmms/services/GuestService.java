@@ -6,7 +6,6 @@ import com.timorun.hmms.entities.Guest;
 import com.timorun.hmms.entities.Nationality;
 import com.timorun.hmms.repositories.GuestRepository;
 import com.timorun.hmms.repositories.NationalityRepository;
-import com.timorun.hmms.repositories.ReservationRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -17,15 +16,12 @@ import java.util.stream.Collectors;
 public class GuestService {
     private final GuestRepository guestRepository;
     private final NationalityRepository nationalityRepository;
-    private final ReservationRepository reservationRepository;
 
     public GuestService(
             GuestRepository guestRepository,
-            NationalityRepository nationalityRepository,
-            ReservationRepository reservationRepository) {
+            NationalityRepository nationalityRepository) {
         this.guestRepository = guestRepository;
         this.nationalityRepository = nationalityRepository;
-        this.reservationRepository = reservationRepository;
     }
 
     /**
