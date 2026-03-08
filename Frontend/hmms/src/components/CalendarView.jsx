@@ -13,6 +13,22 @@ import {
 } from 'date-fns';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
 
+const STATUS_META = {
+  confirmed: { label: 'Confirmed', color: '#27AE60' },
+  checked_in: { label: 'Checked In', color: '#3498DB' },
+  checked_out: { label: 'Checked Out', color: '#95A5A6' },
+  pending: { label: 'Pending', color: '#F39C12' },
+  cancelled: { label: 'Cancelled', color: '#E74C3C' },
+};
+
+const STATUS_FILTER_DEFAULTS = {
+  confirmed: true,
+  checked_in: true,
+  checked_out: true,
+  pending: true,
+  cancelled: false,
+};
+
 export default function CalendarView() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [reservations, setReservations] = useState([]);
@@ -32,13 +48,7 @@ export default function CalendarView() {
     priceTotal: '',
     channel: 'direct',
   });
-  const [statusFilters, setStatusFilters] = useState({
-    confirmed: true,
-    checked_in: true,
-    checked_out: true,
-    pending: true,
-    cancelled: false,
-  });
+  const [statusFilters, setStatusFilters] = useState(STATUS_FILTER_DEFAULTS);
 
   const loadCalendarData = async (targetDate = currentDate) => {
     const start = startOfMonth(targetDate);
@@ -55,7 +65,7 @@ export default function CalendarView() {
       setError(null);
     } catch (err) {
       console.error('Error loading calendar data:', err);
-      setError(err);
+      setError(err?.message || 'Failed to load calendar data.');
       setReservations([]);
       setSuites([]);
     } finally {
@@ -203,6 +213,10 @@ export default function CalendarView() {
     }));
   };
 
+  const resetStatusFilters = () => {
+    setStatusFilters(STATUS_FILTER_DEFAULTS);
+  };
+
   if (loading) {
     return (
       <div className="loading-spinner">
@@ -242,7 +256,7 @@ export default function CalendarView() {
 
       {error && (
         <div className="error-message mb-3">
-          Failed to load calendar data.
+          {error}
         </div>
       )}
 
@@ -312,6 +326,7 @@ export default function CalendarView() {
           onReservationClick={openReservationModal}
           statusFilters={statusFilters}
           onToggleStatusFilter={toggleStatusFilter}
+          onResetStatusFilters={resetStatusFilters}
         />
       )}
 
@@ -355,6 +370,7 @@ function TimelineView({
   onReservationClick,
   statusFilters,
   onToggleStatusFilter,
+  onResetStatusFilters,
 }) {
   const getReservationsForSuite = (suiteId, source = reservations) => {
     return source.filter((res) => res.suiteId === suiteId);
@@ -399,15 +415,7 @@ function TimelineView({
     return { left: `${left}%`, width: `${width}%` };
   };
 
-  const getStatusColor = (status) => {
-    switch (status?.toLowerCase()) {
-      case 'confirmed': return '#27AE60';
-      case 'checked_in': return '#3498DB';
-      case 'checked_out': return '#95A5A6';
-      case 'cancelled': return '#E74C3C';
-      default: return '#F39C12';
-    }
-  };
+  const getStatusColor = (status) => STATUS_META[status?.toLowerCase()]?.color || STATUS_META.pending.color;
 
   return (
     <div className="card">
@@ -451,7 +459,12 @@ function TimelineView({
         {suites.map((suite) => {
           const suiteReservations = getReservationsForSuite(suite.suiteId);
           const { laneByReservationId, totalLanes } = getStableLaneData(suite.suiteId);
-          const rowHeight = Math.max(60, totalLanes * 22 + 16);
+          const maxVisibleLane = suiteReservations.reduce((maxLane, res) => {
+            const lane = laneByReservationId[res.reservationId] ?? 0;
+            return Math.max(maxLane, lane);
+          }, -1);
+          const lanesToRender = maxVisibleLane >= 0 ? maxVisibleLane + 1 : 0;
+          const rowHeight = Math.max(60, lanesToRender * 22 + 16);
           
           return (
             <div key={suite.suiteId} style={{ display: 'flex', borderBottom: '1px solid var(--gray)' }}>
@@ -534,46 +547,30 @@ function TimelineView({
 
       {/* Legend */}
       <div style={{ padding: '1rem', background: 'var(--light-gray)', borderTop: '1px solid var(--gray)' }}>
-        <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', fontSize: '0.875rem' }}>
-          <button
-            type="button"
-            onClick={() => onToggleStatusFilter('confirmed')}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'transparent', border: 'none', cursor: 'pointer', opacity: statusFilters.confirmed ? 1 : 0.4 }}
-          >
-            <div style={{ width: '20px', height: '14px', background: '#27AE60', borderRadius: '3px' }}></div>
-            <span>Confirmed</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onToggleStatusFilter('checked_in')}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'transparent', border: 'none', cursor: 'pointer', opacity: statusFilters.checked_in ? 1 : 0.4 }}
-          >
-            <div style={{ width: '20px', height: '14px', background: '#3498DB', borderRadius: '3px' }}></div>
-            <span>Checked In</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onToggleStatusFilter('pending')}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'transparent', border: 'none', cursor: 'pointer', opacity: statusFilters.pending ? 1 : 0.4 }}
-          >
-            <div style={{ width: '20px', height: '14px', background: '#F39C12', borderRadius: '3px' }}></div>
-            <span>Pending</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onToggleStatusFilter('checked_out')}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'transparent', border: 'none', cursor: 'pointer', opacity: statusFilters.checked_out ? 1 : 0.4 }}
-          >
-            <div style={{ width: '20px', height: '14px', background: '#95A5A6', borderRadius: '3px' }}></div>
-            <span>Checked Out</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onToggleStatusFilter('cancelled')}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'transparent', border: 'none', cursor: 'pointer', opacity: statusFilters.cancelled ? 1 : 0.4 }}
-          >
-            <div style={{ width: '20px', height: '14px', background: '#E74C3C', borderRadius: '3px' }}></div>
-            <span>Cancelled</span>
+        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', fontSize: '0.875rem', alignItems: 'center' }}>
+          {Object.entries(STATUS_META).map(([key, meta]) => (
+            <button
+              key={key}
+              type="button"
+              aria-pressed={Boolean(statusFilters[key])}
+              onClick={() => onToggleStatusFilter(key)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                opacity: statusFilters[key] ? 1 : 0.35,
+              }}
+            >
+              <div style={{ width: '20px', height: '14px', background: meta.color, borderRadius: '3px' }}></div>
+              <span>{meta.label}</span>
+            </button>
+          ))}
+
+          <button type="button" className="btn btn-outline btn-sm" onClick={onResetStatusFilters}>
+            Reset filters
           </button>
         </div>
       </div>
@@ -597,15 +594,10 @@ function ReservationDetailsModal({
 }) {
   const selectedSuite = suites.find((suite) => suite.suiteId === Number(editForm.suiteId));
   const status = reservation.status?.toLowerCase();
-  const statusColor =
-    status === 'confirmed' ? '#27AE60'
-      : status === 'checked_in' ? '#3498DB'
-      : status === 'checked_out' ? '#95A5A6'
-      : status === 'cancelled' ? '#E74C3C'
-      : '#F39C12';
+  const statusColor = STATUS_META[status]?.color || STATUS_META.pending.color;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={saving ? undefined : onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '760px', width: '95%' }}>
         <div className="modal-header">
           <div>
@@ -616,7 +608,7 @@ function ReservationDetailsModal({
               from {format(parseISO(reservation.checkIn), 'MMMM d, yyyy')} to {format(parseISO(reservation.checkOut), 'MMMM d, yyyy')}
             </div>
           </div>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <button className="modal-close" onClick={onClose} disabled={saving}>×</button>
         </div>
 
         <div className="modal-body">
@@ -734,11 +726,11 @@ function ReservationDetailsModal({
         </div>
 
         <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-          {!isEditing &&reservation.status?.toLowerCase() !== 'cancelled' && (
-            <div >
+          {!isEditing && reservation.status?.toLowerCase() !== 'cancelled' && (
+            <div>
               <button
                 type="button"
-                className="btn btn-danger btn-sm"
+                className="btn btn-outline btn-sm"
                 onClick={onRequestCancelReservation}
                 disabled={saving}
               >
