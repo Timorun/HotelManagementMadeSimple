@@ -1,21 +1,26 @@
 import { useEffect, useState } from 'react';
 import { fetchAnalytics, fetchOperationsDashboard, fetchSuites, fetchGuests } from '../api/backend';
-import { Calendar, TrendingUp, Users, Home, DollarSign, BarChart3, ArrowUp, ArrowDown } from 'lucide-react';
+import { LogIn, LogOut, Sparkles, Users, Home, BarChart3, ClipboardCheck } from 'lucide-react';
 import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
+  PointElement,
+  LineElement,
   BarElement,
   Title,
   Tooltip,
   Legend,
   ArcElement,
 } from 'chart.js';
-import { Bar, Doughnut } from 'react-chartjs-2';
+import { Bar, Doughnut, Line } from 'react-chartjs-2';
+import { format } from 'date-fns';
 
 ChartJS.register(
   CategoryScale,
   LinearScale,
+  PointElement,
+  LineElement,
   BarElement,
   Title,
   Tooltip,
@@ -67,36 +72,32 @@ export default function Dashboard() {
 
   const kpiData = [
     {
-      title: 'Total Reservations',
-      value: analytics?.totalReservations || 0,
-      icon: Calendar,
+      title: 'Arrivals Today',
+      value: operations?.arrivalsToday?.length || 0,
+      icon: LogIn,
+      color: '#27AE60',
+      description: 'Check-ins',
+    },
+    {
+      title: 'Departures Today',
+      value: operations?.departuresToday?.length || 0,
+      icon: LogOut,
+      color: '#E67E22',
+      description: 'Check-outs',
+    },
+    {
+      title: 'Rooms to Clean',
+      value: operations?.roomsToClean?.length || 0,
+      icon: Sparkles,
       color: '#3498DB',
-      change: '+12%',
-      positive: true,
+      description: 'Housekeeping',
     },
     {
       title: 'Occupancy Rate',
-      value: analytics?.occupancyRate ? `${analytics.occupancyRate.toFixed(1)}%` : '0%',
+      value: analytics?.occupancyRate ? `${analytics.occupancyRate.toFixed(0)}%` : '0%',
       icon: Home,
-      color: '#27AE60',
-      change: '+5.3%',
-      positive: true,
-    },
-    {
-      title: 'Total Revenue',
-      value: analytics?.totalRevenue ? `€${analytics.totalRevenue.toLocaleString()}` : '€0',
-      icon: DollarSign,
-      color: '#E67E22',
-      change: '+18%',
-      positive: true,
-    },
-    {
-      title: 'Avg Daily Rate',
-      value: analytics?.averageDailyRate ? `€${analytics.averageDailyRate.toFixed(0)}` : '€0',
-      icon: TrendingUp,
       color: '#9B59B6',
-      change: '-2.1%',
-      positive: false,
+      description: 'Today\'s suites',
     },
   ];
 
@@ -156,164 +157,192 @@ export default function Dashboard() {
       <div className="card mb-3">
         <div className="card-header">
           <h2>
-            <BarChart3 size={28} />
-            Dashboard Overview
+            <ClipboardCheck size={28} />
+            Today's Operations
           </h2>
-          <span className="text-muted">Welcome to Carmen Suites Management</span>
+          <span className="text-muted">
+            {format(new Date(), 'EEEE, MMMM d, yyyy')}
+          </span>
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-4 mb-3">
-        {kpiData.map((kpi, index) => (
-          <div key={index} className="kpi-card" style={{ borderLeftColor: kpi.color }}>
-            <div className="kpi-header">
-              <span className="kpi-title">{kpi.title}</span>
-              <div className="kpi-icon" style={{ background: kpi.color }}>
-                <kpi.icon size={20} />
-              </div>
-            </div>
-            <div className="kpi-value">{kpi.value}</div>
-            <div className={`kpi-change ${kpi.positive ? 'positive' : 'negative'}`}>
-              {kpi.positive ? <ArrowUp size={16} /> : <ArrowDown size={16} />}
-              {kpi.change} from last month
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-2 mb-3">
-        {/* Revenue Chart */}
-        <div className="card">
-          <div className="card-header">
-            <h3>Monthly Revenue Trend</h3>
-          </div>
-          <div style={{ height: '300px' }}>
-            <Bar data={revenueChartData} options={chartOptions} />
-          </div>
-        </div>
-
-        {/* Occupancy Chart */}
-        <div className="card">
-          <div className="card-header">
-            <h3>Current Occupancy</h3>
-          </div>
-          <div style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ width: '250px', height: '250px' }}>
-              <Doughnut data={occupancyChartData} options={doughnutOptions} />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Today's Operations */}
+      {/* Operations Cards - Main Content */}
       <div className="grid grid-3 mb-3">
+        {/* Arrivals */}
         <div className="card">
           <div className="card-header">
-            <h3 style={{ fontSize: '1.125rem' }}>Arrivals Today</h3>
-            <span className="status-badge status-confirmed">{operations?.arrivalsToday?.length || 0}</span>
+            <h3 style={{ fontSize: '1.125rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <LogIn size={20} color="#27AE60" />
+              Arrivals Today
+            </h3>
+            <span className="status-badge status-checked-in" style={{ fontSize: '0.875rem', padding: '0.5rem 1rem' }}>
+              {operations?.arrivalsToday?.length || 0}
+            </span>
           </div>
           <div>
             {operations?.arrivalsToday?.length > 0 ? (
-              <ul style={{ listStyle: 'none', padding: 0 }}>
-                {operations.arrivalsToday.slice(0, 5).map((arrival) => (
-                  <li key={arrival.reservationId} style={{ padding: '0.75rem 0', borderBottom: '1px solid var(--light-gray)' }}>
-                    <div style={{ fontWeight: 600 }}>{arrival.guestName}</div>
-                    <div style={{ fontSize: '0.875rem', color: 'var(--dark-gray)' }}>{arrival.suiteName}</div>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                {operations.arrivalsToday.map((arrival) => (
+                  <li
+                    key={arrival.reservationId}
+                    style={{
+                      padding: '1rem',
+                      borderBottom: '1px solid var(--light-gray)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'flex-start',
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
+                        {arrival.guestName}
+                      </div>
+                      <div style={{ fontSize: '0.875rem', color: 'var(--dark-gray)' }}>
+                        {arrival.suiteName}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--dark-gray)', marginTop: '0.25rem' }}>
+                        {arrival.numGuests} guest{arrival.numGuests > 1 ? 's' : ''}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--dark-gray)', textAlign: 'right' }}>
+                      Res #{arrival.reservationId}
+                    </div>
                   </li>
                 ))}
               </ul>
             ) : (
               <div className="empty-state">
-                <p>No arrivals today</p>
+                <p>✓ No arrivals scheduled</p>
               </div>
             )}
           </div>
         </div>
 
+        {/* Departures */}
         <div className="card">
           <div className="card-header">
-            <h3 style={{ fontSize: '1.125rem' }}>Departures Today</h3>
-            <span className="status-badge status-pending">{operations?.departuresToday?.length || 0}</span>
+            <h3 style={{ fontSize: '1.125rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <LogOut size={20} color="#E67E22" />
+              Departures Today
+            </h3>
+            <span className="status-badge status-pending" style={{ fontSize: '0.875rem', padding: '0.5rem 1rem' }}>
+              {operations?.departuresToday?.length || 0}
+            </span>
           </div>
           <div>
             {operations?.departuresToday?.length > 0 ? (
-              <ul style={{ listStyle: 'none', padding: 0 }}>
-                {operations.departuresToday.slice(0, 5).map((departure) => (
-                  <li key={departure.reservationId} style={{ padding: '0.75rem 0', borderBottom: '1px solid var(--light-gray)' }}>
-                    <div style={{ fontWeight: 600 }}>{departure.guestName}</div>
-                    <div style={{ fontSize: '0.875rem', color: 'var(--dark-gray)' }}>{departure.suiteName}</div>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                {operations.departuresToday.map((departure) => (
+                  <li
+                    key={departure.reservationId}
+                    style={{
+                      padding: '1rem',
+                      borderBottom: '1px solid var(--light-gray)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'flex-start',
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
+                        {departure.guestName}
+                      </div>
+                      <div style={{ fontSize: '0.875rem', color: 'var(--dark-gray)' }}>
+                        {departure.suiteName}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--dark-gray)', marginTop: '0.25rem' }}>
+                        {departure.numGuests} guest{departure.numGuests > 1 ? 's' : ''}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--dark-gray)', textAlign: 'right' }}>
+                      Res #{departure.reservationId}
+                    </div>
                   </li>
                 ))}
               </ul>
             ) : (
               <div className="empty-state">
-                <p>No departures today</p>
+                <p>✓ No departures scheduled</p>
               </div>
             )}
           </div>
         </div>
 
+        {/* Housekeeping */}
         <div className="card">
           <div className="card-header">
-            <h3 style={{ fontSize: '1.125rem' }}>Rooms to Clean</h3>
-            <span className="status-badge status-checked-in">{operations?.roomsToClean?.length || 0}</span>
+            <h3 style={{ fontSize: '1.125rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Sparkles size={20} color="#3498DB" />
+              Rooms to Clean
+            </h3>
+            <span className="status-badge status-confirmed" style={{ fontSize: '0.875rem', padding: '0.5rem 1rem' }}>
+              {operations?.roomsToClean?.length || 0}
+            </span>
           </div>
           <div>
             {operations?.roomsToClean?.length > 0 ? (
-              <ul style={{ listStyle: 'none', padding: 0 }}>
-                {operations.roomsToClean.slice(0, 5).map((room) => (
-                  <li key={room.suiteId} style={{ padding: '0.75rem 0', borderBottom: '1px solid var(--light-gray)' }}>
-                    <div style={{ fontWeight: 600 }}>{room.suiteName}</div>
-                    {room.turnoverRequired && (
-                      <div style={{ fontSize: '0.875rem', color: 'var(--warning)' }}>Turnover Required</div>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                {operations.roomsToClean.map((room) => (
+                  <li
+                    key={room.suiteId}
+                    style={{
+                      padding: '1rem',
+                      borderBottom: '1px solid var(--light-gray)',
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
+                      {room.suiteName}
+                    </div>
+                    {room.status == "needs_turnover" && (
+                      <span className="status-badge status-pending" style={{ fontSize: '0.7rem' }}>
+                        Turnover Required
+                      </span>
+                    )}
+                    {room.status != "needs_turnover" && (
+                      <span className="status-badge status-confirmed" style={{ fontSize: '0.7rem' }}>
+                        Standard Clean
+                      </span>
                     )}
                   </li>
                 ))}
               </ul>
             ) : (
               <div className="empty-state">
-                <p>All rooms clean</p>
+                <p>✓ All rooms clean</p>
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Quick Stats */}
-      <div className="grid grid-2">
-        <div className="card">
-          <div className="card-header">
-            <h3>Suite Overview</h3>
-          </div>
-          <div className="grid grid-2" style={{ gap: '1rem' }}>
-            <div style={{ textAlign: 'center', padding: '1rem', background: 'var(--light-gray)', borderRadius: '8px' }}>
-              <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--primary)' }}>{suites.length}</div>
-              <div style={{ fontSize: '0.875rem', color: 'var(--dark-gray)' }}>Total Suites</div>
-            </div>
-            <div style={{ textAlign: 'center', padding: '1rem', background: 'var(--light-gray)', borderRadius: '8px' }}>
-              <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--success)' }}>
-                {suites.filter(s => s.active).length}
-              </div>
-              <div style={{ fontSize: '0.875rem', color: 'var(--dark-gray)' }}>Active Suites</div>
-            </div>
-          </div>
+      {/* Tertiary: Analytics Overview - Bottom */}
+      <div className="card">
+        <div className="card-header">
+          <h3>Monthly Overview</h3>
         </div>
-
-        <div className="card">
-          <div className="card-header">
-            <h3>Guest Database</h3>
-          </div>
-          <div className="grid grid-2" style={{ gap: '1rem' }}>
-            <div style={{ textAlign: 'center', padding: '1rem', background: 'var(--light-gray)', borderRadius: '8px' }}>
-              <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--primary)' }}>{guests.length}</div>
-              <div style={{ fontSize: '0.875rem', color: 'var(--dark-gray)' }}>Total Guests</div>
+        <div className="grid grid-3" style={{ gap: '1rem' }}>
+          <div style={{ padding: '1rem', background: 'var(--light-gray)', borderRadius: '8px' }}>
+            <div style={{ fontSize: '0.875rem', color: 'var(--dark-gray)', marginBottom: '0.5rem' }}>
+              Total Reservations
             </div>
-            <div style={{ textAlign: 'center', padding: '1rem', background: 'var(--light-gray)', borderRadius: '8px' }}>
-              <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--info)' }}>
-                {guests.filter(g => g.marketingConsent).length}
-              </div>
-              <div style={{ fontSize: '0.875rem', color: 'var(--dark-gray)' }}>Marketing Opt-in</div>
+            <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--primary)' }}>
+              {analytics?.totalReservations || 0}
+            </div>
+          </div>
+          <div style={{ padding: '1rem', background: 'var(--light-gray)', borderRadius: '8px' }}>
+            <div style={{ fontSize: '0.875rem', color: 'var(--dark-gray)', marginBottom: '0.5rem' }}>
+              Total Revenue
+            </div>
+            <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--primary)' }}>
+              €{analytics?.totalRevenue?.toLocaleString() || '0'}
+            </div>
+          </div>
+          <div style={{ padding: '1rem', background: 'var(--light-gray)', borderRadius: '8px' }}>
+            <div style={{ fontSize: '0.875rem', color: 'var(--dark-gray)', marginBottom: '0.5rem' }}>
+              Avg Daily Rate
+            </div>
+            <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--primary)' }}>
+              €{analytics?.averageDailyRate?.toFixed(0) || '0'}
             </div>
           </div>
         </div>

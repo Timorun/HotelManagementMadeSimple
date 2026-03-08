@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import './App.css'
-import Dashboard from './components/Dashboard'
 import GuestManagement from './components/GuestManagement'
 import SuiteManagement from './components/SuiteManagement'
 import ReservationManagement from './components/ReservationManagement'
@@ -9,7 +8,6 @@ import AnalyticsView from './components/AnalyticsView'
 import OperationsView from './components/OperationsView'
 import CalendarView from './components/CalendarView'
 import { 
-  LayoutDashboard, 
   ClipboardCheck, 
   CalendarDays, 
   Hotel, 
@@ -19,10 +17,9 @@ import {
 } from 'lucide-react'
 
 function App() {
-  const [activeTab, setActiveTab] = useState('dashboard')
+  const [activeTab, setActiveTab] = useState('operations')
 
   const tabs = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'operations', label: 'Operations', icon: ClipboardCheck },
     { id: 'calendar', label: 'Calendar', icon: CalendarDays },
     { id: 'reservations', label: 'Reservations', icon: Hotel },
@@ -67,7 +64,6 @@ function App() {
       </header>
 
       <main className="app-content">
-        {activeTab === 'dashboard' && <Dashboard />}
         {activeTab === 'operations' && <OperationsView />}
         {activeTab === 'calendar' && <CalendarView />}
         {activeTab === 'reservations' && <ReservationManagement />}
