@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fetchCalendar, fetchSuites, updateReservation, cancelReservation } from '../api/backend';
+import { fetchCalendar, fetchSuites, updateReservation, cancelReservation, updateReservationStatus } from '../api/backend';
 import { 
   format, 
   startOfMonth, 
@@ -12,14 +12,7 @@ import {
   subMonths
 } from 'date-fns';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, AlertCircle } from 'lucide-react';
-
-const STATUS_META = {
-  confirmed: { label: 'Confirmed', color: '#27AE60' },
-  checked_in: { label: 'Checked In', color: '#3498DB' },
-  checked_out: { label: 'Checked Out', color: '#95A5A6' },
-  pending: { label: 'Pending', color: '#F39C12' },
-  cancelled: { label: 'Cancelled', color: '#E74C3C' },
-};
+import { STATUS_META, getAvailableTransitions, getStatusColor } from '../api/reservationStatus';
 
 const STATUS_FILTER_DEFAULTS = {
   confirmed: true,
@@ -48,6 +41,7 @@ export default function CalendarView() {
     numGuests: 1,
     priceTotal: '',
     channel: 'direct',
+    status: 'pending',
   });
   const [statusFilters, setStatusFilters] = useState(STATUS_FILTER_DEFAULTS);
 
@@ -145,6 +139,7 @@ export default function CalendarView() {
       numGuests: reservation.numGuests,
       priceTotal: reservation.priceTotal,
       channel: reservation.channel || 'direct',
+      status: reservation.status || 'pending',
     });
     setIsEditingReservation(false);
     setShowReservationModal(true);
@@ -172,6 +167,11 @@ export default function CalendarView() {
     try {
       setSavingReservation(true);
       setModalError(null);
+
+      // Check if status changed
+      const statusChanged = editForm.status !== selectedReservation.status;
+
+      // Update reservation details
       await updateReservation(selectedReservation.reservationId, {
         suiteId: parseInt(editForm.suiteId, 10),
         guestId: selectedReservation.guestId,
@@ -181,6 +181,11 @@ export default function CalendarView() {
         priceTotal: parseFloat(editForm.priceTotal),
         channel: editForm.channel,
       });
+
+      // Update status if changed
+      if (statusChanged) {
+        await updateReservationStatus(selectedReservation.reservationId, editForm.status);
+      }
 
       await loadCalendarData(currentDate);
       setIsEditingReservation(false);
@@ -657,7 +662,7 @@ function ReservationDetailsModal({
               className="status-badge"
               style={{ background: statusColor, color: '#fff', textTransform: 'capitalize' }}
             >
-              {reservation.status}
+              {STATUS_META[status]?.label || status}
             </span>
           </div>
 
@@ -759,7 +764,21 @@ function ReservationDetailsModal({
                     <option value="expedia">Expedia</option>
                   </select>
                 </div>
-              </div>
+                <div className="form-group">
+                  <label className="form-label">Status</label>
+                  <select
+                    className="form-select"
+                    value={editForm.status}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, status: e.target.value }))}
+                  >
+                    <option value="pending">Pending</option>
+                    <option value="confirmed">Confirmed</option>
+                    <option value="checked_in">Checked In</option>
+                    <option value="checked_out">Checked Out</option>
+                    <option value="cancelled">Cancelled</option>
+                    <option value="no_show">No Show</option>
+                  </select>
+                </div>              </div>
             </div>
           )}
         </div>

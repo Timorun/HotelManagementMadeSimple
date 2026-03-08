@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { fetchReservations, fetchSuites, fetchNationalities, createReservation, updateReservation, cancelReservation, searchGuests } from '../api/backend';
+import { fetchReservations, fetchSuites, fetchNationalities, createReservation, updateReservation, cancelReservation, searchGuests, updateReservationStatus } from '../api/backend';
 import { Calendar, Plus, Edit, X, Search, AlertCircle, CheckCircle, Users, DollarSign } from 'lucide-react';
 import { format, differenceInDays, parseISO, isBefore, addDays } from 'date-fns';
+import { STATUS_META } from '../api/reservationStatus';
 
 export default function ReservationManagement() {
   const [reservations, setReservations] = useState([]);
@@ -35,6 +36,7 @@ export default function ReservationManagement() {
     phone: '',
     nationalityCode: '',
     notes: '',
+    status: 'pending',
   });
 
   // Toast notification handler
@@ -249,6 +251,7 @@ export default function ReservationManagement() {
       phone: '',
       nationalityCode: '',
       notes: '',
+      status: reservation.status || 'pending',
     });
     setShowModal(true);
   }, []);
@@ -266,6 +269,10 @@ export default function ReservationManagement() {
     setError(null);
     try {
       if (editingReservation) {
+        // Check if status changed
+        const statusChanged = formData.status !== editingReservation.status;
+
+        // Update reservation
         await updateReservation(editingReservation.reservationId, {
           suiteId: parseInt(formData.suiteId),
           guestId: formData.guestId ? parseInt(formData.guestId) : undefined,
@@ -275,6 +282,12 @@ export default function ReservationManagement() {
           priceTotal: parseFloat(formData.priceTotal),
           channel: formData.channel,
         });
+
+        // Update status if changed
+        if (statusChanged) {
+          await updateReservationStatus(editingReservation.reservationId, formData.status);
+        }
+
         showToast('Reservation updated successfully', 'success');
       } else {
         await createReservation({
@@ -507,8 +520,20 @@ export default function ReservationManagement() {
                   <td>€{res.priceTotal}</td>
                   <td style={{ textTransform: 'capitalize' }}>{res.channel}</td>
                   <td>
-                    <span className={getStatusBadgeClass(res.status)}>
-                      {res.status}
+                    <span
+                      className={getStatusBadgeClass(res.status)}
+                      style={{
+                        background: STATUS_META[res.status]?.color || '#BDC3C7',
+                        color: '#fff',
+                        padding: '0.4rem 0.8rem',
+                        borderRadius: '4px',
+                        fontSize: '0.875rem',
+                        fontWeight: 600,
+                        textTransform: 'capitalize',
+                        display: 'inline-block',
+                      }}
+                    >
+                      {STATUS_META[res.status]?.label || res.status}
                     </span>
                   </td>
                   <td>
@@ -861,6 +886,23 @@ export default function ReservationManagement() {
                     <option value="other">Other</option>
                   </select>
                 </div>
+                {editingReservation && (
+                  <div className="form-group">
+                    <label className="form-label">Status</label>
+                    <select
+                      className="form-select"
+                      value={formData.status}
+                      onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                    >
+                      <option value="pending">Pending</option>
+                      <option value="confirmed">Confirmed</option>
+                      <option value="checked_in">Checked In</option>
+                      <option value="checked_out">Checked Out</option>
+                      <option value="cancelled">Cancelled</option>
+                      <option value="no_show">No Show</option>
+                    </select>
+                  </div>
+                )}
                 {!editingReservation && (
                   <div className="form-group">
                     <label className="form-label">Notes</label>
