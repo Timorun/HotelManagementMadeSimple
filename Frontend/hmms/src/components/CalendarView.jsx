@@ -608,7 +608,6 @@ function ReservationDetailsModal({
 }) {
   const selectedSuite = suites.find((suite) => suite.suiteId === Number(editForm.suiteId));
   const status = reservation.status?.toLowerCase();
-  const statusColor = STATUS_META[status]?.color || STATUS_META.pending.color;
 
   return (
     <div className="modal-overlay" onClick={saving ? undefined : onClose}>
@@ -656,27 +655,23 @@ function ReservationDetailsModal({
             </div>
           )}
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.9rem' }}>
-            <span style={{ fontSize: '0.85rem', color: 'var(--dark-gray)' }}>Status</span>
-            <span
-              className="status-badge"
-              style={{ background: statusColor, color: '#fff', textTransform: 'capitalize' }}
-            >
-              {STATUS_META[status]?.label || status}
-            </span>
-          </div>
-
           {!isEditing ? (
             <div style={{ display: 'grid', gap: '0.75rem' }}>
+              <InfoRow label="Suite" value={reservation.suiteName} />
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                <InfoRow label="Guest" value={reservation.guestName} />
-                <InfoRow label="Email" value={reservation.email || '-'} />
-                <InfoRow label="Suite" value={reservation.suiteName} />
-                <InfoRow label="Channel" value={reservation.channel || '-'} capitalize />
                 <InfoRow label="Check-in" value={format(parseISO(reservation.checkIn), 'dd/MM/yyyy')} />
                 <InfoRow label="Check-out" value={format(parseISO(reservation.checkOut), 'dd/MM/yyyy')} />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                 <InfoRow label="Guests" value={String(reservation.numGuests)} />
                 <InfoRow label="Price" value={`€${reservation.priceTotal}`} />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <InfoRow label="Channel" value={reservation.channel || '-'} capitalize />
+                <InfoRow label="Status" value={STATUS_META[status]?.label || status || '-'} />
               </div>
             </div>
           ) : (
@@ -725,7 +720,7 @@ function ReservationDetailsModal({
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                 <div className="form-group">
                   <label className="form-label">Guests</label>
                   <input
@@ -751,6 +746,9 @@ function ReservationDetailsModal({
                     onChange={(e) => setEditForm((prev) => ({ ...prev, priceTotal: e.target.value }))}
                   />
                 </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                 <div className="form-group">
                   <label className="form-label">Channel</label>
                   <select
@@ -778,25 +776,27 @@ function ReservationDetailsModal({
                     <option value="cancelled">Cancelled</option>
                     <option value="no_show">No Show</option>
                   </select>
-                </div>              </div>
+                </div>
+              </div>
             </div>
           )}
         </div>
 
-        <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-          {!isEditing && reservation.status?.toLowerCase() !== 'cancelled' && (
-            <div>
+        <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
+          <div>
+            {isEditing && reservation.status?.toLowerCase() !== 'cancelled' && (
               <button
                 type="button"
-                className="btn btn-outline btn-sm"
+                className="btn btn-danger btn-sm"
                 onClick={onRequestCancelReservation}
                 disabled={saving}
               >
                 Cancel reservation
               </button>
-            </div>
-          )}
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto' }}>
             {!isEditing ? (
               <button
                 className="btn btn-primary"
