@@ -86,35 +86,6 @@ export default function TodaysOperationsView() {
         <article className="card operations-column">
           <div className="card-header operations-column-header">
             <h3>
-              <LogIn size={18} color="#27AE60" />
-              Check-ins
-            </h3>
-            <span className="status-badge status-checked-in">{arrivalsToday.length}</span>
-          </div>
-
-          {arrivalsToday.length > 0 ? (
-            <ul className="operations-list">
-              {arrivalsToday.map((arrival) => (
-                <li key={arrival.reservationId} className="operations-item">
-                  <div>
-                    <div className="operations-item-title">{arrival.guestName}</div>
-                    <div className="operations-item-sub">{arrival.suiteName}
-                        <em className="operations-item-sub muted">
-                            {pluralize(arrival.numGuests, 'guest')} · Ref #{arrival.reservationId}
-                        </em>
-                    </div>                        
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="empty-state compact-empty">No check-ins scheduled.</div>
-          )}
-        </article>
-
-        <article className="card operations-column">
-          <div className="card-header operations-column-header">
-            <h3>
               <LogOut size={18} color="#E67E22" />
               Check-outs
             </h3>
@@ -138,6 +109,35 @@ export default function TodaysOperationsView() {
             </ul>
           ) : (
             <div className="empty-state compact-empty">No check-outs scheduled.</div>
+          )}
+        </article>
+
+        <article className="card operations-column">
+          <div className="card-header operations-column-header">
+            <h3>
+              <LogIn size={18} color="#27AE60" />
+              Check-ins
+            </h3>
+            <span className="status-badge status-checked-in">{arrivalsToday.length}</span>
+          </div>
+
+          {arrivalsToday.length > 0 ? (
+            <ul className="operations-list">
+              {arrivalsToday.map((arrival) => (
+                <li key={arrival.reservationId} className="operations-item">
+                  <div>
+                    <div className="operations-item-title">{arrival.guestName}</div>
+                    <div className="operations-item-sub">{arrival.suiteName}
+                        <em className="operations-item-sub muted">
+                            {pluralize(arrival.numGuests, 'guest')} · Ref #{arrival.reservationId}
+                        </em>
+                    </div>                        
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="empty-state compact-empty">No check-ins scheduled.</div>
           )}
         </article>
       </section>
