@@ -218,7 +218,9 @@ public class ReservationService {
     private void validateSuiteAvailability(Long suiteId, LocalDate checkIn, LocalDate checkOut, Long excludeReservationId) {
         List<Reservation> overlapping = getOverlappingReservations(suiteId, checkIn, checkOut, excludeReservationId);
         if (!overlapping.isEmpty()) {
-            throw new IllegalArgumentException("Suite " + suiteId + " is not available for the requested dates");
+            Suite suite = suiteRepository.findById(suiteId).orElse(null);
+            String suiteName = suite != null ? suite.getSuiteName() : "Suite " + suiteId;
+            throw new IllegalArgumentException(suiteName + " is not available for the requested dates");
         }
     }
 

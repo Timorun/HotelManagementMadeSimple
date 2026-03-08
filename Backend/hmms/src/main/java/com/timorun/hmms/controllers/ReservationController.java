@@ -1,6 +1,7 @@
 package com.timorun.hmms.controllers;
 
 import com.timorun.hmms.dto.CreateReservationRequest;
+import com.timorun.hmms.dto.ErrorResponse;
 import com.timorun.hmms.dto.ReservationResponse;
 import com.timorun.hmms.dto.UpdateReservationRequest;
 import com.timorun.hmms.services.ReservationService;
@@ -26,12 +27,12 @@ public class ReservationController {
      * POST /api/reservations
      */
     @PostMapping
-    public ResponseEntity<ReservationResponse> createReservation(@RequestBody CreateReservationRequest request) {
+    public ResponseEntity<?> createReservation(@RequestBody CreateReservationRequest request) {
         try {
             ReservationResponse response = reservationService.createReservation(request);
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
         }
     }
 
@@ -76,14 +77,14 @@ public class ReservationController {
      * PUT /api/reservations/{id}
      */
     @PutMapping("/{id}")
-    public ResponseEntity<ReservationResponse> updateReservation(
+    public ResponseEntity<?> updateReservation(
             @PathVariable Long id,
             @RequestBody UpdateReservationRequest request) {
         try {
             ReservationResponse response = reservationService.updateReservation(id, request);
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
         }
     }
 
@@ -92,12 +93,12 @@ public class ReservationController {
      * PATCH /api/reservations/{id}/cancel
      */
     @PatchMapping("/{id}/cancel")
-    public ResponseEntity<ReservationResponse> cancelReservation(@PathVariable Long id) {
+    public ResponseEntity<?> cancelReservation(@PathVariable Long id) {
         try {
             ReservationResponse response = reservationService.cancelReservation(id);
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
         }
     }
 }

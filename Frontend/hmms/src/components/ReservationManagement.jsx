@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { fetchReservations, fetchSuites, fetchNationalities, createReservation, updateReservation, cancelReservation, searchGuests } from '../api/backend';
-import { Calendar, Plus, Edit, X, Search } from 'lucide-react';
-import { format } from 'date-fns';
+import { Calendar, Plus, Edit, X, Search, AlertCircle, CheckCircle, Users, DollarSign } from 'lucide-react';
+import { format, differenceInDays, parseISO, isBefore, addDays } from 'date-fns';
 
 export default function ReservationManagement() {
   const [reservations, setReservations] = useState([]);
@@ -15,6 +15,11 @@ export default function ReservationManagement() {
   const [dateTo, setDateTo] = useState(format(new Date(2026, 0, 31), 'yyyy-MM-dd'));
   const [searchTerm, setSearchTerm] = useState('');
   const [guestSearchResults, setGuestSearchResults] = useState([]);
+  const [validationErrors, setValidationErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [confirmDialog, setConfirmDialog] = useState(null);
+  const searchTimerRef = useRef(null);
 
   const [formData, setFormData] = useState({
     suiteId: '',
@@ -32,12 +37,55 @@ export default function ReservationManagement() {
     notes: '',
   });
 
+  // Toast notification handler
+  const showToast = useCallback((message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  }, []);
+
+  // Calculate nights and suggested price
+  const nightsCount = useMemo(() => {
+    if (formData.checkIn && formData.checkOut) {
+      try {
+        const nights = differenceInDays(parseISO(formData.checkOut), parseISO(formData.checkIn));
+        return nights > 0 ? nights : 0;
+      } catch (err) {
+        console.error('Date parsing error:', err);
+        return 0;
+      }
+    }
+    return 0;
+  }, [formData.checkIn, formData.checkOut]);
+
+  const selectedSuite = useMemo(() => 
+    suites.find(s => s.suiteId === parseInt(formData.suiteId)),
+    [suites, formData.suiteId]
+  );
+
+  const suggestedPrice = useMemo(() => {
+    if (selectedSuite && nightsCount > 0) {
+      return (selectedSuite.basePrice * nightsCount).toFixed(2);
+    }
+    return '';
+  }, [selectedSuite, nightsCount]);
+
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateFrom, dateTo]);
 
-  const loadData = () => {
+  // Cleanup search timer on unmount
+  useEffect(() => {
+    return () => {
+      if (searchTimerRef.current) {
+        clearTimeout(searchTimerRef.current);
+      }
+    };
+  }, []);
+
+  const loadData = useCallback(() => {
     setLoading(true);
+    setError(null);
     Promise.all([
       fetchReservations(dateFrom, dateTo),
       fetchSuites(),
@@ -48,43 +96,127 @@ export default function ReservationManagement() {
         setSuites(suitesData);
         setNationalities(nationalitiesData);
       })
-      .catch(setError)
+      .catch(err => {
+        const errorMsg = err.message || 'Failed to load data';
+        setError(errorMsg);
+        showToast(errorMsg, 'error');
+      })
       .finally(() => setLoading(false));
-  };
+  }, [dateFrom, dateTo, showToast]);
 
-  const handleSearchGuests = async (lastName) => {
+  const handleSearchGuests = useCallback(async (lastName) => {
     if (lastName.length < 2) {
       setGuestSearchResults([]);
       return;
     }
-    try {
-      const results = await searchGuests(lastName);
-      setGuestSearchResults(results);
-    } catch (err) {
-      console.error('Guest search failed:', err);
+    
+    // Debounce search
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
     }
-  };
+    
+    searchTimerRef.current = setTimeout(async () => {
+      try {
+        const results = await searchGuests(lastName);
+        setGuestSearchResults(results);
+      } catch (err) {
+        console.error('Guest search failed:', err);
+        showToast('Failed to search guests', 'error');
+      }
+    }, 300); // 300ms debounce
+  }, [showToast]);
 
-  const handleSelectGuest = (guest) => {
-    setFormData({
-      ...formData,
+  const handleSelectGuest = useCallback((guest) => {
+    setFormData(prev => ({
+      ...prev,
       guestId: guest.guestId,
       firstName: guest.firstName,
       lastName: guest.lastName,
       email: guest.email,
-      phone: guest.phone,
-      nationalityCode: guest.nationalityCode,
-    });
+      phone: guest.phone || '',
+      nationalityCode: guest.nationalityCode || '',
+    }));
     setGuestSearchResults([]);
     setSearchTerm('');
-  };
+  }, []);
 
-  const openNewReservationModal = () => {
+  // Form validation
+  const validateForm = useCallback(() => {
+    const errors = {};
+    
+    // Suite validation
+    if (!formData.suiteId) {
+      errors.suiteId = 'Please select a suite';
+    }
+    
+    // Date validation
+    if (!formData.checkIn) {
+      errors.checkIn = 'Check-in date is required';
+    }
+    if (!formData.checkOut) {
+      errors.checkOut = 'Check-out date is required';
+    }
+    if (formData.checkIn && formData.checkOut) {
+      try {
+        const checkInDate = parseISO(formData.checkIn);
+        const checkOutDate = parseISO(formData.checkOut);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        if (isBefore(checkInDate, today) && !editingReservation) {
+          errors.checkIn = 'Check-in date cannot be in the past';
+        }
+        if (isBefore(checkOutDate, checkInDate) || checkOutDate.getTime() === checkInDate.getTime()) {
+          errors.checkOut = 'Check-out must be after check-in';
+        }
+        if (nightsCount > 365) {
+          errors.checkOut = 'Reservation cannot exceed 365 nights';
+        }
+      } catch (err) {
+        errors.checkIn = 'Invalid date format';
+      }
+    }
+    
+    // Capacity validation
+    if (selectedSuite && formData.numGuests > selectedSuite.capacity) {
+      errors.numGuests = `Maximum capacity is ${selectedSuite.capacity} guests`;
+    }
+    if (formData.numGuests < 1) {
+      errors.numGuests = 'At least 1 guest is required';
+    }
+    
+    // Price validation
+    if (!formData.priceTotal || parseFloat(formData.priceTotal) <= 0) {
+      errors.priceTotal = 'Please enter a valid price';
+    }
+    
+    // Guest information validation (for new reservations without existing guest)
+    if (!editingReservation && !formData.guestId) {
+      if (!formData.firstName?.trim()) {
+        errors.firstName = 'First name is required';
+      }
+      if (!formData.lastName?.trim()) {
+        errors.lastName = 'Last name is required';
+      }
+      if (!formData.email?.trim()) {
+        errors.email = 'Email is required';
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+        errors.email = 'Please enter a valid email address';
+      }
+    }
+    
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  }, [formData, selectedSuite, nightsCount, editingReservation]);
+
+  const openNewReservationModal = useCallback(() => {
     setEditingReservation(null);
+    setValidationErrors({});
+    setError(null);
     setFormData({
       suiteId: '',
-      checkIn: '',
-      checkOut: '',
+      checkIn: format(addDays(new Date(), 1), 'yyyy-MM-dd'),
+      checkOut: format(addDays(new Date(), 2), 'yyyy-MM-dd'),
       numGuests: 2,
       priceTotal: '',
       channel: 'direct',
@@ -97,10 +229,12 @@ export default function ReservationManagement() {
       notes: '',
     });
     setShowModal(true);
-  };
+  }, []);
 
-  const openEditModal = (reservation) => {
+  const openEditModal = useCallback((reservation) => {
     setEditingReservation(reservation);
+    setValidationErrors({});
+    setError(null);
     setFormData({
       suiteId: reservation.suiteId,
       checkIn: reservation.checkIn,
@@ -117,10 +251,19 @@ export default function ReservationManagement() {
       notes: '',
     });
     setShowModal(true);
-  };
+  }, []);
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
+    
+    // Validate form
+    if (!validateForm()) {
+      showToast('Please fix validation errors', 'error');
+      return;
+    }
+    
+    setSubmitting(true);
+    setError(null);
     try {
       if (editingReservation) {
         await updateReservation(editingReservation.reservationId, {
@@ -132,6 +275,7 @@ export default function ReservationManagement() {
           priceTotal: parseFloat(formData.priceTotal),
           channel: formData.channel,
         });
+        showToast('Reservation updated successfully', 'success');
       } else {
         await createReservation({
           suiteId: parseInt(formData.suiteId),
@@ -148,24 +292,39 @@ export default function ReservationManagement() {
           nationalityCode: formData.nationalityCode,
           notes: formData.notes,
         });
+        showToast('Reservation created successfully', 'success');
       }
       setShowModal(false);
       loadData();
     } catch (err) {
-      setError(err.message);
+      const errorMsg = err?.message || 'Failed to save reservation';
+      setError(errorMsg);
+      showToast(errorMsg, 'error');
+    } finally {
+      setSubmitting(false);
     }
-  };
+  }, [editingReservation, formData, loadData, showToast, validateForm]);
 
-  const handleCancel = async (id) => {
-    if (confirm('Are you sure you want to cancel this reservation?')) {
-      try {
-        await cancelReservation(id);
-        loadData();
-      } catch (err) {
-        setError(err.message);
-      }
-    }
-  };
+  const handleCancel = useCallback((reservation) => {
+    setConfirmDialog({
+      title: 'Cancel Reservation',
+      message: `Are you sure you want to cancel the reservation for ${reservation.guestName}?`,
+      onConfirm: async () => {
+        try {
+          await cancelReservation(reservation.reservationId);
+          showToast('Reservation cancelled successfully', 'success');
+          loadData();
+        } catch (err) {
+          const errorMsg = err?.message || 'Failed to cancel reservation';
+          setError(errorMsg);
+          showToast(errorMsg, 'error');
+        } finally {
+          setConfirmDialog(null);
+        }
+      },
+      onCancel: () => setConfirmDialog(null),
+    });
+  }, [loadData, showToast]);
 
   const getStatusBadgeClass = (status) => {
     const statusMap = {
@@ -188,6 +347,80 @@ export default function ReservationManagement() {
 
   return (
     <div>
+      {/* Toast Notification */}
+      {toast && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: '20px',
+            right: '20px',
+            zIndex: 10000,
+            animation: 'slideInRight 0.3s ease-out',
+          }}
+        >
+          <div 
+            style={{
+              padding: '1rem 1.5rem',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+              background: toast.type === 'success' ? 'var(--success)' : 'var(--danger)',
+              color: 'white',
+              minWidth: '300px',
+            }}
+          >
+            {toast.type === 'success' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
+            <span style={{ flex: 1, fontWeight: 500 }}>{toast.message}</span>
+            <button 
+              onClick={() => setToast(null)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'white',
+                cursor: 'pointer',
+                fontSize: '1.25rem',
+                padding: 0,
+                lineHeight: 1,
+              }}
+            >×</button>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Dialog */}
+      {confirmDialog && (
+        <div className="modal-overlay" onClick={confirmDialog.onCancel}>
+          <div 
+            className="modal" 
+            style={{ maxWidth: '400px' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h3 className="modal-title">{confirmDialog.title}</h3>
+            </div>
+            <div className="modal-body">
+              <p>{confirmDialog.message}</p>
+            </div>
+            <div className="modal-footer">
+              <button 
+                onClick={confirmDialog.onCancel} 
+                className="btn btn-outline"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={confirmDialog.onConfirm} 
+                className="btn btn-danger"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="card">
         <div className="card-header">
           <h2>
@@ -201,8 +434,20 @@ export default function ReservationManagement() {
         </div>
 
         {error && (
-          <div className="error-message">
-            {error}
+          <div className="error-message" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <AlertCircle size={18} />
+            <span>{error}</span>
+            <button 
+              onClick={() => setError(null)}
+              style={{
+                marginLeft: 'auto',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '1.25rem',
+                padding: 0,
+              }}
+            >×</button>
           </div>
         )}
 
@@ -272,13 +517,15 @@ export default function ReservationManagement() {
                         onClick={() => openEditModal(res)}
                         className="btn btn-primary btn-sm"
                         disabled={res.status === 'cancelled'}
+                        title="Edit reservation"
                       >
                         <Edit size={14} />
                       </button>
                       <button
-                        onClick={() => handleCancel(res.reservationId)}
+                        onClick={() => handleCancel(res)}
                         className="btn btn-danger btn-sm"
                         disabled={res.status === 'cancelled'}
+                        title="Cancel reservation"
                       >
                         <X size={14} />
                       </button>
@@ -303,6 +550,36 @@ export default function ReservationManagement() {
             </div>
             <form onSubmit={handleSubmit}>
               <div className="modal-body">
+                {/* Display error message in modal if present */}
+                {error && (
+                  <div style={{
+                    padding: '1rem',
+                    marginBottom: '1rem',
+                    background: 'rgba(231, 76, 60, 0.1)',
+                    border: '1px solid var(--danger)',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    color: 'var(--danger)'
+                  }}>
+                    <AlertCircle size={20} />
+                    <span style={{ flex: 1, fontWeight: 500 }}>{error}</span>
+                    <button 
+                      type="button"
+                      onClick={() => setError(null)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: '1.25rem',
+                        padding: 0,
+                        color: 'var(--danger)',
+                      }}
+                    >×</button>
+                  </div>
+                )}
+
                 {/* Guest Search */}
                 {!editingReservation && (
                   <div className="form-group">
@@ -357,31 +634,46 @@ export default function ReservationManagement() {
                       <label className="form-label">First Name *</label>
                       <input
                         type="text"
-                        className="form-input"
+                        className={`form-input ${validationErrors.firstName ? 'error' : ''}`}
                         value={formData.firstName}
                         onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
                         required
                       />
+                      {validationErrors.firstName && (
+                        <span style={{ color: 'var(--danger)', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                          {validationErrors.firstName}
+                        </span>
+                      )}
                     </div>
                     <div className="form-group">
                       <label className="form-label">Last Name *</label>
                       <input
                         type="text"
-                        className="form-input"
+                        className={`form-input ${validationErrors.lastName ? 'error' : ''}`}
                         value={formData.lastName}
                         onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
                         required
                       />
+                      {validationErrors.lastName && (
+                        <span style={{ color: 'var(--danger)', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                          {validationErrors.lastName}
+                        </span>
+                      )}
                     </div>
                     <div className="form-group">
                       <label className="form-label">Email *</label>
                       <input
                         type="email"
-                        className="form-input"
+                        className={`form-input ${validationErrors.email ? 'error' : ''}`}
                         value={formData.email}
                         onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                         required
                       />
+                      {validationErrors.email && (
+                        <span style={{ color: 'var(--danger)', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                          {validationErrors.email}
+                        </span>
+                      )}
                     </div>
                     <div className="form-group">
                       <label className="form-label">Phone</label>
@@ -390,6 +682,7 @@ export default function ReservationManagement() {
                         className="form-input"
                         value={formData.phone}
                         onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                        placeholder="+31 6 12345678"
                       />
                     </div>
                     <div className="form-group">
@@ -418,7 +711,7 @@ export default function ReservationManagement() {
                 <div className="form-group">
                   <label className="form-label">Suite *</label>
                   <select
-                    className="form-select"
+                    className={`form-select ${validationErrors.suiteId ? 'error' : ''}`}
                     value={formData.suiteId}
                     onChange={(e) => setFormData({ ...formData, suiteId: e.target.value })}
                     required
@@ -426,53 +719,132 @@ export default function ReservationManagement() {
                     <option value="">Select suite</option>
                     {suites.filter(s => s.active).map(suite => (
                       <option key={suite.suiteId} value={suite.suiteId}>
-                        {suite.suiteName} (Capacity: {suite.capacity})
+                        {suite.suiteName}  (max {suite.capacity} guests)
                       </option>
                     ))}
                   </select>
+                  {validationErrors.suiteId && (
+                    <span style={{ color: 'var(--danger)', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                      {validationErrors.suiteId}
+                    </span>
+                  )}
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Check-In *</label>
-                  <input
-                    type="date"
-                    className="form-input"
-                    value={formData.checkIn}
-                    onChange={(e) => setFormData({ ...formData, checkIn: e.target.value })}
-                    required
-                  />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div className="form-group">
+                    <label className="form-label">Check-In *</label>
+                    <input
+                      type="date"
+                      className={`form-input ${validationErrors.checkIn ? 'error' : ''}`}
+                      value={formData.checkIn}
+                      onChange={(e) => setFormData({ ...formData, checkIn: e.target.value })}
+                      required
+                    />
+                    {validationErrors.checkIn && (
+                      <span style={{ color: 'var(--danger)', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                        {validationErrors.checkIn}
+                      </span>
+                    )}
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Check-Out *</label>
+                    <input
+                      type="date"
+                      className={`form-input ${validationErrors.checkOut ? 'error' : ''}`}
+                      value={formData.checkOut}
+                      onChange={(e) => setFormData({ ...formData, checkOut: e.target.value })}
+                      required
+                    />
+                    {validationErrors.checkOut && (
+                      <span style={{ color: 'var(--danger)', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                        {validationErrors.checkOut}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Check-Out *</label>
-                  <input
-                    type="date"
-                    className="form-input"
-                    value={formData.checkOut}
-                    onChange={(e) => setFormData({ ...formData, checkOut: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Number of Guests *</label>
-                  <input
-                    type="number"
-                    className="form-input"
-                    value={formData.numGuests}
-                    onChange={(e) => setFormData({ ...formData, numGuests: e.target.value })}
-                    min="1"
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Total Price (€) *</label>
-                  <input
-                    type="number"
-                    className="form-input"
-                    value={formData.priceTotal}
-                    onChange={(e) => setFormData({ ...formData, priceTotal: e.target.value })}
-                    step="0.01"
-                    min="0"
-                    required
-                  />
+                {nightsCount > 0 && (
+                  <div style={{ 
+                    padding: '0.75rem', 
+                    background: 'var(--light-gray)', 
+                    borderRadius: '6px', 
+                    marginBottom: '1rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem'
+                  }}>
+                    <Calendar size={16} style={{ color: 'var(--primary)' }} />
+                    <strong>{nightsCount}</strong> night{nightsCount !== 1 ? 's' : ''}
+                    {suggestedPrice && (
+                      <span style={{ marginLeft: 'auto', color: 'var(--dark-gray)' }}>
+                        Suggested price: €{suggestedPrice}
+                      </span>
+                    )}
+                  </div>
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div className="form-group">
+                    <label className="form-label">
+                      <Users size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
+                      Number of Guests *
+                    </label>
+                    <input
+                      type="number"
+                      className={`form-input ${validationErrors.numGuests ? 'error' : ''}`}
+                      value={formData.numGuests}
+                      onChange={(e) => setFormData({ ...formData, numGuests: e.target.value })}
+                      min="1"
+                      max={selectedSuite?.capacity || 100}
+                      required
+                    />
+                    {validationErrors.numGuests && (
+                      <span style={{ color: 'var(--danger)', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                        {validationErrors.numGuests}
+                      </span>
+                    )}
+                    {selectedSuite && (
+                      <span style={{ fontSize: '0.875rem', color: 'var(--dark-gray)', marginTop: '0.25rem', display: 'block' }}>
+                        Max capacity: {selectedSuite.capacity}
+                      </span>
+                    )}
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">
+                      <DollarSign size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
+                      Total Price (€) *
+                    </label>
+                    <input
+                      type="number"
+                      className={`form-input ${validationErrors.priceTotal ? 'error' : ''}`}
+                      value={formData.priceTotal}
+                      onChange={(e) => setFormData({ ...formData, priceTotal: e.target.value })}
+                      step="0.01"
+                      min="0"
+                      required
+                      placeholder={suggestedPrice || '0.00'}
+                    />
+                    {validationErrors.priceTotal && (
+                      <span style={{ color: 'var(--danger)', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                        {validationErrors.priceTotal}
+                      </span>
+                    )}
+                    {suggestedPrice && !formData.priceTotal && (
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, priceTotal: suggestedPrice })}
+                        style={{
+                          fontSize: '0.875rem',
+                          marginTop: '0.25rem',
+                          padding: '0.25rem 0.5rem',
+                          background: 'var(--primary)',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Use suggested €{suggestedPrice}
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="form-group">
                   <label className="form-label">Booking Channel *</label>
@@ -502,11 +874,11 @@ export default function ReservationManagement() {
                 )}
               </div>
               <div className="modal-footer">
-                <button type="button" onClick={() => setShowModal(false)} className="btn btn-outline">
+                <button type="button" onClick={() => setShowModal(false)} className="btn btn-outline" disabled={submitting}>
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-accent">
-                  {editingReservation ? 'Update' : 'Create'} Reservation
+                <button type="submit" className="btn btn-accent" disabled={submitting}>
+                  {submitting ? 'Saving...' : (editingReservation ? 'Update' : 'Create')} Reservation
                 </button>
               </div>
             </form>

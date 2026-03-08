@@ -142,7 +142,11 @@ export async function createReservation(reservationData) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(reservationData),
   });
-  if (!res.ok) throw new Error('Failed to create reservation');
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    const errorMessage = errorData.error || 'Failed to create reservation';
+    throw new Error(errorMessage);
+  }
   return res.json();
 }
 
@@ -152,7 +156,11 @@ export async function updateReservation(id, reservationData) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(reservationData),
   });
-  if (!res.ok) throw new Error('Failed to update reservation');
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    const errorMessage = errorData.error || 'Failed to update reservation';
+    throw new Error(errorMessage);
+  }
   return res.json();
 }
 
@@ -160,7 +168,11 @@ export async function cancelReservation(id) {
   const res = await fetch(`${BASE_URL}/reservations/${id}/cancel`, {
     method: 'PATCH',
   });
-  if (!res.ok) throw new Error('Failed to cancel reservation');
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    const errorMessage = errorData.error || 'Failed to cancel reservation';
+    throw new Error(errorMessage);
+  }
   return res.json();
 }
 
