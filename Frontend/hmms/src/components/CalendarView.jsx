@@ -21,6 +21,7 @@ export default function CalendarView() {
   const [error, setError] = useState(null);
   const [selectedReservation, setSelectedReservation] = useState(null);
   const [showReservationModal, setShowReservationModal] = useState(false);
+  const [showCancelConfirmModal, setShowCancelConfirmModal] = useState(false);
   const [isEditingReservation, setIsEditingReservation] = useState(false);
   const [savingReservation, setSavingReservation] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -139,8 +140,13 @@ export default function CalendarView() {
 
   const closeReservationModal = () => {
     setShowReservationModal(false);
+    setShowCancelConfirmModal(false);
     setSelectedReservation(null);
     setIsEditingReservation(false);
+  };
+
+  const requestCancelReservation = () => {
+    setShowCancelConfirmModal(true);
   };
 
   const handleSaveReservation = async () => {
@@ -175,10 +181,6 @@ export default function CalendarView() {
 
   const handleCancelReservation = async () => {
     if (!selectedReservation) return;
-    const confirmed = window.confirm(
-      `Cancel reservation #${selectedReservation.reservationId} for ${selectedReservation.guestName}?`,
-    );
-    if (!confirmed) return;
 
     try {
       setSavingReservation(true);
@@ -189,6 +191,7 @@ export default function CalendarView() {
       console.error('Failed to cancel reservation:', err);
       setError(err?.message || 'Failed to cancel reservation');
     } finally {
+      setShowCancelConfirmModal(false);
       setSavingReservation(false);
     }
   };
@@ -322,10 +325,19 @@ export default function CalendarView() {
           setEditForm={setEditForm}
           onClose={closeReservationModal}
           onSave={handleSaveReservation}
-          onCancelReservation={handleCancelReservation}
+          onRequestCancelReservation={requestCancelReservation}
           saving={savingReservation}
           validationErrors={editValidationErrors}
           isEditValid={isEditValid}
+        />
+      )}
+
+      {showCancelConfirmModal && selectedReservation && (
+        <ConfirmCancelReservationModal
+          reservation={selectedReservation}
+          saving={savingReservation}
+          onClose={() => setShowCancelConfirmModal(false)}
+          onConfirm={handleCancelReservation}
         />
       )}
     </div>
@@ -578,45 +590,58 @@ function ReservationDetailsModal({
   setEditForm,
   onClose,
   onSave,
-  onCancelReservation,
+  onRequestCancelReservation,
   saving,
   validationErrors,
   isEditValid,
 }) {
   const selectedSuite = suites.find((suite) => suite.suiteId === Number(editForm.suiteId));
+  const status = reservation.status?.toLowerCase();
+  const statusColor =
+    status === 'confirmed' ? '#27AE60'
+      : status === 'checked_in' ? '#3498DB'
+      : status === 'checked_out' ? '#95A5A6'
+      : status === 'cancelled' ? '#E74C3C'
+      : '#F39C12';
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '760px', width: '95%' }}>
         <div className="modal-header">
-          <h3 className="modal-title">Reservation #{reservation.reservationId}</h3>
+          <div>
+            <h3 className="modal-title" style={{ marginBottom: '0.25rem' }}>
+              {reservation.guestName} · {reservation.suiteName}
+            </h3>
+            <div style={{ fontSize: '0.85rem', color: 'var(--dark-gray)' }}>
+              from {format(parseISO(reservation.checkIn), 'MMMM d, yyyy')} to {format(parseISO(reservation.checkOut), 'MMMM d, yyyy')}
+            </div>
+          </div>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
 
         <div className="modal-body">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.9rem' }}>
+            <span style={{ fontSize: '0.85rem', color: 'var(--dark-gray)' }}>Status</span>
+            <span
+              className="status-badge"
+              style={{ background: statusColor, color: '#fff', textTransform: 'capitalize' }}
+            >
+              {reservation.status}
+            </span>
+          </div>
+
           {!isEditing ? (
             <div style={{ display: 'grid', gap: '0.75rem' }}>
-              <p><strong>Guest:</strong> {reservation.guestName}</p>
-              <p><strong>Email:</strong> {reservation.email || '-'}</p>
-              <p><strong>Suite:</strong> {reservation.suiteName}</p>
-              <p><strong>Check-in:</strong> {reservation.checkIn}</p>
-              <p><strong>Check-out:</strong> {reservation.checkOut}</p>
-              <p><strong>Guests:</strong> {reservation.numGuests}</p>
-              <p><strong>Price:</strong> €{reservation.priceTotal}</p>
-              <p><strong>Channel:</strong> {reservation.channel || '-'}</p>
-              <p><strong>Status:</strong> {reservation.status}</p>
-              {reservation.status?.toLowerCase() !== 'cancelled' && (
-                <div style={{ marginTop: '0.25rem' }}>
-                  <button
-                    type="button"
-                    className="btn btn-outline btn-sm"
-                    onClick={onCancelReservation}
-                    disabled={saving}
-                  >
-                    Cancel reservation
-                  </button>
-                </div>
-              )}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <InfoRow label="Guest" value={reservation.guestName} />
+                <InfoRow label="Email" value={reservation.email || '-'} />
+                <InfoRow label="Suite" value={reservation.suiteName} />
+                <InfoRow label="Channel" value={reservation.channel || '-'} capitalize />
+                <InfoRow label="Check-in" value={reservation.checkIn} />
+                <InfoRow label="Check-out" value={reservation.checkOut} />
+                <InfoRow label="Guests" value={String(reservation.numGuests)} />
+                <InfoRow label="Price" value={`€${reservation.priceTotal}`} />
+              </div>
             </div>
           ) : (
             <div style={{ display: 'grid', gap: '0.75rem' }}>
@@ -676,7 +701,7 @@ function ReservationDetailsModal({
                     onChange={(e) => setEditForm((prev) => ({ ...prev, numGuests: e.target.value }))}
                   />
                   {selectedSuite?.capacity && (
-                    <small style={{ color: 'var(--dark-gray)' }}>Max capacity: {selectedSuite.capacity}</small>
+                    <small style={{ color: 'var(--dark-gray)' }}>Max: {selectedSuite.capacity}</small>
                   )}
                 </div>
                 <div className="form-group">
@@ -709,6 +734,18 @@ function ReservationDetailsModal({
         </div>
 
         <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+          {!isEditing &&reservation.status?.toLowerCase() !== 'cancelled' && (
+            <div >
+              <button
+                type="button"
+                className="btn btn-danger btn-sm"
+                onClick={onRequestCancelReservation}
+                disabled={saving}
+              >
+                Cancel reservation
+              </button>
+            </div>
+          )}
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             {!isEditing ? (
               <button
@@ -716,12 +753,12 @@ function ReservationDetailsModal({
                 onClick={() => setIsEditing(true)}
                 disabled={reservation.status?.toLowerCase() === 'cancelled'}
               >
-                Edit
+                Edit reservation
               </button>
             ) : (
               <>
                 <button className="btn btn-outline" onClick={() => setIsEditing(false)} disabled={saving}>
-                  Back
+                  Back (discard changes)
                 </button>
                 <button className="btn btn-primary" onClick={onSave} disabled={saving || !isEditValid}>
                   {saving ? 'Saving...' : 'Save Changes'}
@@ -729,6 +766,51 @@ function ReservationDetailsModal({
               </>
             )}
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InfoRow({ label, value, capitalize = false }) {
+  return (
+    <div style={{
+      border: '1px solid var(--gray)',
+      borderRadius: '8px',
+      padding: '0.6rem 0.75rem',
+      background: 'var(--white)',
+    }}>
+      <div style={{ fontSize: '0.75rem', color: 'var(--dark-gray)', marginBottom: '0.2rem' }}>{label}</div>
+      <div style={{ fontWeight: 600, textTransform: capitalize ? 'capitalize' : 'none' }}>{value}</div>
+    </div>
+  );
+}
+
+function ConfirmCancelReservationModal({ reservation, saving, onClose, onConfirm }) {
+  return (
+    <div className="modal-overlay" onClick={saving ? undefined : onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 className="modal-title">Confirm cancellation</h3>
+          <button className="modal-close" onClick={onClose} disabled={saving}>×</button>
+        </div>
+
+        <div className="modal-body">
+          <p>
+            Cancel reservation <strong>#{reservation.reservationId}</strong> for <strong>{reservation.guestName}</strong>?
+          </p>
+          <p style={{ color: 'var(--dark-gray)', fontSize: '0.9rem' }}>
+            This action cannot be undone.
+          </p>
+        </div>
+
+        <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+          <button className="btn btn-outline" onClick={onClose} disabled={saving}>
+            Keep reservation
+          </button>
+          <button className="btn btn-danger" onClick={onConfirm} disabled={saving}>
+            {saving ? 'Cancelling...' : 'Yes, cancel'}
+          </button>
         </div>
       </div>
     </div>
