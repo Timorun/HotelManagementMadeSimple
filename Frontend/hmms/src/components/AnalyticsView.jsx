@@ -249,9 +249,6 @@ export default function AnalyticsView() {
             <li>
               <strong>Average daily rate:</strong> €{analytics.averageDailyRate?.toFixed(0)} per night
             </li>
-            <li>
-              <strong>Recommendation:</strong> {analytics.occupancyRate > 80 ? 'Consider increasing rates for peak periods' : 'Focus on increasing direct bookings to reduce commission costs'}
-            </li>
           </ul>
         </div>
       </div>

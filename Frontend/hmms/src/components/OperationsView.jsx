@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { fetchOperationsDashboard } from '../api/backend';
-import { ClipboardCheck, LogIn, LogOut, Sparkles, RefreshCw, AlertTriangle } from 'lucide-react';
+import { ClipboardCheck, LogIn, LogOut, Sparkles, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 
 function pluralize(count, singular, plural = `${singular}s`) {
@@ -64,10 +64,10 @@ export default function OperationsView() {
           <div>
             <h2 className="operations-title">
               <ClipboardCheck size={28} />
-              Daily Operations
+              {format(new Date(), 'EEEE, MMMM d, yyyy')}
             </h2>
             <p className="operations-subtitle">
-              {format(new Date(), 'EEEE, MMMM d, yyyy')} · Last sync {format(lastUpdated, 'HH:mm')}
+              Last updated {format(lastUpdated, 'HH:mm')}
             </p>
           </div>
 

@@ -288,7 +288,7 @@ export default function GuestManagement() {
                     className="form-textarea"
                     value={formData.notes}
                     onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                    placeholder="VIP status, preferences, special requirements..."
+                    placeholder="Notes, preferences, special requirements..."
                   />
                 </div>
                 <div className="form-group">
