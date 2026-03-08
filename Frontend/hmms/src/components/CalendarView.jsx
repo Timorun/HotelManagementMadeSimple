@@ -609,6 +609,17 @@ function ReservationDetailsModal({
   const selectedSuite = suites.find((suite) => suite.suiteId === Number(editForm.suiteId));
   const status = reservation.status?.toLowerCase();
 
+  const copyToClipboard = async (value, label) => {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setModalError(null);
+    } catch (err) {
+      console.error(`Failed to copy ${label}:`, err);
+      setModalError(`Could not copy ${label}. Please copy manually.`);
+    }
+  };
+
   return (
     <div className="modal-overlay" onClick={saving ? undefined : onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '760px', width: '95%' }}>
@@ -617,6 +628,57 @@ function ReservationDetailsModal({
             <h3 className="modal-title" style={{ marginBottom: '0.25rem' }}>
               {reservation.guestName} · {reservation.suiteName}
             </h3>
+            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.2rem' }}>
+              {reservation.email ? (
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(reservation.email, 'email')}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.3rem',
+                    border: '1px solid rgba(63, 156, 245, 0.25)',
+                    background: 'rgba(63, 156, 245, 0.08)',
+                    color: 'var(--primary)',
+                    borderRadius: '999px',
+                    padding: '0.2rem 0.6rem',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                  title="Click to copy email"
+                >
+                  ✉ {reservation.email}
+                </button>
+              ) : null}
+
+              {reservation.phone ? (
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(reservation.phone, 'phone number')}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.3rem',
+                    border: '1px solid rgba(46, 204, 113, 0.25)',
+                    background: 'rgba(46, 204, 113, 0.1)',
+                    color: '#1E8449',
+                    borderRadius: '999px',
+                    padding: '0.2rem 0.6rem',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                  title="Click to copy phone number"
+                >
+                  ☎ {reservation.phone}
+                </button>
+              ) : null}
+
+              {!reservation.email && !reservation.phone && (
+                <span style={{ fontSize: '0.8rem', color: 'var(--dark-gray)' }}>-</span>
+              )}
+            </div>
             <div style={{ fontSize: '0.85rem', color: 'var(--dark-gray)' }}>
               from {format(parseISO(reservation.checkIn), 'MMMM d yyyy')}, to {format(parseISO(reservation.checkOut), 'MMMM d yyyy')}
             </div>

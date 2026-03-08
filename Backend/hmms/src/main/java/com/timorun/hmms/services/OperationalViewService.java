@@ -129,6 +129,7 @@ public class OperationalViewService {
                 .guestId(reservation.getGuest().getGuestId())
                 .guestName(reservation.getGuest().getFirstName() + " " + reservation.getGuest().getLastName())
                 .email(reservation.getGuest().getEmail())
+                .phone(reservation.getGuest().getPhone())
                 .checkIn(reservation.getCheckIn())
                 .checkOut(reservation.getCheckOut())
                 .numGuests(reservation.getNumGuests())
