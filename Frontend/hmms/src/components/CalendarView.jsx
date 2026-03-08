@@ -265,8 +265,32 @@ export default function CalendarView() {
         </div>
       )}
 
+      {/* Main Calendar Content */}
+      {activeSuites.length === 0 ? (
+        <div className="card">
+          <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--dark-gray)' }}>
+            <CalendarIcon size={48} style={{ marginBottom: '1rem', opacity: 0.5 }} />
+            <p style={{ fontSize: '1.125rem', marginBottom: '0.5rem' }}>No active suites</p>
+            <p style={{ fontSize: '0.875rem' }}>Add suites to start managing reservations</p>
+          </div>
+        </div>
+      ) : (
+        <TimelineView 
+          suites={activeSuites} 
+          reservations={filteredReservations}
+          allReservations={reservations}
+          daysInMonth={daysInMonth} 
+          monthStart={monthStart}
+          monthEnd={monthEnd}
+          onReservationClick={openReservationModal}
+          statusFilters={statusFilters}
+          onToggleStatusFilter={toggleStatusFilter}
+          onResetStatusFilters={resetStatusFilters}
+        />
+      )}
+
       {/* Statistics Panel */}
-      <div className="card mb-3">
+      <div className="card mt-3">
         <div style={{ 
           display: 'grid', 
           gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
@@ -310,30 +334,6 @@ export default function CalendarView() {
           </div>
         </div>
       </div>
-
-      {/* Main Calendar Content */}
-      {activeSuites.length === 0 ? (
-        <div className="card">
-          <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--dark-gray)' }}>
-            <CalendarIcon size={48} style={{ marginBottom: '1rem', opacity: 0.5 }} />
-            <p style={{ fontSize: '1.125rem', marginBottom: '0.5rem' }}>No active suites</p>
-            <p style={{ fontSize: '0.875rem' }}>Add suites to start managing reservations</p>
-          </div>
-        </div>
-      ) : (
-        <TimelineView 
-          suites={activeSuites} 
-          reservations={filteredReservations}
-          allReservations={reservations}
-          daysInMonth={daysInMonth} 
-          monthStart={monthStart}
-          monthEnd={monthEnd}
-          onReservationClick={openReservationModal}
-          statusFilters={statusFilters}
-          onToggleStatusFilter={toggleStatusFilter}
-          onResetStatusFilters={resetStatusFilters}
-        />
-      )}
 
       {showReservationModal && selectedReservation && (
         <ReservationDetailsModal
