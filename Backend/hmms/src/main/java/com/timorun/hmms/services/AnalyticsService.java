@@ -2,6 +2,7 @@ package com.timorun.hmms.services;
 
 import com.timorun.hmms.dto.MonthlyAnalyticsResponse;
 import com.timorun.hmms.entities.Reservation;
+import com.timorun.hmms.entities.ReservationStatus;
 import com.timorun.hmms.repositories.ReservationRepository;
 import com.timorun.hmms.repositories.SuiteRepository;
 import org.springframework.stereotype.Service;
@@ -74,7 +75,7 @@ public class AnalyticsService {
         List<Reservation> reservations = reservationRepository
                 .findByCheckInBeforeAndCheckOutAfter(endDate.plusDays(1), startDate)
                 .stream()
-                .filter(r -> "confirmed".equals(r.getStatus()) || "completed".equals(r.getStatus()))
+                .filter(r -> r.getStatus() == ReservationStatus.CONFIRMED || r.getStatus() == ReservationStatus.CHECKED_IN || r.getStatus() == ReservationStatus.CHECKED_OUT)
                 .collect(Collectors.toList());
         
         // Calculate total revenue

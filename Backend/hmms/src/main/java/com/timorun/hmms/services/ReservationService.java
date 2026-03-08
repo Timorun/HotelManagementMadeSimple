@@ -3,9 +3,11 @@ package com.timorun.hmms.services;
 import com.timorun.hmms.dto.CreateReservationRequest;
 import com.timorun.hmms.dto.ReservationResponse;
 import com.timorun.hmms.dto.UpdateReservationRequest;
+import com.timorun.hmms.dto.UpdateReservationStatusRequest;
 import com.timorun.hmms.entities.Guest;
 import com.timorun.hmms.entities.Nationality;
 import com.timorun.hmms.entities.Reservation;
+import com.timorun.hmms.entities.ReservationStatus;
 import com.timorun.hmms.entities.Suite;
 import com.timorun.hmms.repositories.GuestRepository;
 import com.timorun.hmms.repositories.NationalityRepository;
@@ -62,7 +64,7 @@ public class ReservationService {
         reservation.setNumGuests(request.getNumGuests());
         reservation.setPriceTotal(request.getPriceTotal());
         reservation.setChannel(request.getChannel());
-        reservation.setStatus("confirmed");
+        reservation.setStatus(ReservationStatus.CONFIRMED);
         reservation.setCreatedAt(LocalDateTime.now());
         
         Reservation saved = reservationRepository.save(reservation);
@@ -117,11 +119,35 @@ public class ReservationService {
         Reservation reservation = reservationRepository.findById(reservationId)
                 .orElseThrow(() -> new IllegalArgumentException("Reservation not found with ID: " + reservationId));
         
-        if ("cancelled".equals(reservation.getStatus())) {
+        if (reservation.getStatus() == ReservationStatus.CANCELLED) {
             throw new IllegalArgumentException("Reservation is already cancelled");
         }
         
-        reservation.setStatus("cancelled");
+        if (reservation.getStatus().isTerminalState()) {
+            throw new IllegalArgumentException("Cannot cancel a " + reservation.getStatus().getLabel() + " reservation");
+        }
+        
+        reservation.setStatus(ReservationStatus.CANCELLED);
+        Reservation updated = reservationRepository.save(reservation);
+        return toResponse(updated);
+    }
+
+    /**
+     * Update reservation status with validation.
+     * Validates status transitions before allowing the change.
+     */
+    public ReservationResponse updateReservationStatus(Long reservationId, UpdateReservationStatusRequest request) {
+        Reservation reservation = reservationRepository.findById(reservationId)
+                .orElseThrow(() -> new IllegalArgumentException("Reservation not found with ID: " + reservationId));
+        
+        ReservationStatus newStatus = ReservationStatus.fromValue(request.getStatus());
+        ReservationStatus currentStatus = reservation.getStatus();
+        
+        if (!currentStatus.canTransitionTo(newStatus)) {
+            throw new IllegalArgumentException(currentStatus.getTransitionError(newStatus));
+        }
+        
+        reservation.setStatus(newStatus);
         Reservation updated = reservationRepository.save(reservation);
         return toResponse(updated);
     }
@@ -164,7 +190,7 @@ public class ReservationService {
         
         return overlapping.stream()
                 .filter(r -> r.getSuite().getSuiteId().equals(suiteId))
-                .filter(r -> !"cancelled".equals(r.getStatus()))
+                .filter(r -> r.getStatus() != ReservationStatus.CANCELLED)
                 .filter(r -> excludeReservationId == null || !r.getReservationId().equals(excludeReservationId))
                 .collect(Collectors.toList());
     }
@@ -237,7 +263,9 @@ public class ReservationService {
                 .numGuests(reservation.getNumGuests())
                 .priceTotal(reservation.getPriceTotal())
                 .channel(reservation.getChannel())
-                .status(reservation.getStatus())
+                .status(reservation.getStatus().getValue())
+                .statusLabel(reservation.getStatus().getLabel())
+                .statusColor(reservation.getStatus().getColor())
                 .createdAt(reservation.getCreatedAt())
                 .build();
     }

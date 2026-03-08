@@ -28,6 +28,8 @@ public class ReservationResponse {
     private Integer numGuests;
     private BigDecimal priceTotal;
     private String channel;
-    private String status; // confirmed | completed | cancelled | no_show
+    private String status; // confirmed | checked_in | checked_out | pending | no_show | cancelled
+    private String statusLabel; // Human-readable label
+    private String statusColor; // Hex color for UI
     private LocalDateTime createdAt;
 }

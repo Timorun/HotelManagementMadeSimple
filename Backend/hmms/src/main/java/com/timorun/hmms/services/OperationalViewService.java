@@ -3,6 +3,7 @@ package com.timorun.hmms.services;
 import com.timorun.hmms.dto.ReservationResponse;
 import com.timorun.hmms.dto.RoomCleaningResponse;
 import com.timorun.hmms.entities.Reservation;
+import com.timorun.hmms.entities.ReservationStatus;
 import com.timorun.hmms.repositories.ReservationRepository;
 import org.springframework.stereotype.Service;
 
@@ -102,7 +103,7 @@ public class OperationalViewService {
         LocalDate dayAfter = date.plusDays(1);
         return reservationRepository.findByCheckInBeforeAndCheckOutAfter(dayAfter, date)
                 .stream()
-                .filter(r -> "confirmed".equals(r.getStatus()) || "completed".equals(r.getStatus()))
+                .filter(r -> r.getStatus() == ReservationStatus.CONFIRMED || r.getStatus() == ReservationStatus.CHECKED_IN)
                 .map(this::toResponse)
                 .collect(Collectors.toList());
     }
@@ -133,7 +134,9 @@ public class OperationalViewService {
                 .numGuests(reservation.getNumGuests())
                 .priceTotal(reservation.getPriceTotal())
                 .channel(reservation.getChannel())
-                .status(reservation.getStatus())
+                .status(reservation.getStatus().getValue())
+                .statusLabel(reservation.getStatus().getLabel())
+                .statusColor(reservation.getStatus().getColor())
                 .createdAt(reservation.getCreatedAt())
                 .build();
     }

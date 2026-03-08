@@ -203,3 +203,22 @@ export async function searchGuests(lastName) {
   );
   return withStubFallback(data, []);
 }
+
+/**
+ * Update reservation status.
+ * @param {number} reservationId - The reservation ID
+ * @param {string} status - New status value (e.g., 'checked_in', 'checked_out', 'cancelled')
+ * @returns {Promise<Object>} Updated reservation response
+ */
+export async function updateReservationStatus(reservationId, status) {
+  const res = await fetch(`${BASE_URL}/reservations/${reservationId}/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) {
+    const errorData = await res.json();
+    throw new Error(errorData.error || 'Failed to update reservation status');
+  }
+  return res.json();
+}
