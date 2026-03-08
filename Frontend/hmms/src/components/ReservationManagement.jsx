@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { fetchReservations, fetchSuites, fetchNationalities, createReservation, updateReservation, cancelReservation, searchGuests, updateReservationStatus } from '../api/backend';
 import { Calendar, Plus, Edit, X, Search, AlertCircle, CheckCircle, Users, DollarSign } from 'lucide-react';
-import { format, differenceInDays, parseISO, isBefore, addDays } from 'date-fns';
+import { format, differenceInDays, parseISO, isBefore, addDays, startOfMonth, endOfMonth } from 'date-fns';
 import { STATUS_META } from '../api/reservationStatus';
 
 export default function ReservationManagement() {
@@ -12,8 +12,8 @@ export default function ReservationManagement() {
   const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [editingReservation, setEditingReservation] = useState(null);
-  const [dateFrom, setDateFrom] = useState(format(new Date(2026, 0, 1), 'yyyy-MM-dd'));
-  const [dateTo, setDateTo] = useState(format(new Date(2026, 0, 31), 'yyyy-MM-dd'));
+  const [dateFrom, setDateFrom] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [dateTo, setDateTo] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
   const [searchTerm, setSearchTerm] = useState('');
   const [guestSearchResults, setGuestSearchResults] = useState([]);
   const [validationErrors, setValidationErrors] = useState({});
