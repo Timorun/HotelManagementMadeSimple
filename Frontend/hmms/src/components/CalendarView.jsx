@@ -84,6 +84,7 @@ export default function CalendarView() {
     const checkOut = parseISO(res.checkOut);
     const start = checkIn < monthStart ? monthStart : checkIn;
     const end = checkOut > monthEnd ? monthEnd : checkOut;
+    if (end <= start) return sum;
     return sum + Math.max(0, differenceInDays(end, start));
   }, 0);
   const occupancyRate = totalSuiteDays > 0 ? (occupiedDays / totalSuiteDays) * 100 : 0;
@@ -367,17 +368,21 @@ function TimelineView({
   const getReservationStyle = (reservation) => {
     const checkIn = parseISO(reservation.checkIn);
     const checkOut = parseISO(reservation.checkOut);
-    
-    // Clamp to month boundaries
-    const displayStart = checkIn < monthStart ? monthStart : checkIn;
-    const displayEnd = checkOut > monthEnd ? monthEnd : checkOut;
-    
-    const startDay = differenceInDays(displayStart, monthStart);
-    const duration = differenceInDays(displayEnd, displayStart);
+
+    // Half-day convention:
+    // - reservation starts at midday of check-in day
+    // - reservation ends at midday of check-out day
     const totalDays = daysInMonth.length;
-    
-    const left = (startDay / totalDays) * 100;
-    const width = (duration / totalDays) * 100;
+    const rawStartOffset = differenceInDays(checkIn, monthStart) + 0.5;
+    const rawEndOffset = differenceInDays(checkOut, monthStart) + 0.5;
+
+    const clampedStart = Math.max(0, rawStartOffset);
+    const clampedEnd = Math.min(totalDays, rawEndOffset);
+
+    if (clampedEnd <= clampedStart) return null;
+
+    const left = (clampedStart / totalDays) * 100;
+    const width = ((clampedEnd - clampedStart) / totalDays) * 100;
     
     return { left: `${left}%`, width: `${width}%` };
   };
@@ -475,6 +480,7 @@ function TimelineView({
                 {/* Reservation bars */}
                 {suiteReservations.map((reservation, idx) => {
                   const style = getReservationStyle(reservation);
+                  if (!style) return null;
                   const color = getStatusColor(reservation.status);
                   const laneIndex = laneByReservationId[reservation.reservationId] ?? idx;
                   
