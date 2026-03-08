@@ -501,8 +501,8 @@ export default function ReservationManagement() {
                   <td>#{res.reservationId}</td>
                   <td style={{ fontWeight: 600 }}>{res.guestName}</td>
                   <td>{res.suiteName}</td>
-                  <td>{res.checkIn}</td>
-                  <td>{res.checkOut}</td>
+                  <td>{format(parseISO(res.checkIn), 'dd/MM/yyyy')}</td>
+                  <td>{format(parseISO(res.checkOut), 'dd/MM/yyyy')}</td>
                   <td>{res.numGuests}</td>
                   <td>€{res.priceTotal}</td>
                   <td style={{ textTransform: 'capitalize' }}>{res.channel}</td>

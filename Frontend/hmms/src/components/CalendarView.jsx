@@ -11,7 +11,7 @@ import {
   addMonths,
   subMonths
 } from 'date-fns';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, AlertCircle } from 'lucide-react';
 
 const STATUS_META = {
   confirmed: { label: 'Confirmed', color: '#27AE60' },
@@ -40,6 +40,7 @@ export default function CalendarView() {
   const [showCancelConfirmModal, setShowCancelConfirmModal] = useState(false);
   const [isEditingReservation, setIsEditingReservation] = useState(false);
   const [savingReservation, setSavingReservation] = useState(false);
+  const [modalError, setModalError] = useState(null);
   const [editForm, setEditForm] = useState({
     suiteId: '',
     checkIn: '',
@@ -136,6 +137,7 @@ export default function CalendarView() {
 
   const openReservationModal = (reservation) => {
     setSelectedReservation(reservation);
+    setModalError(null);
     setEditForm({
       suiteId: reservation.suiteId,
       checkIn: reservation.checkIn,
@@ -153,6 +155,7 @@ export default function CalendarView() {
     setShowCancelConfirmModal(false);
     setSelectedReservation(null);
     setIsEditingReservation(false);
+    setModalError(null);
   };
 
   const requestCancelReservation = () => {
@@ -162,12 +165,13 @@ export default function CalendarView() {
   const handleSaveReservation = async () => {
     if (!selectedReservation) return;
     if (!isEditValid) {
-      setError(editValidationErrors[0]);
+      setModalError(editValidationErrors[0]);
       return;
     }
 
     try {
       setSavingReservation(true);
+      setModalError(null);
       await updateReservation(selectedReservation.reservationId, {
         suiteId: parseInt(editForm.suiteId, 10),
         guestId: selectedReservation.guestId,
@@ -183,7 +187,7 @@ export default function CalendarView() {
       closeReservationModal();
     } catch (err) {
       console.error('Failed to update reservation:', err);
-      setError(err?.message || 'Failed to update reservation');
+      setModalError(err?.message || 'Failed to update reservation');
     } finally {
       setSavingReservation(false);
     }
@@ -194,12 +198,13 @@ export default function CalendarView() {
 
     try {
       setSavingReservation(true);
+      setModalError(null);
       await cancelReservation(selectedReservation.reservationId);
       await loadCalendarData(currentDate);
       closeReservationModal();
     } catch (err) {
       console.error('Failed to cancel reservation:', err);
-      setError(err?.message || 'Failed to cancel reservation');
+      setModalError(err?.message || 'Failed to cancel reservation');
     } finally {
       setShowCancelConfirmModal(false);
       setSavingReservation(false);
@@ -344,6 +349,8 @@ export default function CalendarView() {
           saving={savingReservation}
           validationErrors={editValidationErrors}
           isEditValid={isEditValid}
+          modalError={modalError}
+          setModalError={setModalError}
         />
       )}
 
@@ -532,7 +539,7 @@ function TimelineView({
                         boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
                         zIndex: 10
                       }}
-                      title={`${reservation.guestName}\n${format(parseISO(reservation.checkIn), 'MMM d')} → ${format(parseISO(reservation.checkOut), 'MMM d')}\n${reservation.numGuests} guest${reservation.numGuests > 1 ? 's' : ''}\nStatus: ${reservation.status}`}
+                      title={`${reservation.guestName}\n${format(parseISO(reservation.checkIn), 'dd/MM/yyyy')} → ${format(parseISO(reservation.checkOut), 'dd/MM/yyyy')}\n${reservation.numGuests} guest${reservation.numGuests > 1 ? 's' : ''}\nStatus: ${reservation.status}`}
                       onClick={() => onReservationClick(reservation)}
                     >
                       {reservation.guestName}
@@ -591,6 +598,8 @@ function ReservationDetailsModal({
   saving,
   validationErrors,
   isEditValid,
+  modalError,
+  setModalError,
 }) {
   const selectedSuite = suites.find((suite) => suite.suiteId === Number(editForm.suiteId));
   const status = reservation.status?.toLowerCase();
@@ -605,13 +614,43 @@ function ReservationDetailsModal({
               {reservation.guestName} · {reservation.suiteName}
             </h3>
             <div style={{ fontSize: '0.85rem', color: 'var(--dark-gray)' }}>
-              from {format(parseISO(reservation.checkIn), 'MMMM d, yyyy')} to {format(parseISO(reservation.checkOut), 'MMMM d, yyyy')}
+              from {format(parseISO(reservation.checkIn), 'MMMM d yyyy')}, to {format(parseISO(reservation.checkOut), 'MMMM d yyyy')}
             </div>
           </div>
           <button className="modal-close" onClick={onClose} disabled={saving}>×</button>
         </div>
 
         <div className="modal-body">
+          {/* Display error message in modal if present */}
+          {modalError && (
+            <div style={{
+              padding: '1rem',
+              marginBottom: '1rem',
+              background: 'rgba(231, 76, 60, 0.1)',
+              border: '1px solid var(--danger)',
+              borderRadius: '6px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              color: 'var(--danger)'
+            }}>
+              <AlertCircle size={20} />
+              <span style={{ flex: 1, fontWeight: 500 }}>{modalError}</span>
+              <button 
+                type="button"
+                onClick={() => setModalError(null)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '1.25rem',
+                  padding: 0,
+                  color: 'var(--danger)',
+                }}
+              >×</button>
+            </div>
+          )}
+
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.9rem' }}>
             <span style={{ fontSize: '0.85rem', color: 'var(--dark-gray)' }}>Status</span>
             <span
@@ -629,8 +668,8 @@ function ReservationDetailsModal({
                 <InfoRow label="Email" value={reservation.email || '-'} />
                 <InfoRow label="Suite" value={reservation.suiteName} />
                 <InfoRow label="Channel" value={reservation.channel || '-'} capitalize />
-                <InfoRow label="Check-in" value={reservation.checkIn} />
-                <InfoRow label="Check-out" value={reservation.checkOut} />
+                <InfoRow label="Check-in" value={format(parseISO(reservation.checkIn), 'dd/MM/yyyy')} />
+                <InfoRow label="Check-out" value={format(parseISO(reservation.checkOut), 'dd/MM/yyyy')} />
                 <InfoRow label="Guests" value={String(reservation.numGuests)} />
                 <InfoRow label="Price" value={`€${reservation.priceTotal}`} />
               </div>
