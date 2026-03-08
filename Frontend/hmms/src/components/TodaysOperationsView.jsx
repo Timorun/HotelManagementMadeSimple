@@ -7,7 +7,7 @@ function pluralize(count, singular, plural = `${singular}s`) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
-export default function OperationsView() {
+export default function TodaysOperationsView() {
   const [arrivalsToday, setArrivalsToday] = useState([]);
   const [departuresToday, setDeparturesToday] = useState([]);
   const [roomsToClean, setRoomsToClean] = useState([]);
@@ -162,8 +162,8 @@ export default function OperationsView() {
                       Room ready status required before check-in time
                     </div>
                   </div>
-                  <span className={`operations-tag ${room.turnoverRequired ? 'warning' : 'info'}`}>
-                    {room.turnoverRequired ? 'Turnover clean' : 'Standard clean'}
+                  <span className={`operations-tag ${room.status == "needs_turnover" ? 'warning' : 'info'}`}>
+                    {room.status == "needs_turnover" ? 'Turnover clean' : 'Standard clean'}
                   </span>
                 </li>
               ))}

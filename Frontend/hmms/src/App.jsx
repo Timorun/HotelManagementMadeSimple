@@ -5,7 +5,7 @@ import SuiteManagement from './components/SuiteManagement'
 import ReservationManagement from './components/ReservationManagement'
 import NationalityList from './components/NationalityList'
 import AnalyticsView from './components/AnalyticsView'
-import OperationsView from './components/OperationsView'
+import TodaysOperationsView from './components/TodaysOperationsView'
 import CalendarView from './components/CalendarView'
 import { 
   ClipboardCheck, 
@@ -20,7 +20,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('operations')
 
   const tabs = [
-    { id: 'operations', label: 'Operations', icon: ClipboardCheck },
+    { id: 'operations', label: 'Today', icon: ClipboardCheck },
     { id: 'calendar', label: 'Calendar', icon: CalendarDays },
     { id: 'reservations', label: 'Reservations', icon: Hotel },
     { id: 'guests', label: 'Guests', icon: Users },
@@ -40,13 +40,6 @@ function App() {
               <PlusCircle size={16} />
               New Reservation
             </button>
-            <div className="user-info">
-              <div className="user-avatar">CS</div>
-              <div>
-                <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>Admin</div>
-                <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>Hotel Manager</div>
-              </div>
-            </div>
           </div>
         </div>
         <nav className="nav-tabs">
@@ -64,7 +57,7 @@ function App() {
       </header>
 
       <main className="app-content">
-        {activeTab === 'operations' && <OperationsView />}
+        {activeTab === 'operations' && <TodaysOperationsView />}
         {activeTab === 'calendar' && <CalendarView />}
         {activeTab === 'reservations' && <ReservationManagement />}
         {activeTab === 'guests' && <GuestManagement />}
