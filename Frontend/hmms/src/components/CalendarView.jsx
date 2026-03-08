@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fetchCalendar, fetchSuites } from '../api/backend';
+import { fetchCalendar, fetchSuites, updateReservation, cancelReservation } from '../api/backend';
 import { 
   format, 
   startOfMonth, 
@@ -19,39 +19,66 @@ export default function CalendarView() {
   const [suites, setSuites] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [selectedReservation, setSelectedReservation] = useState(null);
+  const [showReservationModal, setShowReservationModal] = useState(false);
+  const [isEditingReservation, setIsEditingReservation] = useState(false);
+  const [savingReservation, setSavingReservation] = useState(false);
+  const [editForm, setEditForm] = useState({
+    suiteId: '',
+    checkIn: '',
+    checkOut: '',
+    numGuests: 1,
+    priceTotal: '',
+    channel: 'direct',
+  });
+  const [statusFilters, setStatusFilters] = useState({
+    confirmed: true,
+    checked_in: true,
+    checked_out: true,
+    pending: true,
+    cancelled: false,
+  });
+
+  const loadCalendarData = async (targetDate = currentDate) => {
+    const start = startOfMonth(targetDate);
+    const end = endOfMonth(targetDate);
+
+    setLoading(true);
+    try {
+      const [calendarData, suitesData] = await Promise.all([
+        fetchCalendar(format(start, 'yyyy-MM-dd'), format(end, 'yyyy-MM-dd')),
+        fetchSuites()
+      ]);
+      setReservations(calendarData || []);
+      setSuites(suitesData || []);
+      setError(null);
+    } catch (err) {
+      console.error('Error loading calendar data:', err);
+      setError(err);
+      setReservations([]);
+      setSuites([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const start = startOfMonth(currentDate);
-    const end = endOfMonth(currentDate);
-    
-    setLoading(true);
-    Promise.all([
-      fetchCalendar(format(start, 'yyyy-MM-dd'), format(end, 'yyyy-MM-dd')),
-      fetchSuites()
-    ])
-      .then(([calendarData, suitesData]) => {
-        setReservations(calendarData || []);
-        setSuites(suitesData || []);
-        setError(null);
-      })
-      .catch((err) => {
-        console.error('Error loading calendar data:', err);
-        setError(err);
-        setReservations([]);
-        setSuites([]);
-      })
-      .finally(() => setLoading(false));
+    loadCalendarData(currentDate);
   }, [currentDate]);
 
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
   const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
+  const filteredReservations = reservations.filter(
+    (res) => statusFilters[res.status?.toLowerCase()] ?? true,
+  );
+
   // Calculate statistics (only for active suites)
   const activeSuites = suites.filter(s => s.active);
   const totalDays = daysInMonth.length;
   const totalSuiteDays = totalDays * activeSuites.length;
-  const activeReservations = reservations.filter(res => res.status?.toLowerCase() !== 'cancelled');
+  const activeReservations = filteredReservations.filter(res => res.status?.toLowerCase() !== 'cancelled');
   const occupiedDays = activeReservations.reduce((sum, res) => {
     const checkIn = parseISO(res.checkIn);
     const checkOut = parseISO(res.checkOut);
@@ -64,6 +91,113 @@ export default function CalendarView() {
   const previousMonth = () => setCurrentDate(subMonths(currentDate, 1));
   const nextMonth = () => setCurrentDate(addMonths(currentDate, 1));
   const goToToday = () => setCurrentDate(new Date());
+
+  const getEditValidationErrors = () => {
+    const errors = [];
+    const selectedSuite = activeSuites.find((suite) => suite.suiteId === Number(editForm.suiteId));
+    const numGuests = Number(editForm.numGuests);
+    const priceTotal = Number(editForm.priceTotal);
+
+    if (!editForm.checkIn || !editForm.checkOut) {
+      errors.push('Check-in and check-out dates are required.');
+    } else if (parseISO(editForm.checkOut) <= parseISO(editForm.checkIn)) {
+      errors.push('Check-out must be after check-in.');
+    }
+
+    if (!Number.isFinite(numGuests) || numGuests < 1) {
+      errors.push('Guests must be at least 1.');
+    }
+
+    if (selectedSuite?.capacity && numGuests > selectedSuite.capacity) {
+      errors.push(`Guests exceed suite capacity (${selectedSuite.capacity}).`);
+    }
+
+    if (!Number.isFinite(priceTotal) || priceTotal < 0) {
+      errors.push('Price must be 0 or higher.');
+    }
+
+    return errors;
+  };
+
+  const editValidationErrors = getEditValidationErrors();
+  const isEditValid = editValidationErrors.length === 0;
+
+  const openReservationModal = (reservation) => {
+    setSelectedReservation(reservation);
+    setEditForm({
+      suiteId: reservation.suiteId,
+      checkIn: reservation.checkIn,
+      checkOut: reservation.checkOut,
+      numGuests: reservation.numGuests,
+      priceTotal: reservation.priceTotal,
+      channel: reservation.channel || 'direct',
+    });
+    setIsEditingReservation(false);
+    setShowReservationModal(true);
+  };
+
+  const closeReservationModal = () => {
+    setShowReservationModal(false);
+    setSelectedReservation(null);
+    setIsEditingReservation(false);
+  };
+
+  const handleSaveReservation = async () => {
+    if (!selectedReservation) return;
+    if (!isEditValid) {
+      setError(editValidationErrors[0]);
+      return;
+    }
+
+    try {
+      setSavingReservation(true);
+      await updateReservation(selectedReservation.reservationId, {
+        suiteId: parseInt(editForm.suiteId, 10),
+        guestId: selectedReservation.guestId,
+        checkIn: editForm.checkIn,
+        checkOut: editForm.checkOut,
+        numGuests: parseInt(editForm.numGuests, 10),
+        priceTotal: parseFloat(editForm.priceTotal),
+        channel: editForm.channel,
+      });
+
+      await loadCalendarData(currentDate);
+      setIsEditingReservation(false);
+      closeReservationModal();
+    } catch (err) {
+      console.error('Failed to update reservation:', err);
+      setError(err?.message || 'Failed to update reservation');
+    } finally {
+      setSavingReservation(false);
+    }
+  };
+
+  const handleCancelReservation = async () => {
+    if (!selectedReservation) return;
+    const confirmed = window.confirm(
+      `Cancel reservation #${selectedReservation.reservationId} for ${selectedReservation.guestName}?`,
+    );
+    if (!confirmed) return;
+
+    try {
+      setSavingReservation(true);
+      await cancelReservation(selectedReservation.reservationId);
+      await loadCalendarData(currentDate);
+      closeReservationModal();
+    } catch (err) {
+      console.error('Failed to cancel reservation:', err);
+      setError(err?.message || 'Failed to cancel reservation');
+    } finally {
+      setSavingReservation(false);
+    }
+  };
+
+  const toggleStatusFilter = (status) => {
+    setStatusFilters((prev) => ({
+      ...prev,
+      [status]: !prev[status],
+    }));
+  };
 
   if (loading) {
     return (
@@ -123,7 +257,7 @@ export default function CalendarView() {
               Total Reservations
             </div>
             <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--primary)' }}>
-              {reservations.length}
+              {filteredReservations.length}
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--dark-gray)', marginTop: '0.125rem' }}>
               {activeReservations.length} active
@@ -166,10 +300,31 @@ export default function CalendarView() {
       ) : (
         <TimelineView 
           suites={activeSuites} 
-          reservations={reservations} 
+          reservations={filteredReservations}
+          allReservations={reservations}
           daysInMonth={daysInMonth} 
           monthStart={monthStart}
           monthEnd={monthEnd}
+          onReservationClick={openReservationModal}
+          statusFilters={statusFilters}
+          onToggleStatusFilter={toggleStatusFilter}
+        />
+      )}
+
+      {showReservationModal && selectedReservation && (
+        <ReservationDetailsModal
+          reservation={selectedReservation}
+          suites={activeSuites}
+          isEditing={isEditingReservation}
+          setIsEditing={setIsEditingReservation}
+          editForm={editForm}
+          setEditForm={setEditForm}
+          onClose={closeReservationModal}
+          onSave={handleSaveReservation}
+          onCancelReservation={handleCancelReservation}
+          saving={savingReservation}
+          validationErrors={editValidationErrors}
+          isEditValid={isEditValid}
         />
       )}
     </div>
@@ -177,9 +332,36 @@ export default function CalendarView() {
 }
 
 // Timeline View - Shows reservations as horizontal bars across suites
-function TimelineView({ suites, reservations, daysInMonth, monthStart, monthEnd }) {
-  const getReservationsForSuite = (suiteId) => {
-    return reservations.filter(res => res.suiteId === suiteId);
+function TimelineView({
+  suites,
+  reservations,
+  allReservations,
+  daysInMonth,
+  monthStart,
+  monthEnd,
+  onReservationClick,
+  statusFilters,
+  onToggleStatusFilter,
+}) {
+  const getReservationsForSuite = (suiteId, source = reservations) => {
+    return source.filter((res) => res.suiteId === suiteId);
+  };
+
+  const getStableLaneData = (suiteId) => {
+    const fullSuiteReservations = getReservationsForSuite(suiteId, allReservations).sort((a, b) => {
+      if (a.checkIn === b.checkIn) return (a.reservationId || 0) - (b.reservationId || 0);
+      return a.checkIn.localeCompare(b.checkIn);
+    });
+
+    const laneByReservationId = {};
+    fullSuiteReservations.forEach((res, idx) => {
+      laneByReservationId[res.reservationId] = idx;
+    });
+
+    return {
+      laneByReservationId,
+      totalLanes: fullSuiteReservations.length,
+    };
   };
 
   const getReservationStyle = (reservation) => {
@@ -251,6 +433,8 @@ function TimelineView({ suites, reservations, daysInMonth, monthStart, monthEnd 
         {/* Suite Rows */}
         {suites.map((suite) => {
           const suiteReservations = getReservationsForSuite(suite.suiteId);
+          const { laneByReservationId, totalLanes } = getStableLaneData(suite.suiteId);
+          const rowHeight = Math.max(60, totalLanes * 22 + 16);
           
           return (
             <div key={suite.suiteId} style={{ display: 'flex', borderBottom: '1px solid var(--gray)' }}>
@@ -269,7 +453,7 @@ function TimelineView({ suites, reservations, daysInMonth, monthStart, monthEnd 
               <div style={{ 
                 flex: 1, 
                 position: 'relative', 
-                minHeight: '60px',
+                minHeight: `${rowHeight}px`,
                 minWidth: '800px',
                 background: 'white'
               }}>
@@ -292,13 +476,14 @@ function TimelineView({ suites, reservations, daysInMonth, monthStart, monthEnd 
                 {suiteReservations.map((reservation, idx) => {
                   const style = getReservationStyle(reservation);
                   const color = getStatusColor(reservation.status);
+                  const laneIndex = laneByReservationId[reservation.reservationId] ?? idx;
                   
                   return (
                     <div
-                      key={idx}
+                      key={reservation.reservationId || idx}
                       style={{
                         position: 'absolute',
-                        top: `${idx * 22 + 8}px`,
+                        top: `${laneIndex * 22 + 8}px`,
                         left: style.left,
                         width: style.width,
                         height: '18px',
@@ -317,6 +502,7 @@ function TimelineView({ suites, reservations, daysInMonth, monthStart, monthEnd 
                         zIndex: 10
                       }}
                       title={`${reservation.guestName}\n${format(parseISO(reservation.checkIn), 'MMM d')} → ${format(parseISO(reservation.checkOut), 'MMM d')}\n${reservation.numGuests} guest${reservation.numGuests > 1 ? 's' : ''}\nStatus: ${reservation.status}`}
+                      onClick={() => onReservationClick(reservation)}
                     >
                       {reservation.guestName}
                     </div>
@@ -331,25 +517,211 @@ function TimelineView({ suites, reservations, daysInMonth, monthStart, monthEnd 
       {/* Legend */}
       <div style={{ padding: '1rem', background: 'var(--light-gray)', borderTop: '1px solid var(--gray)' }}>
         <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', fontSize: '0.875rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <button
+            type="button"
+            onClick={() => onToggleStatusFilter('confirmed')}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'transparent', border: 'none', cursor: 'pointer', opacity: statusFilters.confirmed ? 1 : 0.4 }}
+          >
             <div style={{ width: '20px', height: '14px', background: '#27AE60', borderRadius: '3px' }}></div>
             <span>Confirmed</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          </button>
+          <button
+            type="button"
+            onClick={() => onToggleStatusFilter('checked_in')}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'transparent', border: 'none', cursor: 'pointer', opacity: statusFilters.checked_in ? 1 : 0.4 }}
+          >
             <div style={{ width: '20px', height: '14px', background: '#3498DB', borderRadius: '3px' }}></div>
             <span>Checked In</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          </button>
+          <button
+            type="button"
+            onClick={() => onToggleStatusFilter('pending')}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'transparent', border: 'none', cursor: 'pointer', opacity: statusFilters.pending ? 1 : 0.4 }}
+          >
             <div style={{ width: '20px', height: '14px', background: '#F39C12', borderRadius: '3px' }}></div>
             <span>Pending</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          </button>
+          <button
+            type="button"
+            onClick={() => onToggleStatusFilter('checked_out')}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'transparent', border: 'none', cursor: 'pointer', opacity: statusFilters.checked_out ? 1 : 0.4 }}
+          >
             <div style={{ width: '20px', height: '14px', background: '#95A5A6', borderRadius: '3px' }}></div>
             <span>Checked Out</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          </button>
+          <button
+            type="button"
+            onClick={() => onToggleStatusFilter('cancelled')}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'transparent', border: 'none', cursor: 'pointer', opacity: statusFilters.cancelled ? 1 : 0.4 }}
+          >
             <div style={{ width: '20px', height: '14px', background: '#E74C3C', borderRadius: '3px' }}></div>
             <span>Cancelled</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReservationDetailsModal({
+  reservation,
+  suites,
+  isEditing,
+  setIsEditing,
+  editForm,
+  setEditForm,
+  onClose,
+  onSave,
+  onCancelReservation,
+  saving,
+  validationErrors,
+  isEditValid,
+}) {
+  const selectedSuite = suites.find((suite) => suite.suiteId === Number(editForm.suiteId));
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 className="modal-title">Reservation #{reservation.reservationId}</h3>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+
+        <div className="modal-body">
+          {!isEditing ? (
+            <div style={{ display: 'grid', gap: '0.75rem' }}>
+              <p><strong>Guest:</strong> {reservation.guestName}</p>
+              <p><strong>Email:</strong> {reservation.email || '-'}</p>
+              <p><strong>Suite:</strong> {reservation.suiteName}</p>
+              <p><strong>Check-in:</strong> {reservation.checkIn}</p>
+              <p><strong>Check-out:</strong> {reservation.checkOut}</p>
+              <p><strong>Guests:</strong> {reservation.numGuests}</p>
+              <p><strong>Price:</strong> €{reservation.priceTotal}</p>
+              <p><strong>Channel:</strong> {reservation.channel || '-'}</p>
+              <p><strong>Status:</strong> {reservation.status}</p>
+              {reservation.status?.toLowerCase() !== 'cancelled' && (
+                <div style={{ marginTop: '0.25rem' }}>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={onCancelReservation}
+                    disabled={saving}
+                  >
+                    Cancel reservation
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gap: '0.75rem' }}>
+              {validationErrors.length > 0 && (
+                <div className="error-message" style={{ marginBottom: '0.25rem' }}>
+                  {validationErrors.map((msg) => (
+                    <div key={msg}>• {msg}</div>
+                  ))}
+                </div>
+              )}
+
+              <div className="form-group">
+                <label className="form-label">Suite</label>
+                <select
+                  className="form-select"
+                  value={editForm.suiteId}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, suiteId: e.target.value }))}
+                >
+                  {suites.map((suite) => (
+                    <option key={suite.suiteId} value={suite.suiteId}>
+                      {suite.suiteName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <div className="form-group">
+                  <label className="form-label">Check-in</label>
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={editForm.checkIn}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, checkIn: e.target.value }))}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Check-out</label>
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={editForm.checkOut}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, checkOut: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
+                <div className="form-group">
+                  <label className="form-label">Guests</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max={selectedSuite?.capacity || undefined}
+                    className="form-input"
+                    value={editForm.numGuests}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, numGuests: e.target.value }))}
+                  />
+                  {selectedSuite?.capacity && (
+                    <small style={{ color: 'var(--dark-gray)' }}>Max capacity: {selectedSuite.capacity}</small>
+                  )}
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Price (€)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="form-input"
+                    value={editForm.priceTotal}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, priceTotal: e.target.value }))}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Channel</label>
+                  <select
+                    className="form-select"
+                    value={editForm.channel}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, channel: e.target.value }))}
+                  >
+                    <option value="direct">Direct</option>
+                    <option value="booking.com">Booking.com</option>
+                    <option value="airbnb">Airbnb</option>
+                    <option value="expedia">Expedia</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            {!isEditing ? (
+              <button
+                className="btn btn-primary"
+                onClick={() => setIsEditing(true)}
+                disabled={reservation.status?.toLowerCase() === 'cancelled'}
+              >
+                Edit
+              </button>
+            ) : (
+              <>
+                <button className="btn btn-outline" onClick={() => setIsEditing(false)} disabled={saving}>
+                  Back
+                </button>
+                <button className="btn btn-primary" onClick={onSave} disabled={saving || !isEditValid}>
+                  {saving ? 'Saving...' : 'Save Changes'}
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
