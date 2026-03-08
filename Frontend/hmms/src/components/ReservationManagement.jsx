@@ -726,7 +726,7 @@ export default function ReservationManagement() {
                   </>
                 )}
 
-                {formData.guestId && (
+                {formData.guestId && !editingReservation && (
                   <div className="success-message">
                     Selected: {formData.firstName} {formData.lastName} ({formData.email})
                   </div>
