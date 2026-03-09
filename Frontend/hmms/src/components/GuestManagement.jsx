@@ -278,7 +278,7 @@ export default function GuestManagement() {
                   >
                     <option value="">Select nationality</option>
                     {nationalities.map(nat => (
-                      <option key={nat.code} value={nat.code}>{nat.name}</option>
+                      <option key={nat.nationalityCode} value={nat.nationalityCode}>{nat.name}</option>
                     ))}
                   </select>
                 </div>
