@@ -251,13 +251,22 @@ public class ReservationService {
     }
 
     private ReservationResponse toResponse(Reservation reservation) {
+        boolean guestAnonymized = reservation.getGuest().getAnonymizedAt() != null;
+        String guestName = reservation.getGuest().getFirstName() + " " + reservation.getGuest().getLastName();
+        String guestDisplayName = guestAnonymized
+            ? "Anonymous guest #" + reservation.getGuest().getGuestId()
+            : guestName;
+
         return ReservationResponse.builder()
                 .reservationId(reservation.getReservationId())
                 .suiteId(reservation.getSuite().getSuiteId())
                 .suiteName(reservation.getSuite().getSuiteName())
                 .guestId(reservation.getGuest().getGuestId())
-                .guestName(reservation.getGuest().getFirstName() + " " + reservation.getGuest().getLastName())
-                .email(reservation.getGuest().getEmail())
+            .guestName(guestName)
+            .guestDisplayName(guestDisplayName)
+            .guestAnonymized(guestAnonymized)
+            .email(guestAnonymized ? null : reservation.getGuest().getEmail())
+            .phone(guestAnonymized ? null : reservation.getGuest().getPhone())
                 .checkIn(reservation.getCheckIn())
                 .checkOut(reservation.getCheckOut())
                 .numGuests(reservation.getNumGuests())

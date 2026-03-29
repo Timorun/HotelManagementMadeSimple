@@ -1,71 +1,57 @@
-import { useState } from 'react'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import './App.css'
 import GuestManagement from './components/GuestManagement'
-import SuiteManagement from './components/SuiteManagement'
 import ReservationManagement from './components/ReservationManagement'
-import NationalityList from './components/NationalityList'
 import AnalyticsView from './components/AnalyticsView'
 import TodaysOperationsView from './components/TodaysOperationsView'
 import CalendarView from './components/CalendarView'
-import { 
-  ClipboardCheck, 
-  CalendarDays, 
-  Hotel, 
-  Users, 
-  BarChart3,
-  PlusCircle 
-} from 'lucide-react'
+import AppShell from './components/layout/AppShell'
+import LoginPage from './components/auth/LoginPage'
+import { useAuth } from './context/AuthContext'
+
+function RequireAuth({ children }) {
+  const { isAuthenticated, authLoading } = useAuth()
+  const location = useLocation()
+
+  if (authLoading) {
+    return (
+      <div className="loading-spinner">
+        <div className="spinner"></div>
+        <p className="mt-2">Loading session...</p>
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" state={{ from: location }} replace />
+  }
+
+  return children
+}
 
 function App() {
-  const [activeTab, setActiveTab] = useState('operations')
-
-  const tabs = [
-    { id: 'operations', label: 'Today', icon: ClipboardCheck },
-    { id: 'calendar', label: 'Calendar', icon: CalendarDays },
-    { id: 'reservations', label: 'Reservations', icon: Hotel },
-    { id: 'guests', label: 'Guests', icon: Users },
-    { id: 'analytics', label: 'Analytics', icon: BarChart3 },
-  ]
-
   return (
-    <>
-      <header className="app-header">
-        <div className="header-top">
-          <div className="brand-section">
-            <h1>Carmen Suites</h1>
-            <p className="hotel-subtitle">Málaga, Spain</p>
-          </div>
-          <div className="header-actions">
-            <button className="quick-action-btn">
-              <PlusCircle size={16} />
-              New Reservation
-            </button>
-          </div>
-        </div>
-        <nav className="nav-tabs">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              className={activeTab === tab.id ? 'active' : ''}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              <tab.icon size={18} />
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-      </header>
-
-      <main className="app-content">
-        {activeTab === 'operations' && <TodaysOperationsView />}
-        {activeTab === 'calendar' && <CalendarView />}
-        {activeTab === 'reservations' && <ReservationManagement />}
-        {activeTab === 'guests' && <GuestManagement />}
-        {activeTab === 'suites' && <SuiteManagement />}
-        {activeTab === 'analytics' && <AnalyticsView />}
-        {activeTab === 'nationalities' && <NationalityList />}
-      </main>
-    </>
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route
+        path="/*"
+        element={
+          <RequireAuth>
+            <AppShell>
+              <Routes>
+                <Route path="/" element={<Navigate to="/today" replace />} />
+                <Route path="/today" element={<TodaysOperationsView />} />
+                <Route path="/calendar" element={<CalendarView />} />
+                <Route path="/reservations" element={<ReservationManagement />} />
+                <Route path="/guests" element={<GuestManagement />} />
+                <Route path="/analytics" element={<AnalyticsView />} />
+                <Route path="*" element={<Navigate to="/today" replace />} />
+              </Routes>
+            </AppShell>
+          </RequireAuth>
+        }
+      />
+    </Routes>
   )
 }
 

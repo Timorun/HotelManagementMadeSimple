@@ -25,5 +25,7 @@ public class GuestResponse {
     private String notes;
     private Boolean marketingConsent;
     private LocalDateTime createdAt;
+    private LocalDateTime anonymizedAt;
+    private Boolean anonymized;
     private Integer reservationCount; // Number of reservations for this guest
 }

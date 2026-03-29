@@ -1,10 +1,16 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { fetchReservations, fetchSuites, fetchNationalities, createReservation, updateReservation, cancelReservation, searchGuests, updateReservationStatus } from '../api/backend';
-import { Calendar, Plus, Edit, X, Search, AlertCircle, CheckCircle, Users, DollarSign } from 'lucide-react';
+import { Calendar, Plus, Edit, X, Search, AlertCircle, CheckCircle, Users, Euro, Download } from 'lucide-react';
 import { format, differenceInDays, parseISO, isBefore, addDays, startOfMonth, endOfMonth } from 'date-fns';
 import { STATUS_META } from '../api/reservationStatus';
+import { exportRowsToExcel } from '../utils/excelExport';
+import { useI18n } from '../context/I18nContext';
 
 export default function ReservationManagement() {
+  const { t } = useI18n();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [reservations, setReservations] = useState([]);
   const [suites, setSuites] = useState([]);
   const [nationalities, setNationalities] = useState([]);
@@ -21,6 +27,9 @@ export default function ReservationManagement() {
   const [toast, setToast] = useState(null);
   const [confirmDialog, setConfirmDialog] = useState(null);
   const searchTimerRef = useRef(null);
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [channelFilter, setChannelFilter] = useState('all');
+  const [guestFilter, setGuestFilter] = useState('');
 
   const [formData, setFormData] = useState({
     suiteId: '',
@@ -75,6 +84,14 @@ export default function ReservationManagement() {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateFrom, dateTo]);
+
+  useEffect(() => {
+    if (searchParams.get('new') === '1') {
+      openNewReservationModal();
+      navigate('/reservations', { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // Cleanup search timer on unmount
   useEffect(() => {
@@ -349,6 +366,35 @@ export default function ReservationManagement() {
     return `status-badge ${statusMap[status] || ''}`;
   };
 
+  const filteredReservations = useMemo(() => {
+    const needle = guestFilter.toLowerCase();
+
+    return reservations.filter((res) => {
+      const statusMatches = statusFilter === 'all' || res.status === statusFilter;
+      const channelMatches = channelFilter === 'all' || res.channel === channelFilter;
+      const guestMatches = !needle || (res.guestDisplayName || res.guestName || '').toLowerCase().includes(needle);
+
+      return statusMatches && channelMatches && guestMatches;
+    });
+  }, [reservations, statusFilter, channelFilter, guestFilter]);
+
+  const handleExportReservations = useCallback(() => {
+    const rows = filteredReservations.map((res) => ({
+      reservationId: res.reservationId,
+      guest: res.guestDisplayName || res.guestName,
+      guestAnonymized: res.guestAnonymized ? 'Yes' : 'No',
+      suite: res.suiteName,
+      checkIn: res.checkIn,
+      checkOut: res.checkOut,
+      numGuests: res.numGuests,
+      priceTotal: res.priceTotal,
+      channel: res.channel,
+      status: res.status,
+    }));
+
+    exportRowsToExcel(rows, 'reservations-export.xlsx', 'Reservations');
+  }, [filteredReservations]);
+
   if (loading) {
     return (
       <div className="loading-spinner">
@@ -465,7 +511,7 @@ export default function ReservationManagement() {
         )}
 
         <div className="form-group">
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'auto auto 1fr 1fr 1fr auto', gap: '0.75rem', alignItems: 'end' }}>
             <div>
               <label className="form-label">From:</label>
               <input
@@ -484,10 +530,44 @@ export default function ReservationManagement() {
                 onChange={(e) => setDateTo(e.target.value)}
               />
             </div>
+            <div>
+              <label className="form-label">{t('filters.status')}:</label>
+              <select className="form-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                <option value="all">{t('filters.all')}</option>
+                {Object.keys(STATUS_META).map((status) => (
+                  <option key={status} value={status}>{STATUS_META[status].label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="form-label">{t('filters.channel')}:</label>
+              <select className="form-select" value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)}>
+                <option value="all">{t('filters.all')}</option>
+                <option value="direct">Direct</option>
+                <option value="booking.com">Booking.com</option>
+                <option value="airbnb">Airbnb</option>
+                <option value="expedia">Expedia</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label className="form-label">Guest:</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Search guest..."
+                value={guestFilter}
+                onChange={(e) => setGuestFilter(e.target.value)}
+              />
+            </div>
+            <button className="btn btn-outline" onClick={handleExportReservations}>
+              <Download size={16} />
+              {t('filters.exportExcel')}
+            </button>
           </div>
         </div>
 
-        {reservations.length === 0 ? (
+        {filteredReservations.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-icon">📅</div>
             <p>No reservations found for this date range</p>
@@ -509,10 +589,17 @@ export default function ReservationManagement() {
               </tr>
             </thead>
             <tbody>
-              {reservations.map((res) => (
+              {filteredReservations.map((res) => (
                 <tr key={res.reservationId}>
                   <td>#{res.reservationId}</td>
-                  <td style={{ fontWeight: 600 }}>{res.guestName}</td>
+                  <td style={{ fontWeight: 600 }}>
+                    {res.guestDisplayName || res.guestName}
+                    {res.guestAnonymized && (
+                      <span style={{ marginLeft: '0.5rem', color: 'var(--dark-gray)', fontSize: '0.8rem' }}>
+                        (Anonymized)
+                      </span>
+                    )}
+                  </td>
                   <td>{res.suiteName}</td>
                   <td>{format(parseISO(res.checkIn), 'dd/MM/yyyy')}</td>
                   <td>{format(parseISO(res.checkOut), 'dd/MM/yyyy')}</td>
@@ -719,7 +806,7 @@ export default function ReservationManagement() {
                       >
                         <option value="">Select nationality</option>
                         {nationalities.map(nat => (
-                          <option key={nat.code} value={nat.code}>{nat.name}</option>
+                          <option key={nat.nationalityCode} value={nat.nationalityCode}>{nat.name}</option>
                         ))}
                       </select>
                     </div>
@@ -833,8 +920,8 @@ export default function ReservationManagement() {
                   </div>
                   <div className="form-group">
                     <label className="form-label">
-                      <DollarSign size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
-                      Total Price (€) *
+                      <Euro size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
+                      Total Price *
                     </label>
                     <input
                       type="number"

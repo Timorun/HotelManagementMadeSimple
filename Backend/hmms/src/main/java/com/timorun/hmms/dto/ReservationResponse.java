@@ -22,6 +22,8 @@ public class ReservationResponse {
     private String suiteName;
     private Long guestId;
     private String guestName;
+    private String guestDisplayName;
+    private Boolean guestAnonymized;
     private String email;
     private String phone;
     private LocalDate checkIn;

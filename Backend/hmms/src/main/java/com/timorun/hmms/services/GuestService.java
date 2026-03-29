@@ -147,6 +147,7 @@ public class GuestService {
     }
 
     private GuestResponse toResponse(Guest guest) {
+        boolean anonymized = guest.getAnonymizedAt() != null;
         return GuestResponse.builder()
                 .guestId(guest.getGuestId())
                 .firstName(guest.getFirstName())
@@ -158,6 +159,8 @@ public class GuestService {
                 .notes(guest.getNotes())
                 .marketingConsent(guest.getMarketingConsent())
                 .createdAt(guest.getCreatedAt())
+                .anonymizedAt(guest.getAnonymizedAt())
+                .anonymized(anonymized)
                 .reservationCount(guest.getReservations() != null ? guest.getReservations().size() : 0)
                 .build();
     }

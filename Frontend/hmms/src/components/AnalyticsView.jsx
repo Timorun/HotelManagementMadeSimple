@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fetchAnalytics } from '../api/backend';
+import { fetchAnalytics, fetchReservations } from '../api/backend';
 import { TrendingUp, DollarSign, Calendar, Percent, BarChart3 } from 'lucide-react';
 import {
   Chart as ChartJS,
@@ -13,7 +13,7 @@ import {
   Legend,
 } from 'chart.js';
 import { Line, Bar } from 'react-chartjs-2';
-import { format, subMonths } from 'date-fns';
+import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 
 ChartJS.register(
   CategoryScale,
@@ -28,16 +28,52 @@ ChartJS.register(
 
 export default function AnalyticsView() {
   const [analytics, setAnalytics] = useState(null);
+  const [trendPoints, setTrendPoints] = useState([]);
+  const [revenueByChannel, setRevenueByChannel] = useState({});
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    setLoading(true);
-    fetchAnalytics(selectedMonth)
-      .then(setAnalytics)
-      .catch(setError)
-      .finally(() => setLoading(false));
+    async function load() {
+      setLoading(true);
+      setError(null);
+      try {
+        const current = await fetchAnalytics(selectedMonth);
+        setAnalytics(current);
+
+        const months = Array.from({ length: 6 }).map((_, idx) => format(subMonths(new Date(`${selectedMonth}-01`), 5 - idx), 'yyyy-MM'));
+        const monthlyData = await Promise.all(months.map((month) => fetchAnalytics(month)));
+        const toMonthString = (monthValue) => {
+          if (Array.isArray(monthValue) && monthValue.length >= 2) {
+            const [year, month] = monthValue;
+            return `${year}-${String(month).padStart(2, '0')}`;
+          }
+          return String(monthValue);
+        };
+
+        setTrendPoints(monthlyData.map((item) => ({
+          label: format(new Date(`${toMonthString(item.month)}-01`), 'MMM'),
+          occupancy: item.occupancyPercentage || 0,
+        })));
+
+        const monthStart = format(startOfMonth(new Date(`${selectedMonth}-01`)), 'yyyy-MM-dd');
+        const monthEnd = format(endOfMonth(new Date(`${selectedMonth}-01`)), 'yyyy-MM-dd');
+        const reservations = await fetchReservations(monthStart, monthEnd);
+        const grouped = reservations.reduce((acc, reservation) => {
+          const channel = reservation.channel || 'other';
+          acc[channel] = (acc[channel] || 0) + Number(reservation.priceTotal || 0);
+          return acc;
+        }, {});
+        setRevenueByChannel(grouped);
+      } catch (err) {
+        setError(err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    load();
   }, [selectedMonth]);
 
   if (loading) {
@@ -59,6 +95,10 @@ export default function AnalyticsView() {
 
   if (!analytics) return null;
 
+  const occupancyPercentage = Number(analytics.occupancyPercentage || 0);
+  const totalRevenue = Number(analytics.totalRevenue || 0);
+  const averagePricePerNight = Number(analytics.averagePricePerNight || 0);
+
   const kpiData = [
     {
       title: 'Total Reservations',
@@ -70,7 +110,7 @@ export default function AnalyticsView() {
     },
     {
       title: 'Total Revenue',
-      value: analytics.totalRevenue || 0,
+      value: totalRevenue,
       icon: DollarSign,
       color: '#27AE60',
       prefix: '€',
@@ -78,7 +118,7 @@ export default function AnalyticsView() {
     },
     {
       title: 'Occupancy Rate',
-      value: analytics.occupancyRate ? analytics.occupancyRate.toFixed(1) : 0,
+      value: occupancyPercentage ? occupancyPercentage.toFixed(1) : 0,
       icon: Percent,
       color: '#E67E22',
       prefix: '',
@@ -86,7 +126,7 @@ export default function AnalyticsView() {
     },
     {
       title: 'Avg Daily Rate',
-      value: analytics.averageDailyRate ? analytics.averageDailyRate.toFixed(0) : 0,
+      value: averagePricePerNight ? averagePricePerNight.toFixed(0) : 0,
       icon: TrendingUp,
       color: '#9B59B6',
       prefix: '€',
@@ -94,13 +134,12 @@ export default function AnalyticsView() {
     },
   ];
 
-  // Mock trend data (in production, this would come from backend)
   const trendData = {
-    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+    labels: trendPoints.map(point => point.label),
     datasets: [
       {
         label: 'Occupancy %',
-        data: [65, 70, 68, 75, 72, analytics.occupancyRate || 74],
+        data: trendPoints.map(point => point.occupancy),
         borderColor: '#E67E22',
         backgroundColor: 'rgba(230, 126, 34, 0.1)',
         tension: 0.4,
@@ -109,11 +148,11 @@ export default function AnalyticsView() {
   };
 
   const revenueByChannelData = {
-    labels: ['Direct', 'Booking.com', 'Airbnb', 'Expedia', 'Other'],
+    labels: Object.keys(revenueByChannel).map(key => key.charAt(0).toUpperCase() + key.slice(1)),
     datasets: [
       {
         label: 'Revenue (€)',
-        data: [12000, 15000, 8500, 4500, 3000],
+        data: Object.values(revenueByChannel),
         backgroundColor: [
           '#3498DB',
           '#E67E22',
@@ -227,7 +266,7 @@ export default function AnalyticsView() {
               Revenue Per Available Room
             </div>
             <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--primary)' }}>
-              €{analytics.averageDailyRate ? (analytics.averageDailyRate * (analytics.occupancyRate / 100)).toFixed(0) : 0}
+              €{averagePricePerNight ? (averagePricePerNight * (occupancyPercentage / 100)).toFixed(0) : 0}
             </div>
           </div>
         </div>
@@ -241,13 +280,13 @@ export default function AnalyticsView() {
         <div style={{ padding: '1rem' }}>
           <ul style={{ marginLeft: '1.5rem', lineHeight: '2' }}>
             <li>
-              <strong>Occupancy is {analytics.occupancyRate > 70 ? 'strong' : 'moderate'}</strong> at {analytics.occupancyRate?.toFixed(1)}% for the month
+              <strong>Occupancy is {occupancyPercentage > 70 ? 'strong' : 'moderate'}</strong> at {occupancyPercentage.toFixed(1)}% for the month
             </li>
             <li>
-              <strong>Total revenue:</strong> €{analytics.totalRevenue?.toLocaleString()} from {analytics.totalReservations} reservations
+              <strong>Total revenue:</strong> €{totalRevenue.toLocaleString()} from {analytics.totalReservations} reservations
             </li>
             <li>
-              <strong>Average daily rate:</strong> €{analytics.averageDailyRate?.toFixed(0)} per night
+              <strong>Average daily rate:</strong> €{averagePricePerNight.toFixed(0)} per night
             </li>
           </ul>
         </div>

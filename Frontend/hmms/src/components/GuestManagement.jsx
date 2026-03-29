@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
-import { fetchGuests, createGuest, updateGuest, fetchNationalities } from '../api/backend';
-import { Users, Plus, Edit, Search, Mail, Phone, Globe } from 'lucide-react';
+import { fetchGuests, createGuest, updateGuest, fetchNationalities, anonymizeGuest } from '../api/backend';
+import { Users, Plus, Edit, Search, Mail, Phone, Globe, UserX, Download } from 'lucide-react';
+import { exportRowsToExcel } from '../utils/excelExport';
+import { useI18n } from '../context/I18nContext';
 
 export default function GuestManagement() {
+  const { t } = useI18n();
   const [guests, setGuests] = useState([]);
   const [nationalities, setNationalities] = useState([]);
   const [filteredGuests, setFilteredGuests] = useState([]);
@@ -11,6 +14,8 @@ export default function GuestManagement() {
   const [showModal, setShowModal] = useState(false);
   const [editingGuest, setEditingGuest] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [guestTypeFilter, setGuestTypeFilter] = useState('all');
+  const [marketingFilter, setMarketingFilter] = useState('all');
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -27,17 +32,25 @@ export default function GuestManagement() {
   }, []);
 
   useEffect(() => {
-    if (searchTerm) {
-      const filtered = guests.filter(guest =>
-        guest.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        guest.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        guest.email.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-      setFilteredGuests(filtered);
-    } else {
-      setFilteredGuests(guests);
-    }
-  }, [searchTerm, guests]);
+    const normalizedSearch = searchTerm.toLowerCase();
+    const filtered = guests.filter((guest) => {
+      const fullName = `${guest.firstName || ''} ${guest.lastName || ''}`.toLowerCase();
+      const email = (guest.email || '').toLowerCase();
+      const searchMatches = !searchTerm || fullName.includes(normalizedSearch) || email.includes(normalizedSearch);
+
+      const guestTypeMatches = guestTypeFilter === 'all'
+        || (guestTypeFilter === 'anonymized' && guest.anonymized)
+        || (guestTypeFilter === 'active' && !guest.anonymized);
+
+      const marketingMatches = marketingFilter === 'all'
+        || (marketingFilter === 'yes' && guest.marketingConsent)
+        || (marketingFilter === 'no' && !guest.marketingConsent);
+
+      return searchMatches && guestTypeMatches && marketingMatches;
+    });
+
+    setFilteredGuests(filtered);
+  }, [searchTerm, guests, guestTypeFilter, marketingFilter]);
 
   const loadData = () => {
     setLoading(true);
@@ -97,6 +110,35 @@ export default function GuestManagement() {
     }
   };
 
+  const handleAnonymize = async (guest) => {
+    const confirmed = window.confirm(`Anonymize ${guest.firstName} ${guest.lastName}? This cannot be undone.`);
+    if (!confirmed) return;
+
+    try {
+      await anonymizeGuest(guest.guestId);
+      loadData();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleExport = () => {
+    const rows = filteredGuests.map((guest) => ({
+      id: guest.guestId,
+      firstName: guest.firstName,
+      lastName: guest.lastName,
+      email: guest.email || '',
+      phone: guest.phone || '',
+      nationality: guest.nationalityName || '',
+      reservationCount: guest.reservationCount || 0,
+      marketingConsent: guest.marketingConsent ? 'Yes' : 'No',
+      anonymized: guest.anonymized ? 'Yes' : 'No',
+      anonymizedAt: guest.anonymizedAt || '',
+    }));
+
+    exportRowsToExcel(rows, 'guests-export.xlsx', 'Guests');
+  };
+
   if (loading) {
     return (
       <div className="loading-spinner">
@@ -127,15 +169,31 @@ export default function GuestManagement() {
         )}
 
         <div className="form-group">
-          <div style={{ position: 'relative' }}>
-            <input
-              type="text"
-              className="form-input"
-              placeholder="Search guests by name or email..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-            <Search style={{ position: 'absolute', right: '0.75rem', top: '0.75rem', color: 'var(--gray)' }} size={20} />
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: '0.75rem' }}>
+            <div style={{ position: 'relative' }}>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Search guests by name or email..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+              <Search style={{ position: 'absolute', right: '0.75rem', top: '0.75rem', color: 'var(--gray)' }} size={20} />
+            </div>
+            <select className="form-select" value={guestTypeFilter} onChange={(e) => setGuestTypeFilter(e.target.value)}>
+              <option value="all">{t('filters.all')}</option>
+              <option value="active">{t('filters.active')}</option>
+              <option value="anonymized">{t('filters.anonymized')}</option>
+            </select>
+            <select className="form-select" value={marketingFilter} onChange={(e) => setMarketingFilter(e.target.value)}>
+              <option value="all">Marketing: {t('filters.all')}</option>
+              <option value="yes">Marketing: Yes</option>
+              <option value="no">Marketing: No</option>
+            </select>
+            <button className="btn btn-outline" onClick={handleExport}>
+              <Download size={16} />
+              {t('filters.exportExcel')}
+            </button>
           </div>
         </div>
 
@@ -163,18 +221,18 @@ export default function GuestManagement() {
                 <tr key={guest.guestId}>
                   <td>#{guest.guestId}</td>
                   <td style={{ fontWeight: 600 }}>
-                    {guest.firstName} {guest.lastName}
+                    {guest.anonymized ? `Anonymous guest #${guest.guestId}` : `${guest.firstName} ${guest.lastName}`}
                   </td>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <Mail size={14} color="var(--dark-gray)" />
-                      {guest.email || '-'}
+                      {guest.anonymized ? 'Anonymized' : guest.email || '-'}
                     </div>
                   </td>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <Phone size={14} color="var(--dark-gray)" />
-                      {guest.phone || '-'}
+                      {guest.anonymized ? 'Anonymized' : guest.phone || '-'}
                     </div>
                   </td>
                   <td>
@@ -196,12 +254,23 @@ export default function GuestManagement() {
                     )}
                   </td>
                   <td>
-                    <button
-                      onClick={() => openEditModal(guest)}
-                      className="btn btn-primary btn-sm"
-                    >
-                      <Edit size={14} />
-                    </button>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button
+                        onClick={() => openEditModal(guest)}
+                        className="btn btn-primary btn-sm"
+                        disabled={guest.anonymized}
+                      >
+                        <Edit size={14} />
+                      </button>
+                      <button
+                        onClick={() => handleAnonymize(guest)}
+                        className="btn btn-danger btn-sm"
+                        disabled={guest.anonymized}
+                        title="Anonymize guest"
+                      >
+                        <UserX size={14} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
