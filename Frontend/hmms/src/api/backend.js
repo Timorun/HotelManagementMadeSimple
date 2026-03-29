@@ -1,6 +1,7 @@
 // API utility for backend requests
 const BASE_URL = 'http://localhost:8080/api';
 const ENABLE_STUB_FALLBACK = false;
+const AUTH_TOKEN_KEY = 'hmms_auth_token';
 
 const STUB_DATA = {
   guests: [
@@ -79,10 +80,76 @@ function withStubFallback(data, stubData) {
   return data;
 }
 
-async function getJson(url, errorMessage) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(errorMessage);
+function getAuthToken() {
+  return localStorage.getItem(AUTH_TOKEN_KEY);
+}
+
+function buildHeaders(extraHeaders = {}) {
+  const token = getAuthToken();
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...extraHeaders,
+  };
+}
+
+async function request(url, options = {}, errorMessage = 'Request failed') {
+  const res = await fetch(url, {
+    ...options,
+    headers: buildHeaders(options.headers),
+  });
+
+  if (!res.ok) {
+    if (res.status === 401) {
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+    }
+
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.error || errorMessage);
+  }
+
+  if (res.status === 204) {
+    return null;
+  }
+
   return res.json();
+}
+
+async function getJson(url, errorMessage) {
+  return request(url, { method: 'GET' }, errorMessage);
+}
+
+export async function login(usernameOrEmail, password) {
+  const data = await request(
+    `${BASE_URL}/auth/login`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ usernameOrEmail, password }),
+    },
+    'Invalid username/email or password',
+  );
+
+  if (data?.token) {
+    localStorage.setItem(AUTH_TOKEN_KEY, data.token);
+  }
+
+  return data;
+}
+
+export async function logout() {
+  try {
+    await request(`${BASE_URL}/auth/logout`, { method: 'POST' }, 'Logout failed');
+  } finally {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+  }
+}
+
+export async function fetchCurrentUser() {
+  return request(`${BASE_URL}/auth/me`, { method: 'GET' }, 'Unauthorized');
+}
+
+export function hasAuthToken() {
+  return Boolean(getAuthToken());
 }
 
 export async function fetchGuests() {
@@ -137,63 +204,67 @@ export async function fetchCalendar(from, to) {
 }
 
 export async function createReservation(reservationData) {
-  const res = await fetch(`${BASE_URL}/reservations`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(reservationData),
-  });
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    const errorMessage = errorData.error || 'Failed to create reservation';
-    throw new Error(errorMessage);
-  }
-  return res.json();
+  return request(
+    `${BASE_URL}/reservations`,
+    {
+      method: 'POST',
+      body: JSON.stringify(reservationData),
+    },
+    'Failed to create reservation',
+  );
 }
 
 export async function updateReservation(id, reservationData) {
-  const res = await fetch(`${BASE_URL}/reservations/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(reservationData),
-  });
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    const errorMessage = errorData.error || 'Failed to update reservation';
-    throw new Error(errorMessage);
-  }
-  return res.json();
+  return request(
+    `${BASE_URL}/reservations/${id}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(reservationData),
+    },
+    'Failed to update reservation',
+  );
 }
 
 export async function cancelReservation(id) {
-  const res = await fetch(`${BASE_URL}/reservations/${id}/cancel`, {
-    method: 'PATCH',
-  });
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    const errorMessage = errorData.error || 'Failed to cancel reservation';
-    throw new Error(errorMessage);
-  }
-  return res.json();
+  return request(
+    `${BASE_URL}/reservations/${id}/cancel`,
+    {
+      method: 'PATCH',
+    },
+    'Failed to cancel reservation',
+  );
 }
 
 export async function createGuest(guestData) {
-  const res = await fetch(`${BASE_URL}/guests`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(guestData),
-  });
-  if (!res.ok) throw new Error('Failed to create guest');
-  return res.json();
+  return request(
+    `${BASE_URL}/guests`,
+    {
+      method: 'POST',
+      body: JSON.stringify(guestData),
+    },
+    'Failed to create guest',
+  );
 }
 
 export async function updateGuest(id, guestData) {
-  const res = await fetch(`${BASE_URL}/guests/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(guestData),
-  });
-  if (!res.ok) throw new Error('Failed to update guest');
-  return res.json();
+  return request(
+    `${BASE_URL}/guests/${id}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(guestData),
+    },
+    'Failed to update guest',
+  );
+}
+
+export async function anonymizeGuest(id) {
+  return request(
+    `${BASE_URL}/guests/${id}/anonymize`,
+    {
+      method: 'PATCH',
+    },
+    'Failed to anonymize guest',
+  );
 }
 
 export async function searchGuests(lastName) {
@@ -211,14 +282,12 @@ export async function searchGuests(lastName) {
  * @returns {Promise<Object>} Updated reservation response
  */
 export async function updateReservationStatus(reservationId, status) {
-  const res = await fetch(`${BASE_URL}/reservations/${reservationId}/status`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status }),
-  });
-  if (!res.ok) {
-    const errorData = await res.json();
-    throw new Error(errorData.error || 'Failed to update reservation status');
-  }
-  return res.json();
+  return request(
+    `${BASE_URL}/reservations/${reservationId}/status`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    },
+    'Failed to update reservation status',
+  );
 }
