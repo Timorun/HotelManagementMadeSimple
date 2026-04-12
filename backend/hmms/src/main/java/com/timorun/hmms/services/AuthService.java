@@ -47,8 +47,7 @@ public class AuthService {
                 .orElseThrow(() -> new IllegalArgumentException("Invalid credentials"));
 
         String stored = user.getPasswordHash();
-        boolean valid = passwordEncoder.matches(request.getPassword(), stored)
-                || request.getPassword().equals(stored);
+        boolean valid = passwordEncoder.matches(request.getPassword(), stored);
 
         if (!valid) {
             throw new IllegalArgumentException("Invalid credentials");

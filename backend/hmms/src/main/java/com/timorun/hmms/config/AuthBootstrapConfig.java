@@ -15,9 +15,9 @@ public class AuthBootstrapConfig {
     CommandLineRunner ensureAdminUser(
             AppUserRepository appUserRepository,
             PasswordEncoder passwordEncoder,
-            @Value("${hmms.auth.bootstrap-admin.username:admin}") String username,
-            @Value("${hmms.auth.bootstrap-admin.email:admin@carmensuites.local}") String email,
-            @Value("${hmms.auth.bootstrap-admin.password:ChangeMeNow!123}") String password
+            @Value("${hmms.auth.bootstrap-admin.username}") String username,
+            @Value("${hmms.auth.bootstrap-admin.email}") String email,
+            @Value("${hmms.auth.bootstrap-admin.password}") String password
     ) {
         return args -> {
             if (appUserRepository.count() == 0) {
