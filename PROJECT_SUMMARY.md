@@ -307,7 +307,7 @@ Danger (Red):      #E74C3C  - Critical
 
 #### Backend
 ```bash
-cd Backend/hmms
+cd backend/hmms
 mvn clean install
 mvn spring-boot:run
 # Server starts on http://localhost:8080
@@ -315,7 +315,7 @@ mvn spring-boot:run
 
 #### Frontend
 ```bash
-cd Frontend/hmms
+cd frontend/hmms
 npm install
 npm run dev
 # App starts on http://localhost:5173
@@ -474,9 +474,9 @@ guests ←→ nationalities
 ## Documentation
 
 ### Files Created
-1. `/Frontend/FRONTEND_README.md` - Frontend guide
-2. `/Backend/API_DOCUMENTATION.md` - Complete API reference
-3. `/Backend/QUICK_REFERENCE.md` - Top 10 endpoints
+1. `/frontend/FRONTEND_README.md` - Frontend guide
+2. `/backend/API_DOCUMENTATION.md` - Complete API reference
+3. `/backend/QUICK_REFERENCE.md` - Top 10 endpoints
 4. This file - Complete project summary
 
 ### Code Quality
@@ -512,9 +512,9 @@ guests ←→ nationalities
 
 ```bash
 # Terminal 1: Backend
-cd Backend/hmms && mvn spring-boot:run
+cd backend/hmms && mvn spring-boot:run
 
 # Terminal 2: Frontend (new terminal)
-cd Frontend/hmms && npm run dev
+cd frontend/hmms && npm run dev
 
 # Open browser: http://localhost:5173

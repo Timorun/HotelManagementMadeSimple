@@ -8,7 +8,7 @@ The reservation status field has been completely redesigned from a loosely-typed
 - ✅ Metadata for UI display (labels, colors)
 - ✅ Dedicated update endpoint with validation
 - ✅ Type-safe implementations (Java enum)
-- ✅ Frontend/backend synchronized constants
+- ✅ frontend/backend synchronized constants
 - ✅ Comprehensive error handling
 - ✅ Database migration path
 

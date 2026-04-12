@@ -100,7 +100,7 @@ A modern, professional React-based hotel management system for **Carmen Suites**
 
 ```bash
 # Navigate to frontend directory
-cd Frontend/hmms
+cd frontend/hmms
 
 # Install dependencies
 npm install
@@ -138,7 +138,7 @@ npm run preview
 ## Project Structure
 
 ```
-Frontend/hmms/
+frontend/hmms/
 ├── src/
 │   ├── api/
 │   │   └── backend.js          # API integration layer

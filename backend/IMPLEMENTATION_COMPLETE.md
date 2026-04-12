@@ -178,7 +178,7 @@ All core MVP features have been successfully implemented. Your Spring Boot backe
 
 ### Start Backend:
 ```bash
-cd Backend/hmms
+cd backend/hmms
 ./mvnw spring-boot:run
 ```
 
