@@ -12,7 +12,7 @@ UPDATE reservations SET status = 'checked_out' WHERE status = 'completed';
 
 -- Ensure no invalid status values exist
 UPDATE reservations SET status = 'pending' 
-WHERE status NOT IN ('pending', 'confirmed', 'checked_in', 'checked_out', 'cancelled', 'no_show');
+WHERE status IS NULL or status NOT IN ('pending', 'confirmed', 'checked_in', 'checked_out', 'cancelled', 'no_show');
 
 -- Convert column to use the ENUM type
 ALTER TABLE reservations 
