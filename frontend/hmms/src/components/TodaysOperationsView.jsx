@@ -162,8 +162,8 @@ export default function TodaysOperationsView() {
                       Room ready status required before check-in time
                     </div>
                   </div>
-                  <span className={`operations-tag ${room.status == "needs_turnover" ? 'warning' : 'info'}`}>
-                    {room.status == "needs_turnover" ? 'Turnover clean' : 'Standard clean'}
+                  <span className={`operations-tag ${room.status === "needs_turnover" ? 'warning' : 'info'}`}>
+                    {room.status === "needs_turnover" ? 'Turnover clean' : 'Standard clean'}
                   </span>
                 </li>
               ))}

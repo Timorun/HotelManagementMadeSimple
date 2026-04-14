@@ -293,7 +293,7 @@ export default function Dashboard() {
                     <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
                       {room.suiteName}
                     </div>
-                    {room.status == "needs_turnover" && (
+                    {room.status === "needs_turnover" && (
                       <span className="status-badge status-pending" style={{ fontSize: '0.7rem' }}>
                         Turnover Required
                       </span>
