@@ -1,0 +1,22 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/hotel
+    username: hotel_user    #This user is for the hotel database, not the hmms auth user
+    password: hotel_pass    # TODO Make sure to change this password in production and consider using environment variables or a secrets manager to store sensitive information
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+
+  flyway:
+    enabled: true
+
+hmms:
+  auth:
+    token-ttl-seconds: 43200
+    # TODO Make sure to remove/changes this in production
+    bootstrap-admin:
+      username: admin
+      email: admin@carmensuites.local
+      password: ChangeMeNow!123
