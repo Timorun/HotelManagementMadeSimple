@@ -133,6 +133,36 @@ Soft delete - marks reservation as 'cancelled' instead of deleting.
 
 ---
 
+### Update Reservation Status
+**PATCH** `/api/reservations/{id}/status`
+
+Update reservation lifecycle status with validation. Only allowed transitions are permitted.
+
+**Request Body:**
+```json
+{
+  "status": "checked_in"
+}
+```
+
+**Response:** `200 OK` - Updated reservation object with `status`, `statusLabel`, and `statusColor`.
+
+**Valid status values:**
+- `pending`
+- `confirmed`
+- `checked_in`
+- `checked_out`
+- `cancelled`
+- `no_show`
+
+**Transition rules:**
+- `pending` → `confirmed`, `cancelled`
+- `confirmed` → `checked_in`, `cancelled`
+- `checked_in` → `checked_out`, `cancelled`
+- `checked_out`, `cancelled`, `no_show` → terminal states
+
+---
+
 ## GUESTS API
 
 ### Create Guest
