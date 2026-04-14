@@ -1,4 +1,10 @@
--- Seed common nationalities
+INSERT INTO suites (suite_name, capacity) VALUES
+('Patio', 3),
+('Suite 1ºA', 2),
+('Suite 1ºB', 3),
+('Suite 2ºA', 2),
+('Suite 2ºB', 3);
+
 INSERT INTO nationalities (nationality_code, name) VALUES
 ('NL', 'Netherlands'),
 ('DE', 'Germany'),
@@ -49,5 +55,4 @@ INSERT INTO nationalities (nationality_code, name) VALUES
 ('CL', 'Chile'),
 ('CO', 'Colombia'),
 ('PE', 'Peru'),
-('VE', 'Venezuela')
-ON CONFLICT (nationality_code) DO NOTHING;
+('VE', 'Venezuela');
