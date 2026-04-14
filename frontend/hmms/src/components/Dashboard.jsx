@@ -339,10 +339,10 @@ export default function Dashboard() {
           </div>
           <div style={{ padding: '1rem', background: 'var(--light-gray)', borderRadius: '8px' }}>
             <div style={{ fontSize: '0.875rem', color: 'var(--dark-gray)', marginBottom: '0.5rem' }}>
-              Avg Daily Rate
+              Avg Price Per Night
             </div>
             <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--primary)' }}>
-              €{analytics?.averageDailyRate?.toFixed(0) || '0'}
+              €{analytics?.averagePricePerNight?.toFixed(0) || '0'}
             </div>
           </div>
         </div>

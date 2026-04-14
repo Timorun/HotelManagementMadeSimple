@@ -43,9 +43,9 @@ const STUB_DATA = {
   analytics: {
     month: '2026-03',
     totalReservations: 42,
-    occupancyRate: 74.5,
+    occupancyPercentage: 74.5,
     totalRevenue: 32850.0,
-    averageDailyRate: 189.4,
+    averagePricePerNight: 189.4,
   },
   operations: {
     arrivalsToday: [
