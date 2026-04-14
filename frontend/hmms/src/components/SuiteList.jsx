@@ -9,7 +9,7 @@ export default function SuiteList() {
   useEffect(() => {
     fetchSuites()
       .then(setSuites)
-      .catch(setError)
+      .catch((err) => setError(err?.message || String(err)))
       .finally(() => setLoading(false));
   }, []);
 

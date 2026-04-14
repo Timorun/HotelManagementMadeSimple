@@ -9,7 +9,7 @@ export default function GuestList() {
   useEffect(() => {
     fetchGuests()
       .then(setGuests)
-      .catch(setError)
+      .catch((err) => setError(err?.message || String(err)))
       .finally(() => setLoading(false));
   }, []);
 

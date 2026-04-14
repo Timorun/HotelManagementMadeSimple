@@ -63,7 +63,7 @@ export default function GuestManagement() {
         setFilteredGuests(guestsData);
         setNationalities(nationalitiesData);
       })
-      .catch(setError)
+      .catch((err) => setError(err?.message || String(err)))
       .finally(() => setLoading(false));
   };
 

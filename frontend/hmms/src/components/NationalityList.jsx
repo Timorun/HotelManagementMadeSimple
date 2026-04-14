@@ -9,7 +9,7 @@ export default function NationalityList() {
   useEffect(() => {
     fetchNationalities()
       .then(setNationalities)
-      .catch(setError)
+      .catch((err) => setError(err?.message || String(err)))
       .finally(() => setLoading(false));
   }, []);
 

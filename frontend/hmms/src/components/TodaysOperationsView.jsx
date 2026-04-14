@@ -27,7 +27,7 @@ export default function TodaysOperationsView() {
       setLastUpdated(new Date());
       setError(null);
     } catch (err) {
-      setError(err);
+      setError(err?.message || String(err));
     } finally {
       setLoading(false);
       if (isManualRefresh) setRefreshing(false);

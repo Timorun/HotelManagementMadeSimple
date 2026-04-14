@@ -67,7 +67,7 @@ export default function AnalyticsView() {
         }, {});
         setRevenueByChannel(grouped);
       } catch (err) {
-        setError(err);
+        setError(err?.message || String(err));
       } finally {
         setLoading(false);
       }

@@ -10,7 +10,7 @@ export default function ReservationList({ from, to }) {
     if (!from || !to) return;
     fetchReservations(from, to)
       .then(setReservations)
-      .catch(setError)
+      .catch((err) => setError(err?.message || String(err)))
       .finally(() => setLoading(false));
   }, [from, to]);
 

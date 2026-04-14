@@ -16,7 +16,7 @@ export default function SuiteManagement() {
     setLoading(true);
     fetchSuites()
       .then(setSuites)
-      .catch(setError)
+      .catch((err) => setError(err?.message || String(err)))
       .finally(() => setLoading(false));
   };
 

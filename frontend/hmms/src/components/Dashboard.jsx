@@ -49,7 +49,7 @@ export default function Dashboard() {
         setSuites(suitesData);
         setGuests(guestsData);
       })
-      .catch(setError)
+      .catch((err) => setError(err?.message || String(err)))
       .finally(() => setLoading(false));
   }, []);
 
