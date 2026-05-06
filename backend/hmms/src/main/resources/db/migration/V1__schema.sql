@@ -39,6 +39,7 @@ CREATE TABLE reservations (
   num_guests       INT NOT NULL,
   price_total      NUMERIC(10,2),
   channel          TEXT,
+  notes            TEXT,
   status           TEXT NOT NULL DEFAULT 'pending',
   created_at       TIMESTAMP DEFAULT now(),
   updated_at       TIMESTAMP DEFAULT now(),

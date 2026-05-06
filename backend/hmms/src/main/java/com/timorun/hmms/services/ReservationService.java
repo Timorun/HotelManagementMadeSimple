@@ -64,6 +64,7 @@ public class ReservationService {
         reservation.setNumGuests(request.getNumGuests());
         reservation.setPriceTotal(request.getPriceTotal());
         reservation.setChannel(request.getChannel());
+        reservation.setNotes(request.getNotes());
         reservation.setStatus(ReservationStatus.CONFIRMED);
         reservation.setCreatedAt(LocalDateTime.now());
         
@@ -107,6 +108,7 @@ public class ReservationService {
         reservation.setNumGuests(request.getNumGuests());
         reservation.setPriceTotal(request.getPriceTotal());
         reservation.setChannel(request.getChannel());
+        reservation.setNotes(request.getNotes());
         
         Reservation updated = reservationRepository.save(reservation);
         return toResponse(updated);
@@ -142,9 +144,14 @@ public class ReservationService {
         
         ReservationStatus newStatus = ReservationStatus.fromValue(request.getStatus());
         ReservationStatus currentStatus = reservation.getStatus();
-        
-        if (!currentStatus.canTransitionTo(newStatus)) {
-            throw new IllegalArgumentException(currentStatus.getTransitionError(newStatus));
+
+        // Prevent reactivating a cancelled reservation into a conflicting date range.
+        if (currentStatus == ReservationStatus.CANCELLED && requiresAvailabilityCheck(newStatus)) {
+            validateSuiteAvailability(
+                    reservation.getSuite().getSuiteId(),
+                    reservation.getCheckIn(),
+                    reservation.getCheckOut(),
+                    reservationId);
         }
         
         reservation.setStatus(newStatus);
@@ -218,7 +225,6 @@ public class ReservationService {
         guest.setLastName(request.getLastName());
         guest.setEmail(request.getEmail());
         guest.setPhone(request.getPhone());
-        guest.setNotes(request.getNotes());
         guest.setMarketingConsent(false);
         guest.setCreatedAt(LocalDateTime.now());
         
@@ -250,6 +256,12 @@ public class ReservationService {
         }
     }
 
+    private boolean requiresAvailabilityCheck(ReservationStatus status) {
+        return status == ReservationStatus.PENDING
+                || status == ReservationStatus.CONFIRMED
+                || status == ReservationStatus.CHECKED_IN;
+    }
+
     private ReservationResponse toResponse(Reservation reservation) {
         boolean guestAnonymized = reservation.getGuest().getAnonymizedAt() != null;
         String guestName = reservation.getGuest().getFirstName() + " " + reservation.getGuest().getLastName();
@@ -267,11 +279,13 @@ public class ReservationService {
             .guestAnonymized(guestAnonymized)
             .email(guestAnonymized ? null : reservation.getGuest().getEmail())
             .phone(guestAnonymized ? null : reservation.getGuest().getPhone())
+            .guestNotes(guestAnonymized ? null : reservation.getGuest().getNotes())
                 .checkIn(reservation.getCheckIn())
                 .checkOut(reservation.getCheckOut())
                 .numGuests(reservation.getNumGuests())
                 .priceTotal(reservation.getPriceTotal())
                 .channel(reservation.getChannel())
+                .notes(reservation.getNotes())
                 .status(reservation.getStatus().getValue())
                 .statusLabel(reservation.getStatus().getLabel())
                 .statusColor(reservation.getStatus().getColor())

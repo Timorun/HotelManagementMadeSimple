@@ -12,7 +12,7 @@ import {
   subMonths
 } from 'date-fns';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, AlertCircle } from 'lucide-react';
-import { STATUS_META, getAvailableTransitions, getStatusColor } from '../api/reservationStatus';
+import { STATUS_META, getTransitionWarning } from '../api/reservationStatus';
 
 const STATUS_FILTER_DEFAULTS = {
   confirmed: true,
@@ -41,6 +41,7 @@ export default function CalendarView() {
     numGuests: 1,
     priceTotal: '',
     channel: 'direct',
+    notes: '',
     status: 'pending',
   });
   const [statusFilters, setStatusFilters] = useState(STATUS_FILTER_DEFAULTS);
@@ -139,6 +140,7 @@ export default function CalendarView() {
       numGuests: reservation.numGuests,
       priceTotal: reservation.priceTotal,
       channel: reservation.channel || 'direct',
+      notes: reservation.notes || '',
       status: reservation.status || 'pending',
     });
     setIsEditingReservation(false);
@@ -180,6 +182,7 @@ export default function CalendarView() {
         numGuests: parseInt(editForm.numGuests, 10),
         priceTotal: parseFloat(editForm.priceTotal),
         channel: editForm.channel,
+        notes: editForm.notes,
       });
 
       // Update status if changed
@@ -286,7 +289,6 @@ export default function CalendarView() {
           allReservations={reservations}
           daysInMonth={daysInMonth} 
           monthStart={monthStart}
-          monthEnd={monthEnd}
           onReservationClick={openReservationModal}
           statusFilters={statusFilters}
           onToggleStatusFilter={toggleStatusFilter}
@@ -378,7 +380,6 @@ function TimelineView({
   allReservations,
   daysInMonth,
   monthStart,
-  monthEnd,
   onReservationClick,
   statusFilters,
   onToggleStatusFilter,
@@ -399,10 +400,7 @@ function TimelineView({
       laneByReservationId[res.reservationId] = idx;
     });
 
-    return {
-      laneByReservationId,
-      totalLanes: fullSuiteReservations.length,
-    };
+    return { laneByReservationId };
   };
 
   const getReservationStyle = (reservation) => {
@@ -470,7 +468,7 @@ function TimelineView({
         {/* Suite Rows */}
         {suites.map((suite) => {
           const suiteReservations = getReservationsForSuite(suite.suiteId);
-          const { laneByReservationId, totalLanes } = getStableLaneData(suite.suiteId);
+          const { laneByReservationId } = getStableLaneData(suite.suiteId);
           const maxVisibleLane = suiteReservations.reduce((maxLane, res) => {
             const lane = laneByReservationId[res.reservationId] ?? 0;
             return Math.max(maxLane, lane);
@@ -608,6 +606,7 @@ function ReservationDetailsModal({
 }) {
   const selectedSuite = suites.find((suite) => suite.suiteId === Number(editForm.suiteId));
   const status = reservation.status?.toLowerCase();
+  const statusTransitionWarning = getTransitionWarning(status, editForm.status);
 
   const copyToClipboard = async (value, label) => {
     if (!value) return;
@@ -735,6 +734,9 @@ function ReservationDetailsModal({
                 <InfoRow label="Channel" value={reservation.channel || '-'} capitalize />
                 <InfoRow label="Status" value={STATUS_META[status]?.label || status || '-'} />
               </div>
+
+              <InfoRow label="Guest Profile Notes" value={reservation.guestNotes || '-'} />
+              <InfoRow label="Reservation Notes" value={reservation.notes || '-'} />
             </div>
           ) : (
             <div style={{ display: 'grid', gap: '0.75rem' }}>
@@ -838,8 +840,43 @@ function ReservationDetailsModal({
                     <option value="cancelled">Cancelled</option>
                     <option value="no_show">No Show</option>
                   </select>
+                  {statusTransitionWarning && (
+                    <div style={{
+                      marginTop: '0.5rem',
+                      padding: '0.65rem 0.75rem',
+                      borderRadius: '6px',
+                      border: '1px solid var(--warning)',
+                      background: 'rgba(243, 156, 18, 0.12)',
+                      color: '#7A4E00',
+                      fontSize: '0.875rem',
+                    }}>
+                      {statusTransitionWarning}
+                    </div>
+                  )}
                 </div>
               </div>
+
+              <div className="form-group">
+                <label className="form-label">Reservation Notes</label>
+                <textarea
+                  className="form-textarea"
+                  value={editForm.notes}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Special requests, room preferences, or internal notes"
+                />
+              </div>
+
+              {reservation.guestNotes && (
+                <div className="form-group">
+                  <label className="form-label">Guest Profile Notes</label>
+                  <textarea
+                    className="form-textarea"
+                    value={reservation.guestNotes}
+                    readOnly
+                    style={{ background: 'var(--light-gray)' }}
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -863,7 +900,6 @@ function ReservationDetailsModal({
               <button
                 className="btn btn-primary"
                 onClick={() => setIsEditing(true)}
-                disabled={reservation.status?.toLowerCase() === 'cancelled'}
               >
                 Edit reservation
               </button>

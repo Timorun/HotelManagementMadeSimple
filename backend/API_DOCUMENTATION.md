@@ -42,11 +42,13 @@ Create a new reservation. Can either link to an existing guest or create a new o
   "guestId": 5,
   "guestName": "John Doe",
   "email": "john@example.com",
+  "guestNotes": "Prefers top floor room",
   "checkIn": "2024-01-15",
   "checkOut": "2024-01-20",
   "numGuests": 2,
   "priceTotal": 500.00,
   "channel": "direct",
+  "notes": "Needs baby crib",
   "status": "confirmed",
   "createdAt": "2024-01-10T14:30:00"
 }
@@ -68,11 +70,13 @@ Get details of a specific reservation.
   "guestId": 5,
   "guestName": "John Doe",
   "email": "john@example.com",
+  "guestNotes": "Prefers top floor room",
   "checkIn": "2024-01-15",
   "checkOut": "2024-01-20",
   "numGuests": 2,
   "priceTotal": 500.00,
   "channel": "direct",
+  "notes": "Needs baby crib",
   "status": "confirmed",
   "createdAt": "2024-01-10T14:30:00"
 }
@@ -116,7 +120,8 @@ Update an existing reservation. Validates dates and suite availability.
   "checkOut": "2024-01-22",
   "numGuests": 3,
   "priceTotal": 600.00,
-  "channel": "booking.com"
+  "channel": "booking.com",
+  "notes": "Guest requested late checkout"
 }
 ```
 
@@ -136,7 +141,9 @@ Soft delete - marks reservation as 'cancelled' instead of deleting.
 ### Update Reservation Status
 **PATCH** `/api/reservations/{id}/status`
 
-Update reservation lifecycle status with validation. Only allowed transitions are permitted.
+Update reservation lifecycle status.
+
+Backend allows status corrections to any other status. Frontend should show warnings for unusual transitions.
 
 **Request Body:**
 ```json
@@ -155,11 +162,13 @@ Update reservation lifecycle status with validation. Only allowed transitions ar
 - `cancelled`
 - `no_show`
 
-**Transition rules:**
-- `pending` → `confirmed`, `cancelled`
-- `confirmed` → `checked_in`, `cancelled`
+**Recommended transition flow (warning-only):**
+- `pending` → `confirmed`, `cancelled`, `no_show`
+- `confirmed` → `checked_in`, `cancelled`, `no_show`
 - `checked_in` → `checked_out`, `cancelled`
-- `checked_out`, `cancelled`, `no_show` → terminal states
+- Any other transition can still be saved for correction purposes.
+
+When reactivating a cancelled reservation (`cancelled` → active status), suite availability is validated for the reservation dates.
 
 ---
 

@@ -4,14 +4,9 @@ import lombok.Getter;
 
 /**
  * Enum representing the lifecycle states of a reservation.
- * 
- * Status transitions:
- * - PENDING -> CONFIRMED or CANCELLED
- * - CONFIRMED -> CHECKED_IN or CANCELLED
- * - CHECKED_IN -> CHECKED_OUT or CANCELLED
- * - CHECKED_OUT -> (terminal state)
- * - CANCELLED -> (terminal state)
- * - NO_SHOW -> (terminal state)
+ *
+ * Backend policy: status corrections are always allowed.
+ * Frontend should surface warnings for unusual transitions.
  */
 @Getter
 public enum ReservationStatus {
@@ -48,24 +43,6 @@ public enum ReservationStatus {
     }
 
     /**
-     * Check if this status can transition to another status.
-     */
-    public boolean canTransitionTo(ReservationStatus newStatus) {
-        if (this == newStatus) {
-            return false; // Same status, no transition needed
-        }
-
-        return switch (this) {
-            case PENDING -> newStatus == CONFIRMED || newStatus == CANCELLED;
-            case CONFIRMED -> newStatus == CHECKED_IN || newStatus == CANCELLED;
-            case CHECKED_IN -> newStatus == CHECKED_OUT || newStatus == CANCELLED;
-            case CHECKED_OUT -> false; // Terminal state
-            case CANCELLED -> false; // Terminal state
-            case NO_SHOW -> false; // Terminal state
-        };
-    }
-
-    /**
      * Get user-friendly reason why transition is not allowed.
      */
     public String getTransitionError(ReservationStatus newStatus) {
@@ -73,18 +50,13 @@ public enum ReservationStatus {
             return "Status is already " + this.label;
         }
 
-        return switch (this) {
-            case CHECKED_OUT -> "Cannot change status of a checked-out reservation";
-            case CANCELLED -> "Cannot change status of a cancelled reservation";
-            case NO_SHOW -> "Cannot change status of a no-show reservation";
-            default -> "Invalid status transition from " + this.label + " to " + newStatus.getLabel();
-        };
+        return "Status transitions are unrestricted";
     }
 
     /**
      * Check if this is a final/terminal state.
      */
     public boolean isTerminalState() {
-        return this == CHECKED_OUT || this == CANCELLED || this == NO_SHOW;
+        return this == CHECKED_OUT || this == NO_SHOW;
     }
 }

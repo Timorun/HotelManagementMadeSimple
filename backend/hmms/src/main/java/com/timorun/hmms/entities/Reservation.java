@@ -32,6 +32,7 @@ public class Reservation {
     private Integer numGuests;
     private BigDecimal priceTotal;
     private String channel;
+    private String notes;
     @Convert(converter = ReservationStatusConverter.class)
     @Column(nullable = false)
     private ReservationStatus status = ReservationStatus.PENDING;

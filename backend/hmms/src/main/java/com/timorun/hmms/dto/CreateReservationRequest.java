@@ -29,5 +29,6 @@ public class CreateReservationRequest {
     private String email;
     private String phone;
     private String nationalityCode;
+    // Reservation notes for this stay.
     private String notes;
 }

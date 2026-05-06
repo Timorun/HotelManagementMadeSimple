@@ -12,28 +12,46 @@ export const RESERVATION_STATUSES = {
 
 /**
  * Status display metadata (label, color, icon)
+ * usualTransitionTo is advisory only and used for frontend warnings.
  */
 export const STATUS_META = {
-  pending: { label: 'Pending', color: '#F39C12', canTransitionTo: ['confirmed', 'cancelled'] },
-  confirmed: { label: 'Confirmed', color: '#27AE60', canTransitionTo: ['checked_in', 'cancelled'] },
-  checked_in: { label: 'Checked In', color: '#3498DB', canTransitionTo: ['checked_out', 'cancelled'] },
-  checked_out: { label: 'Checked Out', color: '#95A5A6', canTransitionTo: [] },
-  cancelled: { label: 'Cancelled', color: '#E74C3C', canTransitionTo: [] },
-  no_show: { label: 'No Show', color: '#E67E22', canTransitionTo: [] },
+  pending: { label: 'Pending', color: '#F39C12', usualTransitionTo: ['confirmed', 'cancelled', 'no_show'] },
+  confirmed: { label: 'Confirmed', color: '#27AE60', usualTransitionTo: ['checked_in', 'cancelled', 'no_show'] },
+  checked_in: { label: 'Checked In', color: '#3498DB', usualTransitionTo: ['checked_out'] },
+  checked_out: { label: 'Checked Out', color: '#95A5A6', usualTransitionTo: [] },
+  cancelled: { label: 'Cancelled', color: '#E74C3C', usualTransitionTo: ['pending', 'confirmed'] },
+  no_show: { label: 'No Show', color: '#E67E22', usualTransitionTo: ['pending', 'confirmed'] },
 };
 
 /**
  * Get available status transitions for a given status
  */
 export function getAvailableTransitions(currentStatus) {
-  return STATUS_META[currentStatus]?.canTransitionTo || [];
+  return STATUS_META[currentStatus]?.usualTransitionTo || [];
 }
 
 /**
- * Check if a status transition is allowed
+ * Check if a status transition is logically recommended.
  */
-export function canTransitionTo(fromStatus, toStatus) {
+export function isUsualTransition(fromStatus, toStatus) {
   return getAvailableTransitions(fromStatus).includes(toStatus);
+}
+
+/**
+ * Returns a warning for unusual transitions. Returns null for recommended transitions.
+ */
+export function getTransitionWarning(fromStatus, toStatus) {
+  if (!fromStatus || !toStatus || fromStatus === toStatus) {
+    return null;
+  }
+
+  if (isUsualTransition(fromStatus, toStatus)) {
+    return null;
+  }
+
+  const fromLabel = getStatusLabel(fromStatus);
+  const toLabel = getStatusLabel(toStatus);
+  return `Warning: ${fromLabel} -> ${toLabel} is unusual. Are you sure you want to proceed?`;
 }
 
 /**

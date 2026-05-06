@@ -9,7 +9,7 @@ import java.time.LocalDate;
 
 /**
  * DTO for updating an existing reservation.
- * Can update guest link, dates, pricing, and channel.
+ * Can update guest link, dates, pricing, channel, and notes.
  */
 @Data
 @NoArgsConstructor
@@ -22,4 +22,5 @@ public class UpdateReservationRequest {
     private Integer numGuests;
     private BigDecimal priceTotal;
     private String channel;
+    private String notes;
 }

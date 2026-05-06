@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { fetchReservations, fetchSuites, fetchNationalities, createReservation, updateReservation, cancelReservation, searchGuests, updateReservationStatus } from '../api/backend';
 import { Calendar, Plus, Edit, X, Search, AlertCircle, CheckCircle, Users, Euro, Download } from 'lucide-react';
 import { format, differenceInDays, parseISO, isBefore, addDays, startOfMonth, endOfMonth } from 'date-fns';
-import { STATUS_META } from '../api/reservationStatus';
+import { STATUS_META, getTransitionWarning } from '../api/reservationStatus';
 import { exportRowsToExcel } from '../utils/excelExport';
 import { useI18n } from '../context/I18nContext';
 
@@ -43,6 +43,7 @@ export default function ReservationManagement() {
     lastName: '',
     email: '',
     phone: '',
+    guestNotes: '',
     nationalityCode: '',
     notes: '',
     status: 'pending',
@@ -153,6 +154,7 @@ export default function ReservationManagement() {
       lastName: guest.lastName,
       email: guest.email,
       phone: guest.phone || '',
+      guestNotes: guest.notes || '',
       nationalityCode: guest.nationalityCode || '',
     }));
     setGuestSearchResults([]);
@@ -191,7 +193,7 @@ export default function ReservationManagement() {
         if (nightsCount > 365) {
           errors.checkOut = 'Reservation cannot exceed 365 nights';
         }
-      } catch (err) {
+      } catch {
         errors.checkIn = 'Invalid date format';
       }
     }
@@ -244,6 +246,7 @@ export default function ReservationManagement() {
       lastName: '',
       email: '',
       phone: '',
+      guestNotes: '',
       nationalityCode: '',
       notes: '',
     });
@@ -266,8 +269,9 @@ export default function ReservationManagement() {
       lastName: '',
       email: '',
       phone: '',
+      guestNotes: reservation.guestNotes || '',
       nationalityCode: '',
-      notes: '',
+      notes: reservation.notes || '',
       status: reservation.status || 'pending',
     });
     setShowModal(true);
@@ -298,6 +302,7 @@ export default function ReservationManagement() {
           numGuests: parseInt(formData.numGuests),
           priceTotal: parseFloat(formData.priceTotal),
           channel: formData.channel,
+          notes: formData.notes,
         });
 
         // Update status if changed
@@ -394,6 +399,13 @@ export default function ReservationManagement() {
 
     exportRowsToExcel(rows, 'reservations-export.xlsx', 'Reservations');
   }, [filteredReservations]);
+
+  const statusTransitionWarning = useMemo(() => {
+    if (!editingReservation) {
+      return null;
+    }
+    return getTransitionWarning(editingReservation.status, formData.status);
+  }, [editingReservation, formData.status]);
 
   if (loading) {
     return (
@@ -628,7 +640,6 @@ export default function ReservationManagement() {
                       <button
                         onClick={() => openEditModal(res)}
                         className="btn btn-primary btn-sm"
-                        disabled={res.status === 'cancelled'}
                         title="Edit reservation"
                       >
                         <Edit size={14} />
@@ -819,6 +830,18 @@ export default function ReservationManagement() {
                   </div>
                 )}
 
+                {formData.guestNotes && (
+                  <div className="form-group">
+                    <label className="form-label">Guest Profile Notes</label>
+                    <textarea
+                      className="form-textarea"
+                      value={formData.guestNotes}
+                      readOnly
+                      style={{ background: 'var(--light-gray)' }}
+                    />
+                  </div>
+                )}
+
                 {/* Reservation Details */}
                 <div className="form-group">
                   <label className="form-label">Suite *</label>
@@ -988,19 +1011,30 @@ export default function ReservationManagement() {
                       <option value="cancelled">Cancelled</option>
                       <option value="no_show">No Show</option>
                     </select>
+                    {statusTransitionWarning && (
+                      <div style={{
+                        marginTop: '0.5rem',
+                        padding: '0.65rem 0.75rem',
+                        borderRadius: '6px',
+                        border: '1px solid var(--warning)',
+                        background: 'rgba(243, 156, 18, 0.12)',
+                        color: '#7A4E00',
+                        fontSize: '0.875rem',
+                      }}>
+                        {statusTransitionWarning}
+                      </div>
+                    )}
                   </div>
                 )}
-                {!editingReservation && (
-                  <div className="form-group">
-                    <label className="form-label">Notes</label>
-                    <textarea
-                      className="form-textarea"
-                      value={formData.notes}
-                      onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                      placeholder="Special requests, dietary requirements, etc."
-                    />
-                  </div>
-                )}
+                <div className="form-group">
+                  <label className="form-label">Reservation Notes</label>
+                  <textarea
+                    className="form-textarea"
+                    value={formData.notes}
+                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                    placeholder="Special requests, dietary requirements, etc."
+                  />
+                </div>
               </div>
               <div className="modal-footer">
                 <button type="button" onClick={() => setShowModal(false)} className="btn btn-outline" disabled={submitting}>
