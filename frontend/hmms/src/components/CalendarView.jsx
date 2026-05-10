@@ -19,7 +19,8 @@ const STATUS_FILTER_DEFAULTS = {
   checked_in: true,
   checked_out: true,
   pending: true,
-  cancelled: false,
+  no_show: true,
+  cancelled: false
 };
 
 export default function CalendarView() {
@@ -884,8 +885,8 @@ function ReservationDetailsModal({
                     <option value="confirmed">Confirmed</option>
                     <option value="checked_in">Checked In</option>
                     <option value="checked_out">Checked Out</option>
-                    <option value="cancelled">Cancelled</option>
                     <option value="no_show">No Show</option>
+                    <option value="cancelled">Cancelled</option>
                   </select>
                   {statusTransitionWarning && (
                     <div style={{
