@@ -9,6 +9,6 @@ public record TokenSession(
         Instant expiresAt
 ) {
     public boolean isExpired() {
-        return expiresAt.isBefore(Instant.now());
+        return !expiresAt.isAfter(Instant.now());
     }
 }

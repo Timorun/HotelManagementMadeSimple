@@ -11,7 +11,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/suites")
-@CrossOrigin(origins = "*")
 public class SuiteController {
     private final SuiteService suiteService;
 

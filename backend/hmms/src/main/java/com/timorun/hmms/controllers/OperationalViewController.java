@@ -11,7 +11,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/operations")
-@CrossOrigin(origins = "*")
 public class OperationalViewController {
     private final OperationalViewService operationalViewService;
 

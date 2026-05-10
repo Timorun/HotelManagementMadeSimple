@@ -9,7 +9,6 @@ import java.time.YearMonth;
 
 @RestController
 @RequestMapping("/api/analytics")
-@CrossOrigin(origins = "*")
 public class AnalyticsController {
     private final AnalyticsService analyticsService;
 

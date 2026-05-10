@@ -1,7 +1,7 @@
 // API utility for backend requests
 const BASE_URL = 'http://localhost:8080/api';
 const ENABLE_STUB_FALLBACK = false;
-const AUTH_TOKEN_KEY = 'hmms_auth_token';
+const unauthorizedListeners = new Set();
 
 const STUB_DATA = {
   guests: [
@@ -80,28 +80,38 @@ function withStubFallback(data, stubData) {
   return data;
 }
 
-function getAuthToken() {
-  return localStorage.getItem(AUTH_TOKEN_KEY);
+function notifyUnauthorized() {
+  unauthorizedListeners.forEach((listener) => {
+    try {
+      listener();
+    } catch {
+      // Keep global request handling resilient if one listener fails.
+    }
+  });
+}
+
+export function subscribeToUnauthorized(listener) {
+  unauthorizedListeners.add(listener);
+  return () => unauthorizedListeners.delete(listener);
 }
 
 function buildHeaders(extraHeaders = {}) {
-  const token = getAuthToken();
   return {
     'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...extraHeaders,
   };
 }
 
 async function request(url, options = {}, errorMessage = 'Request failed') {
   const res = await fetch(url, {
+    credentials: 'include',
     ...options,
     headers: buildHeaders(options.headers),
   });
 
   if (!res.ok) {
     if (res.status === 401) {
-      localStorage.removeItem(AUTH_TOKEN_KEY);
+      notifyUnauthorized();
     }
 
     const errorData = await res.json().catch(() => ({}));
@@ -120,7 +130,7 @@ async function getJson(url, errorMessage) {
 }
 
 export async function login(usernameOrEmail, password) {
-  const data = await request(
+  return request(
     `${BASE_URL}/auth/login`,
     {
       method: 'POST',
@@ -128,28 +138,14 @@ export async function login(usernameOrEmail, password) {
     },
     'Invalid username/email or password',
   );
-
-  if (data?.token) {
-    localStorage.setItem(AUTH_TOKEN_KEY, data.token);
-  }
-
-  return data;
 }
 
 export async function logout() {
-  try {
-    await request(`${BASE_URL}/auth/logout`, { method: 'POST' }, 'Logout failed');
-  } finally {
-    localStorage.removeItem(AUTH_TOKEN_KEY);
-  }
+  return request(`${BASE_URL}/auth/logout`, { method: 'POST' }, 'Logout failed');
 }
 
 export async function fetchCurrentUser() {
   return request(`${BASE_URL}/auth/me`, { method: 'GET' }, 'Unauthorized');
-}
-
-export function hasAuthToken() {
-  return Boolean(getAuthToken());
 }
 
 export async function fetchGuests() {

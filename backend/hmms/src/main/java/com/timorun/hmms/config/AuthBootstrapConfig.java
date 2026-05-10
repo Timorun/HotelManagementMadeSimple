@@ -11,6 +11,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 @Configuration
 public class AuthBootstrapConfig {
 
+    // TODO delete this when going to production and add the user to db manually
     @Bean
     CommandLineRunner ensureAdminUser(
             AppUserRepository appUserRepository,

@@ -6,12 +6,14 @@ import com.timorun.hmms.entities.AppUser;
 import com.timorun.hmms.repositories.AppUserRepository;
 import com.timorun.hmms.security.TokenSession;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Comparator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -23,15 +25,19 @@ public class AuthService {
     private final SecureRandom secureRandom = new SecureRandom();
     private final Map<String, TokenSession> sessions = new ConcurrentHashMap<>();
     private final long tokenTtlSeconds;
+    private final int maxActiveSessions;
+    private final Object sessionLock = new Object();
 
     public AuthService(
             AppUserRepository appUserRepository,
             PasswordEncoder passwordEncoder,
-            @Value("${hmms.auth.token-ttl-seconds:43200}") long tokenTtlSeconds
+            @Value("${hmms.auth.token-ttl-seconds:43200}") long tokenTtlSeconds,
+            @Value("${hmms.auth.max-active-sessions:500}") int maxActiveSessions
     ) {
         this.appUserRepository = appUserRepository;
         this.passwordEncoder = passwordEncoder;
         this.tokenTtlSeconds = tokenTtlSeconds;
+        this.maxActiveSessions = Math.max(1, maxActiveSessions);
     }
 
     public LoginResponse login(LoginRequest request) {
@@ -60,7 +66,7 @@ public class AuthService {
                 user.getEmail(),
                 Instant.now().plusSeconds(tokenTtlSeconds)
         );
-        sessions.put(token, session);
+        storeSession(token, session);
 
         return LoginResponse.builder()
                 .token(token)
@@ -90,6 +96,34 @@ public class AuthService {
             return Optional.empty();
         }
         return Optional.of(session);
+    }
+
+    @Scheduled(fixedDelayString = "${hmms.auth.session-cleanup-interval-ms:300000}")
+    public void cleanupExpiredSessions() {
+        synchronized (sessionLock) {
+            removeExpiredSessions(Instant.now());
+        }
+    }
+
+    private void storeSession(String token, TokenSession session) {
+        synchronized (sessionLock) {
+            removeExpiredSessions(Instant.now());
+            if (sessions.size() >= maxActiveSessions) {
+                evictOldestSession();
+            }
+            sessions.put(token, session);
+        }
+    }
+
+    private void removeExpiredSessions(Instant now) {
+        sessions.entrySet().removeIf(entry -> !entry.getValue().expiresAt().isAfter(now));
+    }
+
+    private void evictOldestSession() {
+        sessions.entrySet().stream()
+                .min(Comparator.comparing(entry -> entry.getValue().expiresAt()))
+                .map(Map.Entry::getKey)
+                .ifPresent(sessions::remove);
     }
 
     private String generateToken() {

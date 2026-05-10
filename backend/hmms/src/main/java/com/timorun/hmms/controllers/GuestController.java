@@ -11,7 +11,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/guests")
-@CrossOrigin(origins = "*")
 public class GuestController {
     private final GuestService guestService;
 
