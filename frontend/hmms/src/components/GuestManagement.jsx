@@ -13,6 +13,7 @@ export default function GuestManagement() {
   const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [editingGuest, setEditingGuest] = useState(null);
+  const [anonymizeTarget, setAnonymizeTarget] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [guestTypeFilter, setGuestTypeFilter] = useState('all');
   const [marketingFilter, setMarketingFilter] = useState('all');
@@ -110,16 +111,23 @@ export default function GuestManagement() {
     }
   };
 
-  const handleAnonymize = async (guest) => {
-    const confirmed = window.confirm(`Anonymize ${guest.firstName} ${guest.lastName}? This cannot be undone.`);
-    if (!confirmed) return;
+  const handleAnonymize = (guest) => {
+    setAnonymizeTarget(guest);
+  };
 
+  const confirmAnonymize = async () => {
+    if (!anonymizeTarget) return;
     try {
-      await anonymizeGuest(guest.guestId);
+      await anonymizeGuest(anonymizeTarget.guestId);
+      setAnonymizeTarget(null);
       loadData();
     } catch (err) {
       setError(err.message);
     }
+  };
+
+  const cancelAnonymize = () => {
+    setAnonymizeTarget(null);
   };
 
   const handleExport = () => {
@@ -268,7 +276,7 @@ export default function GuestManagement() {
                         disabled={guest.anonymized}
                         title="Anonymize guest"
                       >
-                        <UserX size={14} />
+                        <UserX size={18} />
                       </button>
                     </div>
                   </td>
@@ -285,6 +293,50 @@ export default function GuestManagement() {
           </div>
         </div>
       </div>
+
+      {anonymizeTarget && (
+        <div className="modal-overlay" onClick={cancelAnonymize}>
+          <div className="modal" style={{ maxWidth: '460px' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--danger)' }}>
+                <UserX size={22} />
+                Anonymize Guest
+              </h3>
+              <button className="modal-close" onClick={cancelAnonymize}>×</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ marginBottom: '1rem', lineHeight: 1.6 }}>
+                You are about to anonymize <strong>{anonymizeTarget.firstName} {anonymizeTarget.lastName}</strong>.
+              </p>
+              <div
+                style={{
+                  background: 'rgba(231, 76, 60, 0.08)',
+                  border: '1px solid rgba(231, 76, 60, 0.35)',
+                  borderRadius: '8px',
+                  padding: '0.9rem',
+                }}
+              >
+                <p style={{ fontWeight: 600, color: 'var(--danger)', marginBottom: '0.5rem' }}>
+                  This action cannot be undone.
+                </p>
+                <ul style={{ margin: 0, paddingLeft: '1.2rem', lineHeight: 1.5 }}>
+                  <li>Personal details such as name, email, and phone will be removed.</li>
+                  <li>Reservation history remains available for reporting and accounting.</li>
+                </ul>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button type="button" onClick={cancelAnonymize} className="btn btn-outline">
+                Keep Guest Data
+              </button>
+              <button type="button" onClick={confirmAnonymize} className="btn btn-danger">
+                <UserX size={16} />
+                Yes, Anonymize
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal */}
       {showModal && (
