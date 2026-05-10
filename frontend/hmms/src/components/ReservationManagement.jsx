@@ -32,12 +32,14 @@ export default function ReservationManagement() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [channelFilter, setChannelFilter] = useState('all');
   const [guestFilter, setGuestFilter] = useState('');
+  const [priceInputSource, setPriceInputSource] = useState('total');
 
   const [formData, setFormData] = useState({
     suiteId: '',
     checkIn: '',
     checkOut: '',
     numGuests: 2,
+    pricePerNight: '',
     priceTotal: '',
     channel: 'direct',
     guestId: '',
@@ -76,12 +78,107 @@ export default function ReservationManagement() {
     [suites, formData.suiteId]
   );
 
+  const parseCurrencyValue = useCallback((value) => {
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }, []);
+
+  const formatCurrencyValue = useCallback((value) => {
+    if (!Number.isFinite(value)) {
+      return '';
+    }
+    return value.toFixed(2);
+  }, []);
+
   const suggestedPrice = useMemo(() => {
     if (selectedSuite && nightsCount > 0) {
       return (selectedSuite.basePrice * nightsCount).toFixed(2);
     }
     return '';
   }, [selectedSuite, nightsCount]);
+
+  const suggestedPricePerNight = useMemo(() => {
+    if (!selectedSuite || selectedSuite.basePrice === undefined || selectedSuite.basePrice === null) {
+      return '';
+    }
+    return formatCurrencyValue(Number(selectedSuite.basePrice));
+  }, [selectedSuite, formatCurrencyValue]);
+
+  useEffect(() => {
+    if (nightsCount <= 0) {
+      return;
+    }
+
+    setFormData((prev) => {
+      if (priceInputSource === 'perNight') {
+        const pricePerNight = parseCurrencyValue(prev.pricePerNight);
+        if (pricePerNight === null) {
+          return prev;
+        }
+
+        const nextPriceTotal = formatCurrencyValue(pricePerNight * nightsCount);
+        if (prev.priceTotal === nextPriceTotal) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          priceTotal: nextPriceTotal,
+        };
+      }
+
+      const priceTotal = parseCurrencyValue(prev.priceTotal);
+      if (priceTotal === null) {
+        return prev;
+      }
+
+      const nextPricePerNight = formatCurrencyValue(priceTotal / nightsCount);
+      if (prev.pricePerNight === nextPricePerNight) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        pricePerNight: nextPricePerNight,
+      };
+    });
+  }, [nightsCount, priceInputSource, parseCurrencyValue, formatCurrencyValue]);
+
+  const handlePricePerNightChange = useCallback((value) => {
+    setPriceInputSource('perNight');
+
+    setFormData((prev) => {
+      const nextData = {
+        ...prev,
+        pricePerNight: value,
+      };
+
+      const parsedPerNight = parseCurrencyValue(value);
+      if (parsedPerNight !== null && nightsCount > 0) {
+        nextData.priceTotal = formatCurrencyValue(parsedPerNight * nightsCount);
+      }
+
+      return nextData;
+    });
+  }, [nightsCount, parseCurrencyValue, formatCurrencyValue]);
+
+  const handlePriceTotalChange = useCallback((value) => {
+    setPriceInputSource('total');
+
+    setFormData((prev) => {
+      const nextData = {
+        ...prev,
+        priceTotal: value,
+      };
+
+      const parsedTotal = parseCurrencyValue(value);
+      if (parsedTotal !== null && nightsCount > 0) {
+        nextData.pricePerNight = formatCurrencyValue(parsedTotal / nightsCount);
+      }
+
+      return nextData;
+    });
+  }, [nightsCount, parseCurrencyValue, formatCurrencyValue]);
 
   const guestNotesOwnerLabel = useMemo(() => {
     const fullName = `${formData.firstName || ''} ${formData.lastName || ''}`.trim();
@@ -166,7 +263,26 @@ export default function ReservationManagement() {
     searchTimerRef.current = setTimeout(async () => {
       try {
         const results = await searchGuests(normalizedQuery);
-        setGuestSearchResults(results);
+        const searchableGuests = results.filter((guest) => {
+          if (!guest) {
+            return false;
+          }
+
+          if (guest.anonymized) {
+            return false;
+          }
+
+          const firstName = (guest.firstName || '').trim().toLowerCase();
+          const lastName = (guest.lastName || '').trim().toLowerCase();
+
+          if (firstName === '[deleted]' || lastName === '[deleted]') {
+            return false;
+          }
+
+          return true;
+        });
+
+        setGuestSearchResults(searchableGuests);
       } catch (err) {
         console.error('Guest search failed:', err);
         showToast('Failed to search guests', 'error');
@@ -258,12 +374,7 @@ export default function ReservationManagement() {
       try {
         const checkInDate = parseISO(formData.checkIn);
         const checkOutDate = parseISO(formData.checkOut);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        
-        if (isBefore(checkInDate, today) && !editingReservation) {
-          errors.checkIn = 'Check-in date cannot be in the past';
-        }
+
         if (isBefore(checkOutDate, checkInDate) || checkOutDate.getTime() === checkInDate.getTime()) {
           errors.checkOut = 'Check-out must be after check-in';
         }
@@ -331,6 +442,7 @@ export default function ReservationManagement() {
       checkIn: format(addDays(new Date(), 1), 'yyyy-MM-dd'),
       checkOut: format(addDays(new Date(), 2), 'yyyy-MM-dd'),
       numGuests: 2,
+      pricePerNight: '',
       priceTotal: '',
       channel: 'direct',
       guestId: '',
@@ -342,6 +454,7 @@ export default function ReservationManagement() {
       nationalityCode: '',
       notes: '',
     });
+    setPriceInputSource('total');
     setShowModal(true);
   }, []);
 
@@ -354,6 +467,18 @@ export default function ReservationManagement() {
     const guestNameParts = (reservation.guestName || '').trim().split(' ').filter(Boolean);
     const inferredFirstName = guestNameParts[0] || '';
     const inferredLastName = guestNameParts.slice(1).join(' ');
+    let calculatedPricePerNight = '';
+
+    try {
+      const nights = differenceInDays(parseISO(reservation.checkOut), parseISO(reservation.checkIn));
+      const parsedTotal = parseCurrencyValue(reservation.priceTotal);
+
+      if (nights > 0 && parsedTotal !== null) {
+        calculatedPricePerNight = formatCurrencyValue(parsedTotal / nights);
+      }
+    } catch {
+      calculatedPricePerNight = '';
+    }
 
     setEditingReservation(reservation);
     setValidationErrors({});
@@ -363,6 +488,7 @@ export default function ReservationManagement() {
       checkIn: reservation.checkIn,
       checkOut: reservation.checkOut,
       numGuests: reservation.numGuests,
+      pricePerNight: calculatedPricePerNight,
       priceTotal: reservation.priceTotal,
       channel: reservation.channel,
       guestId: reservation.guestId,
@@ -375,18 +501,11 @@ export default function ReservationManagement() {
       notes: reservation.notes || '',
       status: reservation.status || 'pending',
     });
+    setPriceInputSource('total');
     setShowModal(true);
-  }, []);
+  }, [formatCurrencyValue, parseCurrencyValue]);
 
-  const handleSubmit = useCallback(async (e) => {
-    e.preventDefault();
-    
-    // Validate form
-    if (!validateForm()) {
-      showToast('Please fix validation errors', 'error');
-      return;
-    }
-    
+  const submitReservation = useCallback(async () => {
     setSubmitting(true);
     setError(null);
     try {
@@ -476,7 +595,19 @@ export default function ReservationManagement() {
     } finally {
       setSubmitting(false);
     }
-  }, [editingReservation, formData, loadData, showToast, validateForm]);
+  }, [editingReservation, formData, loadData, showToast]);
+
+  const handleSubmit = useCallback(async (e) => {
+    e.preventDefault();
+    
+    // Validate form
+    if (!validateForm()) {
+      showToast('Please fix validation errors', 'error');
+      return;
+    }
+
+    await submitReservation();
+  }, [ showToast, submitReservation, validateForm]);
 
   const handleCancel = useCallback((reservation) => {
     setConfirmDialog({
@@ -1074,6 +1205,11 @@ export default function ReservationManagement() {
                         {validationErrors.checkIn}
                       </span>
                     )}
+                    {!validationErrors.checkIn && (
+                      <span style={{ color: 'var(--warning)', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                        Check-in is in the past. Are you sure ?
+                      </span>
+                    )}
                   </div>
                   <div className="form-group">
                     <label className="form-label">Check-Out *</label>
@@ -1110,11 +1246,15 @@ export default function ReservationManagement() {
                     )}
                   </div>
                 )}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                  <div className="form-group">
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'minmax(120px, 0.7fr) minmax(170px, 1fr) minmax(170px, 1fr)',
+                  gap: '0.75rem',
+                }}>
+                  <div className="form-group" style={{ minWidth: 0 }}>
                     <label className="form-label">
                       <Users size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
-                      Number of Guests *
+                      Guests *
                     </label>
                     <input
                       type="number"
@@ -1123,6 +1263,7 @@ export default function ReservationManagement() {
                       onChange={(e) => setFormData({ ...formData, numGuests: e.target.value })}
                       min="1"
                       max={selectedSuite?.capacity || 100}
+                      style={{ maxWidth: '120px' }}
                       required
                     />
                     {validationErrors.numGuests && (
@@ -1139,13 +1280,28 @@ export default function ReservationManagement() {
                   <div className="form-group">
                     <label className="form-label">
                       <Euro size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
+                      Price per Night
+                    </label>
+                    <input
+                      type="number"
+                      className="form-input"
+                      value={formData.pricePerNight}
+                      onChange={(e) => handlePricePerNightChange(e.target.value)}
+                      step="0.01"
+                      min="0"
+                      placeholder={suggestedPricePerNight || '0.00'}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">
+                      <Euro size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
                       Total Price *
                     </label>
                     <input
                       type="number"
                       className={`form-input ${validationErrors.priceTotal ? 'error' : ''}`}
                       value={formData.priceTotal}
-                      onChange={(e) => setFormData({ ...formData, priceTotal: e.target.value })}
+                      onChange={(e) => handlePriceTotalChange(e.target.value)}
                       step="0.01"
                       min="0"
                       required
@@ -1159,7 +1315,14 @@ export default function ReservationManagement() {
                     {suggestedPrice && !formData.priceTotal && (
                       <button
                         type="button"
-                        onClick={() => setFormData({ ...formData, priceTotal: suggestedPrice })}
+                        onClick={() => {
+                          setPriceInputSource('perNight');
+                          setFormData({
+                            ...formData,
+                            pricePerNight: suggestedPricePerNight,
+                            priceTotal: suggestedPrice,
+                          });
+                        }}
                         style={{
                           fontSize: '0.875rem',
                           marginTop: '0.25rem',

@@ -19,8 +19,8 @@ export const STATUS_META = {
   confirmed: { label: 'Confirmed', color: '#27AE60', usualTransitionTo: ['checked_in', 'cancelled', 'no_show'] },
   checked_in: { label: 'Checked In', color: '#3498DB', usualTransitionTo: ['checked_out'] },
   checked_out: { label: 'Checked Out', color: '#95A5A6', usualTransitionTo: [] },
-  cancelled: { label: 'Cancelled', color: '#E74C3C', usualTransitionTo: ['pending', 'confirmed'] },
   no_show: { label: 'No Show', color: '#E67E22', usualTransitionTo: ['pending', 'confirmed'] },
+  cancelled: { label: 'Cancelled', color: '#E74C3C', usualTransitionTo: ['pending', 'confirmed'] }
 };
 
 /**
