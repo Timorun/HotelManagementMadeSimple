@@ -57,12 +57,17 @@ public class GuestController {
     }
 
     /**
-     * Search guests by last name.
-     * GET /api/guests/search?lastName=Doe
+     * Search guests by first or last name.
+     * GET /api/guests/search?q=doe
      */
     @GetMapping("/search")
-    public ResponseEntity<List<GuestResponse>> searchByLastName(@RequestParam String lastName) {
-        List<GuestResponse> guests = guestService.searchByLastName(lastName);
+    public ResponseEntity<List<GuestResponse>> searchGuests( @RequestParam(required = false) String q ) {
+        if(q == null || q.isBlank())
+        {
+            return ResponseEntity.ok().build();
+        }
+
+        List<GuestResponse> guests = guestService.searchByName(q);
         return ResponseEntity.ok(guests);
     }
 

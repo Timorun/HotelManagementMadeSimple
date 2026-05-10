@@ -12,6 +12,10 @@ public interface GuestRepository extends JpaRepository<Guest, Long> {
     // Find a guest by their email
     Optional<Guest> findByEmail(String email);
 
-    // Find all guests by last name (case-insensitive)
-    List<Guest> findByLastNameIgnoreCase(String lastName);
+    // Search guests by first or last name (case-insensitive, partial match)
+    // This is a Spring Data JPA derived query method:
+    // Containing → SQL LIKE '%query%' (partial match).
+    // IgnoreCase → case-insensitive match.
+    // Or → matches if either the first name OR the last name contains the query.
+    List<Guest> findByFirstNameContainingIgnoreCaseOrLastNameContainingIgnoreCase(String firstName, String lastName);
 }

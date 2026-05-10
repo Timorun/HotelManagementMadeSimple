@@ -22,6 +22,8 @@ export default function ReservationManagement() {
   const [dateTo, setDateTo] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
   const [searchTerm, setSearchTerm] = useState('');
   const [guestSearchResults, setGuestSearchResults] = useState([]);
+  const [searchingGuests, setSearchingGuests] = useState(false);
+  const [guestMode, setGuestMode] = useState('existing');
   const [validationErrors, setValidationErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState(null);
@@ -146,27 +148,71 @@ export default function ReservationManagement() {
       .finally(() => setLoading(false));
   }, [dateFrom, dateTo, showToast]);
 
-  const handleSearchGuests = useCallback(async (lastName) => {
-    if (lastName.length < 2) {
+  const handleSearchGuests = useCallback(async (searchQuery) => {
+    const normalizedQuery = searchQuery.trim();
+
+    if (normalizedQuery.length < 2) {
       setGuestSearchResults([]);
+      setSearchingGuests(false);
       return;
     }
-    
+
     // Debounce search
     if (searchTimerRef.current) {
       clearTimeout(searchTimerRef.current);
     }
-    
+
+    setSearchingGuests(true);
     searchTimerRef.current = setTimeout(async () => {
       try {
-        const results = await searchGuests(lastName);
+        const results = await searchGuests(normalizedQuery);
         setGuestSearchResults(results);
       } catch (err) {
         console.error('Guest search failed:', err);
         showToast('Failed to search guests', 'error');
+      } finally {
+        setSearchingGuests(false);
       }
     }, 300); // 300ms debounce
   }, [showToast]);
+
+  const resetGuestSelection = useCallback(() => {
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
+      searchTimerRef.current = null;
+    }
+
+    setGuestSearchResults([]);
+    setSearchTerm('');
+    setSearchingGuests(false);
+    setFormData((prev) => ({
+      ...prev,
+      guestId: '',
+      firstName: '',
+      lastName: '',
+      email: '',
+      phone: '',
+      guestNotes: '',
+      nationalityCode: '',
+    }));
+  }, []);
+
+  const handleGuestModeChange = useCallback((mode) => {
+    if (mode === guestMode) {
+      return;
+    }
+
+    setGuestMode(mode);
+    resetGuestSelection();
+    setValidationErrors((prev) => {
+      const nextErrors = { ...prev };
+      delete nextErrors.guestSelection;
+      delete nextErrors.firstName;
+      delete nextErrors.lastName;
+      delete nextErrors.email;
+      return nextErrors;
+    });
+  }, [guestMode, resetGuestSelection]);
 
   const handleSelectGuest = useCallback((guest) => {
     setFormData(prev => ({
@@ -180,7 +226,16 @@ export default function ReservationManagement() {
       nationalityCode: guest.nationalityCode || '',
     }));
     setGuestSearchResults([]);
-    setSearchTerm('');
+    setSearchTerm(`${guest.firstName} ${guest.lastName}`.trim());
+    setValidationErrors((prev) => {
+      if (!prev.guestSelection) {
+        return prev;
+      }
+
+      const nextErrors = { ...prev };
+      delete nextErrors.guestSelection;
+      return nextErrors;
+    });
   }, []);
 
   // Form validation
@@ -233,29 +288,44 @@ export default function ReservationManagement() {
       errors.priceTotal = 'Please enter a valid price';
     }
     
-    // Guest information validation (for new reservations without existing guest)
-    if (!editingReservation && !formData.guestId) {
-      if (!formData.firstName?.trim()) {
-        errors.firstName = 'First name is required';
-      }
-      if (!formData.lastName?.trim()) {
-        errors.lastName = 'Last name is required';
-      }
-      if (!formData.email?.trim()) {
-        errors.email = 'Email is required';
-      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-        errors.email = 'Please enter a valid email address';
+    // Guest validation for new reservations
+    if (!editingReservation) {
+      if (guestMode === 'existing') {
+        if (!formData.guestId) {
+          errors.guestSelection = 'Select an existing guest or switch to "Create New Guest".';
+        }
+      } else if (!formData.guestId) {
+        if (!formData.firstName?.trim()) {
+          errors.firstName = 'First name is required';
+        }
+        if (!formData.lastName?.trim()) {
+          errors.lastName = 'Last name is required';
+        }
+        if (!formData.email?.trim()) {
+          errors.email = 'Email is required';
+        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+          errors.email = 'Please enter a valid email address';
+        }
       }
     }
     
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
-  }, [formData, selectedSuite, nightsCount, editingReservation]);
+  }, [formData, selectedSuite, nightsCount, editingReservation, guestMode]);
 
   const openNewReservationModal = useCallback(() => {
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
+      searchTimerRef.current = null;
+    }
+
     setEditingReservation(null);
     setValidationErrors({});
     setError(null);
+    setGuestMode('existing');
+    setSearchTerm('');
+    setGuestSearchResults([]);
+    setSearchingGuests(false);
     setFormData({
       suiteId: '',
       checkIn: format(addDays(new Date(), 1), 'yyyy-MM-dd'),
@@ -276,6 +346,11 @@ export default function ReservationManagement() {
   }, []);
 
   const openEditModal = useCallback((reservation) => {
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
+      searchTimerRef.current = null;
+    }
+
     const guestNameParts = (reservation.guestName || '').trim().split(' ').filter(Boolean);
     const inferredFirstName = guestNameParts[0] || '';
     const inferredLastName = guestNameParts.slice(1).join(' ');
@@ -766,130 +841,197 @@ export default function ReservationManagement() {
                   </div>
                 )}
 
-                {/* Guest Search */}
                 {!editingReservation && (
-                  <div className="form-group">
-                    <label className="form-label">Search Existing Guest</label>
-                    <div style={{ position: 'relative' }}>
-                      <input
-                        type="text"
-                        className="form-input"
-                        placeholder="Enter last name..."
-                        value={searchTerm}
-                        onChange={(e) => {
-                          setSearchTerm(e.target.value);
-                          handleSearchGuests(e.target.value);
-                        }}
-                      />
-                      <Search style={{ position: 'absolute', right: '0.75rem', top: '0.75rem', color: 'var(--gray)' }} size={20} />
+                  <div
+                    style={{
+                      marginBottom: '1.5rem',
+                      padding: '1rem',
+                      border: '1px solid var(--light-gray)',
+                      borderRadius: '10px',
+                      background: '#FBFCFE',
+                    }}
+                  >
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleGuestModeChange('existing')}
+                        className={`btn ${guestMode === 'existing' ? 'btn-primary' : 'btn-outline'}`}
+                        style={{ justifyContent: 'center' }}
+                      >
+                        <Search size={16} />
+                        Use Existing Guest
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleGuestModeChange('new')}
+                        className={`btn ${guestMode === 'new' ? 'btn-primary' : 'btn-outline'}`}
+                        style={{ justifyContent: 'center' }}
+                      >
+                        <Plus size={16} />
+                        Create New Guest
+                      </button>
                     </div>
-                    {guestSearchResults.length > 0 && (
-                      <div style={{
-                        border: '1px solid var(--gray)',
-                        borderRadius: '6px',
-                        marginTop: '0.5rem',
-                        maxHeight: '200px',
-                        overflowY: 'auto',
-                        background: 'white',
-                      }}>
-                        {guestSearchResults.map(guest => (
-                          <div
-                            key={guest.guestId}
-                            onClick={() => handleSelectGuest(guest)}
-                            style={{
-                              padding: '0.75rem',
-                              cursor: 'pointer',
-                              borderBottom: '1px solid var(--light-gray)',
-                            }}
-                            onMouseEnter={(e) => e.target.style.background = 'var(--light-gray)'}
-                            onMouseLeave={(e) => e.target.style.background = 'white'}
-                          >
-                            <div style={{ fontWeight: 600 }}>{guest.firstName} {guest.lastName}</div>
-                            <div style={{ fontSize: '0.875rem', color: 'var(--dark-gray)' }}>{guest.email}</div>
-                          </div>
-                        ))}
+                    <p style={{ marginTop: '0.75rem', marginBottom: '0.75rem', fontSize: '0.875rem', color: 'var(--dark-gray)' }}>
+                      {guestMode === 'existing'
+                        ? 'Search by first or last name to reuse an existing guest profile.'
+                        : 'Enter guest details below. A new guest profile will be created with this reservation.'}
+                    </p>
+
+                  {/* Existing Guest Search */}
+                  {!editingReservation && guestMode === 'existing' && (
+                    <div className="form-group">
+                      <div style={{ position: 'relative' }}>
+                        <input
+                          type="text"
+                          className={`form-input ${validationErrors.guestSelection ? 'error' : ''}`}
+                          placeholder="Type first or last name..."
+                          value={searchTerm}
+                          onChange={(e) => {
+                            setSearchTerm(e.target.value);
+                            handleSearchGuests(e.target.value);
+                          }}
+                        />
+                        <Search style={{ position: 'absolute', right: '0.75rem', top: '0.75rem', color: 'var(--gray)' }} size={20} />
                       </div>
-                    )}
+                      <span style={{ fontSize: '0.85rem', color: 'var(--dark-gray)', marginTop: '0.35rem', display: 'block' }}>
+                        Enter at least 2 characters.
+                      </span>
+                      {validationErrors.guestSelection && (
+                        <span style={{ color: 'var(--danger)', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                          {validationErrors.guestSelection}
+                        </span>
+                      )}
+
+                      {searchingGuests && (
+                        <span style={{ color: 'var(--dark-gray)', fontSize: '0.875rem', marginTop: '0.35rem', display: 'block' }}>
+                          Searching guests...
+                        </span>
+                      )}
+
+                      {guestSearchResults.length > 0 && (
+                        <div style={{
+                          border: '1px solid var(--gray)',
+                          borderRadius: '6px',
+                          marginTop: '0.5rem',
+                          maxHeight: '200px',
+                          overflowY: 'auto',
+                          background: 'white',
+                        }}>
+                          {guestSearchResults.map((guest) => (
+                            <div
+                              key={guest.guestId}
+                              onClick={() => handleSelectGuest(guest)}
+                              style={{
+                                padding: '0.75rem',
+                                cursor: 'pointer',
+                                borderBottom: '1px solid var(--light-gray)',
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = 'var(--light-gray)';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = 'white';
+                              }}
+                            >
+                              <div style={{ fontWeight: 600 }}>{guest.firstName} {guest.lastName}</div>
+                              <div style={{ fontSize: '0.875rem', color: 'var(--dark-gray)' }}>{guest.email}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {!searchingGuests && searchTerm.trim().length >= 2 && guestSearchResults.length === 0 && !formData.guestId && (
+                        <div style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: 'var(--dark-gray)' }}>
+                          No guest found. Switch to Create New Guest to add a profile.
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Guest Information (for new reservations) */}
+                  {!editingReservation && guestMode === 'new' && !formData.guestId && (
+                    <>
+                      <div className="form-group">
+                        <label className="form-label">First Name *</label>
+                        <input
+                          type="text"
+                          className={`form-input ${validationErrors.firstName ? 'error' : ''}`}
+                          value={formData.firstName}
+                          onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                          required
+                        />
+                        {validationErrors.firstName && (
+                          <span style={{ color: 'var(--danger)', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                            {validationErrors.firstName}
+                          </span>
+                        )}
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Last Name *</label>
+                        <input
+                          type="text"
+                          className={`form-input ${validationErrors.lastName ? 'error' : ''}`}
+                          value={formData.lastName}
+                          onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                          required
+                        />
+                        {validationErrors.lastName && (
+                          <span style={{ color: 'var(--danger)', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                            {validationErrors.lastName}
+                          </span>
+                        )}
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Email *</label>
+                        <input
+                          type="email"
+                          className={`form-input ${validationErrors.email ? 'error' : ''}`}
+                          value={formData.email}
+                          onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                          required
+                        />
+                        {validationErrors.email && (
+                          <span style={{ color: 'var(--danger)', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                            {validationErrors.email}
+                          </span>
+                        )}
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Phone</label>
+                        <input
+                          type="tel"
+                          className="form-input"
+                          value={formData.phone}
+                          onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                          placeholder="+31 6 12345678"
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Nationality</label>
+                        <select
+                          className="form-select"
+                          value={formData.nationalityCode}
+                          onChange={(e) => setFormData({ ...formData, nationalityCode: e.target.value })}
+                        >
+                          <option value="">Select nationality</option>
+                          {nationalities.map(nat => (
+                            <option key={nat.nationalityCode} value={nat.nationalityCode}>{nat.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </>
+                  )}
+
                   </div>
                 )}
 
-                {/* Guest Information (for new reservations) */}
-                {!editingReservation && !formData.guestId && (
-                  <>
-                    <div className="form-group">
-                      <label className="form-label">First Name *</label>
-                      <input
-                        type="text"
-                        className={`form-input ${validationErrors.firstName ? 'error' : ''}`}
-                        value={formData.firstName}
-                        onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                        required
-                      />
-                      {validationErrors.firstName && (
-                        <span style={{ color: 'var(--danger)', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
-                          {validationErrors.firstName}
-                        </span>
-                      )}
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Last Name *</label>
-                      <input
-                        type="text"
-                        className={`form-input ${validationErrors.lastName ? 'error' : ''}`}
-                        value={formData.lastName}
-                        onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                        required
-                      />
-                      {validationErrors.lastName && (
-                        <span style={{ color: 'var(--danger)', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
-                          {validationErrors.lastName}
-                        </span>
-                      )}
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Email *</label>
-                      <input
-                        type="email"
-                        className={`form-input ${validationErrors.email ? 'error' : ''}`}
-                        value={formData.email}
-                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        required
-                      />
-                      {validationErrors.email && (
-                        <span style={{ color: 'var(--danger)', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
-                          {validationErrors.email}
-                        </span>
-                      )}
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Phone</label>
-                      <input
-                        type="tel"
-                        className="form-input"
-                        value={formData.phone}
-                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                        placeholder="+31 6 12345678"
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Nationality</label>
-                      <select
-                        className="form-select"
-                        value={formData.nationalityCode}
-                        onChange={(e) => setFormData({ ...formData, nationalityCode: e.target.value })}
-                      >
-                        <option value="">Select nationality</option>
-                        {nationalities.map(nat => (
-                          <option key={nat.nationalityCode} value={nat.nationalityCode}>{nat.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </>
-                )}
 
-                {formData.guestId && !editingReservation && (
-                  <div className="success-message">
-                    Selected: {formData.firstName} {formData.lastName} ({formData.email})
+                {formData.guestId && !editingReservation && guestMode === 'existing' && (
+                  <div className="success-message" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
+                    <span>Selected: {formData.firstName} {formData.lastName} ({formData.email})</span>
+                    <button type="button" className="btn btn-outline btn-sm" onClick={resetGuestSelection}>
+                      Clear Selection
+                    </button>
                   </div>
                 )}
 

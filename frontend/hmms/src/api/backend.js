@@ -267,9 +267,9 @@ export async function anonymizeGuest(id) {
   );
 }
 
-export async function searchGuests(lastName) {
+export async function searchGuests(searchQuery) {
   const data = await getJson(
-    `${BASE_URL}/guests/search?lastName=${encodeURIComponent(lastName)}`,
+    `${BASE_URL}/guests/search?q=${encodeURIComponent(searchQuery)}`,
     'Failed to search guests'
   );
   return withStubFallback(data, []);

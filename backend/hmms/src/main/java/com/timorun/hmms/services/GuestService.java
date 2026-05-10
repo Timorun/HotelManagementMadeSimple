@@ -9,6 +9,7 @@ import com.timorun.hmms.repositories.NationalityRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -69,11 +70,21 @@ public class GuestService {
     }
 
     /**
-     * Search guests by last name.
+     * Search guests by first or last name.
      */
-    public List<GuestResponse> searchByLastName(String lastName) {
-        return guestRepository.findByLastNameIgnoreCase(lastName)
+    public List<GuestResponse> searchByName(String query) {
+        if (query == null || query.isBlank()) {
+            return List.of();
+        }
+
+        String trimmedQuery = query.trim();
+
+        return guestRepository
+                .findByFirstNameContainingIgnoreCaseOrLastNameContainingIgnoreCase(trimmedQuery, trimmedQuery)
                 .stream()
+                .sorted(Comparator
+                    .comparing(Guest::getLastName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER))
+                    .thenComparing(Guest::getFirstName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
                 .map(this::toResponse)
                 .collect(Collectors.toList());
     }
