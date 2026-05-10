@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { fetchReservations, fetchSuites, fetchNationalities, createReservation, updateReservation, cancelReservation, searchGuests, updateReservationStatus } from '../api/backend';
+import { fetchReservations, fetchSuites, fetchNationalities, createReservation, updateReservation, cancelReservation, searchGuests, updateReservationStatus, fetchGuest, updateGuest } from '../api/backend';
 import { Calendar, Plus, Edit, X, Search, AlertCircle, CheckCircle, Users, Euro, Download } from 'lucide-react';
 import { format, differenceInDays, parseISO, isBefore, addDays, startOfMonth, endOfMonth } from 'date-fns';
 import { STATUS_META, getTransitionWarning } from '../api/reservationStatus';
@@ -80,6 +80,28 @@ export default function ReservationManagement() {
     }
     return '';
   }, [selectedSuite, nightsCount]);
+
+  const guestNotesOwnerLabel = useMemo(() => {
+    const fullName = `${formData.firstName || ''} ${formData.lastName || ''}`.trim();
+    if (fullName) {
+      return fullName;
+    }
+
+    if (editingReservation) {
+      return editingReservation.guestDisplayName || editingReservation.guestName || `Guest #${editingReservation.guestId}`;
+    }
+
+    if (formData.guestId) {
+      return `Guest #${formData.guestId}`;
+    }
+
+    return '';
+  }, [formData.firstName, formData.lastName, formData.guestId, editingReservation]);
+
+  const showGuestNotesField = useMemo(
+    () => Boolean(editingReservation || formData.guestId || formData.firstName || formData.lastName || formData.email),
+    [editingReservation, formData.guestId, formData.firstName, formData.lastName, formData.email]
+  );
 
   useEffect(() => {
     loadData();
@@ -254,6 +276,10 @@ export default function ReservationManagement() {
   }, []);
 
   const openEditModal = useCallback((reservation) => {
+    const guestNameParts = (reservation.guestName || '').trim().split(' ').filter(Boolean);
+    const inferredFirstName = guestNameParts[0] || '';
+    const inferredLastName = guestNameParts.slice(1).join(' ');
+
     setEditingReservation(reservation);
     setValidationErrors({});
     setError(null);
@@ -265,10 +291,10 @@ export default function ReservationManagement() {
       priceTotal: reservation.priceTotal,
       channel: reservation.channel,
       guestId: reservation.guestId,
-      firstName: '',
-      lastName: '',
-      email: '',
-      phone: '',
+      firstName: inferredFirstName,
+      lastName: inferredLastName,
+      email: reservation.email || '',
+      phone: reservation.phone || '',
       guestNotes: reservation.guestNotes || '',
       nationalityCode: '',
       notes: reservation.notes || '',
@@ -289,6 +315,8 @@ export default function ReservationManagement() {
     setSubmitting(true);
     setError(null);
     try {
+      let reservationSuccessMessage = '';
+
       if (editingReservation) {
         // Check if status changed
         const statusChanged = formData.status !== editingReservation.status;
@@ -310,9 +338,9 @@ export default function ReservationManagement() {
           await updateReservationStatus(editingReservation.reservationId, formData.status);
         }
 
-        showToast('Reservation updated successfully', 'success');
+        reservationSuccessMessage = 'Reservation updated successfully';
       } else {
-        await createReservation({
+        const createdReservation = await createReservation({
           suiteId: parseInt(formData.suiteId),
           guestId: formData.guestId ? parseInt(formData.guestId) : undefined,
           checkIn: formData.checkIn,
@@ -327,8 +355,43 @@ export default function ReservationManagement() {
           nationalityCode: formData.nationalityCode,
           notes: formData.notes,
         });
-        showToast('Reservation created successfully', 'success');
+
+        if (!formData.guestId && createdReservation?.guestId) {
+          setFormData((prev) => ({ ...prev, guestId: createdReservation.guestId }));
+        }
+
+        reservationSuccessMessage = 'Reservation created successfully';
       }
+
+      const guestIdFromForm = formData.guestId ? parseInt(formData.guestId) : NaN;
+      const guestIdFromEdit = editingReservation?.guestId ? parseInt(editingReservation.guestId) : NaN;
+      const guestIdToUpdate = Number.isNaN(guestIdFromForm) ? guestIdFromEdit : guestIdFromForm;
+
+      let guestNotesUpdateFailed = false;
+      if (!Number.isNaN(guestIdToUpdate)) {
+        try {
+          const guestProfile = await fetchGuest(guestIdToUpdate);
+          await updateGuest(guestIdToUpdate, {
+            firstName: guestProfile.firstName,
+            lastName: guestProfile.lastName,
+            email: guestProfile.email,
+            phone: guestProfile.phone,
+            nationalityCode: guestProfile.nationalityCode,
+            marketingConsent: guestProfile.marketingConsent,
+            notes: formData.guestNotes || '',
+          });
+        } catch (guestErr) {
+          guestNotesUpdateFailed = true;
+          console.error('Failed to update guest notes:', guestErr);
+        }
+      }
+
+      if (guestNotesUpdateFailed) {
+        showToast(`${reservationSuccessMessage}, but guest notes could not be saved`, 'error');
+      } else {
+        showToast(reservationSuccessMessage, 'success');
+      }
+
       setShowModal(false);
       loadData();
     } catch (err) {
@@ -830,17 +893,7 @@ export default function ReservationManagement() {
                   </div>
                 )}
 
-                {formData.guestNotes && (
-                  <div className="form-group">
-                    <label className="form-label">Guest Profile Notes</label>
-                    <textarea
-                      className="form-textarea"
-                      value={formData.guestNotes}
-                      readOnly
-                      style={{ background: 'var(--light-gray)' }}
-                    />
-                  </div>
-                )}
+                {/* guest notes relocated near reservation notes for clarity */}
 
                 {/* Reservation Details */}
                 <div className="form-group">
@@ -1026,13 +1079,30 @@ export default function ReservationManagement() {
                     )}
                   </div>
                 )}
+                {showGuestNotesField && (
+                  <div className="form-group">
+                    <label className="form-label">
+                      Guest Notes{guestNotesOwnerLabel ? ` of ${guestNotesOwnerLabel}` : ''}
+                    </label>
+                    <textarea
+                      className="form-textarea"
+                      value={formData.guestNotes}
+                      onChange={(e) => setFormData({ ...formData, guestNotes: e.target.value })}
+                      placeholder="Guest profile notes (preferences, allergies, communication reminders)."
+                    />
+                    <span style={{ fontSize: '0.85rem', color: 'var(--dark-gray)', marginTop: '0.35rem', display: 'block' }}>
+                      Saved on the guest profile and reused in future reservations.
+                    </span>
+                  </div>
+                )}
+
                 <div className="form-group">
-                  <label className="form-label">Reservation Notes</label>
+                  <label className="form-label">Reservation Notes (for this stay only)</label>
                   <textarea
                     className="form-textarea"
                     value={formData.notes}
                     onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                    placeholder="Special requests, dietary requirements, etc."
+                    placeholder="Stay-specific notes for this reservation only."
                   />
                 </div>
               </div>

@@ -153,6 +153,10 @@ export async function fetchGuests() {
   return withStubFallback(data, STUB_DATA.guests);
 }
 
+export async function fetchGuest(id) {
+  return request(`${BASE_URL}/guests/${id}`, { method: 'GET' }, 'Failed to fetch guest');
+}
+
 export async function fetchSuites() {
   const data = await getJson(`${BASE_URL}/suites`, 'Failed to fetch suites');
   return withStubFallback(data, STUB_DATA.suites);

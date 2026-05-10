@@ -352,13 +352,16 @@ export default function GuestManagement() {
                   </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Notes</label>
+                  <label className="form-label">Guest Notes</label>
                   <textarea
                     className="form-textarea"
                     value={formData.notes}
                     onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                    placeholder="Notes, preferences, special requirements..."
+                    placeholder="Guest profile notes (preferences, allergies, communication reminders)."
                   />
+                  <small style={{ color: 'var(--dark-gray)' }}>
+                    Saved on the guest profile and reused in future reservations.
+                  </small>
                 </div>
                 <div className="form-group">
                   <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>

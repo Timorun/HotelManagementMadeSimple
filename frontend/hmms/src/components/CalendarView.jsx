@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fetchCalendar, fetchSuites, updateReservation, cancelReservation, updateReservationStatus } from '../api/backend';
+import { fetchCalendar, fetchSuites, updateReservation, cancelReservation, updateReservationStatus, fetchGuest, updateGuest } from '../api/backend';
 import { 
   format, 
   startOfMonth, 
@@ -42,6 +42,7 @@ export default function CalendarView() {
     priceTotal: '',
     channel: 'direct',
     notes: '',
+    guestNotes: '',
     status: 'pending',
   });
   const [statusFilters, setStatusFilters] = useState(STATUS_FILTER_DEFAULTS);
@@ -141,6 +142,7 @@ export default function CalendarView() {
       priceTotal: reservation.priceTotal,
       channel: reservation.channel || 'direct',
       notes: reservation.notes || '',
+      guestNotes: reservation.guestNotes || '',
       status: reservation.status || 'pending',
     });
     setIsEditingReservation(false);
@@ -190,7 +192,52 @@ export default function CalendarView() {
         await updateReservationStatus(selectedReservation.reservationId, editForm.status);
       }
 
+      const guestNotesChanged = (editForm.guestNotes || '') !== (selectedReservation.guestNotes || '');
+      let guestNotesSyncError = null;
+
+      if (guestNotesChanged && selectedReservation.guestId) {
+        try {
+          const guestProfile = await fetchGuest(selectedReservation.guestId);
+          await updateGuest(selectedReservation.guestId, {
+            firstName: guestProfile.firstName,
+            lastName: guestProfile.lastName,
+            email: guestProfile.email,
+            phone: guestProfile.phone,
+            nationalityCode: guestProfile.nationalityCode,
+            marketingConsent: guestProfile.marketingConsent,
+            notes: editForm.guestNotes || '',
+          });
+        } catch (guestErr) {
+          console.error('Failed to update guest profile notes:', guestErr);
+          guestNotesSyncError = 'Reservation was saved, but guest profile notes could not be saved. Please try again.';
+        }
+      }
+
       await loadCalendarData(currentDate);
+
+      if (guestNotesSyncError) {
+        setSelectedReservation((prev) => {
+          if (!prev) {
+            return prev;
+          }
+
+          return {
+            ...prev,
+            suiteId: parseInt(editForm.suiteId, 10),
+            checkIn: editForm.checkIn,
+            checkOut: editForm.checkOut,
+            numGuests: parseInt(editForm.numGuests, 10),
+            priceTotal: parseFloat(editForm.priceTotal),
+            channel: editForm.channel,
+            notes: editForm.notes,
+            guestNotes: editForm.guestNotes,
+            status: editForm.status,
+          };
+        });
+        setModalError(guestNotesSyncError);
+        return;
+      }
+
       setIsEditingReservation(false);
       closeReservationModal();
     } catch (err) {
@@ -735,8 +782,8 @@ function ReservationDetailsModal({
                 <InfoRow label="Status" value={STATUS_META[status]?.label || status || '-'} />
               </div>
 
-              <InfoRow label="Guest Profile Notes" value={reservation.guestNotes || '-'} />
-              <InfoRow label="Reservation Notes" value={reservation.notes || '-'} />
+              <InfoRow label={`Guest Notes of ${reservation.guestDisplayName || reservation.guestName || `Guest #${reservation.guestId}`}`} value={reservation.guestNotes || '-'} />
+              <InfoRow label="Reservation Notes (for this stay only)" value={reservation.notes || '-'} />
             </div>
           ) : (
             <div style={{ display: 'grid', gap: '0.75rem' }}>
@@ -857,26 +904,29 @@ function ReservationDetailsModal({
               </div>
 
               <div className="form-group">
-                <label className="form-label">Reservation Notes</label>
+                <label className="form-label">
+                  Guest Notes of {reservation.guestDisplayName || reservation.guestName || `Guest #${reservation.guestId}`}
+                </label>
+                <textarea
+                  className="form-textarea"
+                  value={editForm.guestNotes || ''}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, guestNotes: e.target.value }))}
+                  placeholder="Guest profile notes (preferences, allergies, communication reminders)."
+                />
+                <small style={{ color: 'var(--dark-gray)' }}>
+                  Saved on the guest profile and reused in future reservations.
+                </small>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Reservation Notes (for this stay only)</label>
                 <textarea
                   className="form-textarea"
                   value={editForm.notes}
                   onChange={(e) => setEditForm((prev) => ({ ...prev, notes: e.target.value }))}
-                  placeholder="Special requests, room preferences, or internal notes"
+                  placeholder="Stay-specific notes for this reservation only."
                 />
               </div>
-
-              {reservation.guestNotes && (
-                <div className="form-group">
-                  <label className="form-label">Guest Profile Notes</label>
-                  <textarea
-                    className="form-textarea"
-                    value={reservation.guestNotes}
-                    readOnly
-                    style={{ background: 'var(--light-gray)' }}
-                  />
-                </div>
-              )}
             </div>
           )}
         </div>
