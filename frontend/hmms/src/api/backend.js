@@ -47,6 +47,26 @@ const STUB_DATA = {
     totalRevenue: 32850.0,
     averagePricePerNight: 189.4,
   },
+  analyticsReport: {
+    fromDate: '2026-03-01',
+    toDate: '2026-03-31',
+    totalRevenue: 32850.0,
+    occupancyPercentage: 74.5,
+    averageDailyRate: 189.4,
+    revenuePerAvailableNight: 141.1,
+    totalReservations: 42,
+    totalNights: 173,
+    availableNights: 232,
+    averageLengthOfStay: 4.2,
+    cancellationRate: 8.5,
+    cancelledReservations: 4,
+    reservationsStartingInPeriod: 46,
+    revenueByChannel: {
+      direct: 18500.0,
+      'booking.com': 9100.0,
+      airbnb: 5250.0,
+    },
+  },
   operations: {
     arrivalsToday: [
       { id: 201, guestName: 'Mila Peters', suiteName: 'Canal View Suite' },
@@ -179,6 +199,14 @@ export async function fetchAnalytics(month) {
   const url = month ? `${BASE_URL}/analytics/monthly/${month}` : `${BASE_URL}/analytics/monthly`;
   const data = await getJson(url, 'Failed to fetch analytics');
   return withStubFallback(data, STUB_DATA.analytics);
+}
+
+export async function fetchAnalyticsReport(from, to) {
+  const data = await getJson(
+    `${BASE_URL}/analytics/report?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+    'Failed to fetch analytics report',
+  );
+  return withStubFallback(data, STUB_DATA.analyticsReport);
 }
 
 export async function fetchOperationsDashboard() {

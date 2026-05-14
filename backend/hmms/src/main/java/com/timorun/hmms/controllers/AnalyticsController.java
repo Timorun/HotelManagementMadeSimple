@@ -1,10 +1,12 @@
 package com.timorun.hmms.controllers;
 
+import com.timorun.hmms.dto.AnalyticsReportResponse;
 import com.timorun.hmms.dto.MonthlyAnalyticsResponse;
 import com.timorun.hmms.services.AnalyticsService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.time.YearMonth;
 
 @RestController
@@ -38,6 +40,22 @@ public class AnalyticsController {
             MonthlyAnalyticsResponse analytics = analyticsService.getMonthlyAnalytics(yearMonth);
             return ResponseEntity.ok(analytics);
         } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    /**
+     * Get analytics report for a specific date range.
+     * GET /api/analytics/report?from=2026-01-01&to=2026-01-31
+     */
+    @GetMapping("/report")
+    public ResponseEntity<AnalyticsReportResponse> getAnalyticsReport(
+            @RequestParam LocalDate from,
+            @RequestParam LocalDate to) {
+        try {
+            AnalyticsReportResponse report = analyticsService.getAnalyticsReport(from, to);
+            return ResponseEntity.ok(report);
+        } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
         }
     }

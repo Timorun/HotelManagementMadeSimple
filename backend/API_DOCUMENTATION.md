@@ -487,11 +487,3 @@ When creating a reservation:
 - Guests: All personal data anonymized (email, phone, notes, nationality)
 
 ---
-
-## NEXT FEATURES (Phase 2)
-
-- [ ] Operational Views (Calendar, Arrivals, Departures, Rooms to Clean)
-- [ ] Analytics Dashboard (Occupancy %, Revenue, Avg Price)
-- [ ] User Authentication & Authorization
-- [ ] Excel Import Script
-- [ ] Audit Logging with updatedBy tracking
