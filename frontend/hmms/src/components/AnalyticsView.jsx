@@ -612,7 +612,7 @@ export default function AnalyticsView() {
     <div className="analytics-page">
       <section className="card analytics-hero">
         <div className="analytics-hero-top">
-          <div>
+          <div className="analytics-hero-copy">
             <h2 className="analytics-hero-title">
               <BarChart3 size={28} />
               Analytics Hub
@@ -622,36 +622,46 @@ export default function AnalyticsView() {
             </p>
           </div>
 
-          <button className="btn btn-accent" onClick={handleExportAnalytics}>
-            <Download size={16} />
-            Export Analytics Report
-          </button>
+          <div className="analytics-hero-actions">
+            <button className="btn btn-accent" onClick={handleExportAnalytics}>
+              <Download size={16} />
+              Export Analytics Report
+            </button>
+          </div>
         </div>
 
         <div className="analytics-control-grid">
-          <div>
-            <label className="form-label">From</label>
-            <input
-              type="date"
-              className="form-input analytics-date-input"
-              value={dateFrom}
-              onChange={(event) => {
-                setDateFrom(event.target.value);
-                setActivePreset('custom');
-              }}
-            />
+          <div className="analytics-date-cluster">
+            <div>
+              <label className="form-label">From</label>
+              <input
+                type="date"
+                className="form-input analytics-date-input"
+                value={dateFrom}
+                onChange={(event) => {
+                  setDateFrom(event.target.value);
+                  setActivePreset('custom');
+                }}
+              />
+            </div>
+            <div>
+              <label className="form-label">To</label>
+              <input
+                type="date"
+                className="form-input analytics-date-input"
+                value={dateTo}
+                onChange={(event) => {
+                  setDateTo(event.target.value);
+                  setActivePreset('custom');
+                }}
+              />
+            </div>
           </div>
-          <div>
-            <label className="form-label">To</label>
-            <input
-              type="date"
-              className="form-input analytics-date-input"
-              value={dateTo}
-              onChange={(event) => {
-                setDateTo(event.target.value);
-                setActivePreset('custom');
-              }}
-            />
+          <div className="analytics-period-inline">
+            <span className="analytics-strip-label">Selected Period</span>
+            <strong>{periodLabel || `${dateFrom} - ${dateTo}`}</strong>
+            <small className="analytics-strip-subtle">Compared with {previousPeriodLabel}</small>
+            <small className="analytics-strip-subtle">{selectedLengthLabel}</small>
           </div>
           <div className="analytics-presets">
             <span className="analytics-presets-label">Quick Range</span>
@@ -669,15 +679,6 @@ export default function AnalyticsView() {
             <small className="analytics-presets-hint">
               Baseline comparison is always on and uses the immediately preceding window with equal length.
             </small>
-          </div>
-        </div>
-
-        <div className="analytics-period-strip">
-          <div className="analytics-period-main">
-            <span className="analytics-strip-label">Selected Period</span>
-            <strong>{periodLabel || `${dateFrom} - ${dateTo}`}</strong>
-            <small className="analytics-strip-subtle">Compared with {previousPeriodLabel}</small>
-            <small className="analytics-strip-subtle">{selectedLengthLabel}</small>
           </div>
         </div>
       </section>
