@@ -118,27 +118,9 @@ public class AnalyticsService {
     }
 
     private ComparisonPeriod resolveComparisonPeriod(LocalDate from, LocalDate to, int daysInPeriod) {
-        if (isFullCalendarMonth(from, to)) {
-            YearMonth previousMonth = YearMonth.from(from).minusMonths(1);
-            return new ComparisonPeriod(
-                    previousMonth.atDay(1),
-                    previousMonth.atEndOfMonth(),
-                    "PREVIOUS_CALENDAR_MONTH"
-            );
-        }
-
         LocalDate previousTo = from.minusDays(1);
         LocalDate previousFrom = previousTo.minusDays(daysInPeriod - 1L);
         return new ComparisonPeriod(previousFrom, previousTo, "PREVIOUS_EQUAL_DAYS");
-    }
-
-    private boolean isFullCalendarMonth(LocalDate from, LocalDate to) {
-        if (from == null || to == null) {
-            return false;
-        }
-
-        YearMonth month = YearMonth.from(from);
-        return from.equals(month.atDay(1)) && to.equals(month.atEndOfMonth());
     }
 
     private PeriodComputation computePeriod(LocalDate from, LocalDate to, boolean includeDetailedData) {
@@ -448,7 +430,7 @@ public class AnalyticsService {
         definitions.put("revenuePerAvailableNight", "Total revenue divided by all available room nights (empty nights included).");
         definitions.put("occupancyPercentage", "Occupied room nights divided by available room nights for the selected period.");
         definitions.put("cancellationRate", "Cancelled reservations divided by reservations with check-in dates in the selected period.");
-        definitions.put("comparisonMode", "Full calendar months compare to the previous calendar month; other ranges compare to the immediately preceding equal-length window.");
+        definitions.put("comparisonMode", "The selected range compares to the immediately preceding equal-length window.");
         return definitions;
     }
 

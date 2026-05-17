@@ -52,9 +52,9 @@ const STUB_DATA = {
     toDate: '2026-03-31',
     daysInPeriod: 31,
     currency: 'EUR',
-    comparisonFromDate: '2026-02-01',
+    comparisonFromDate: '2026-01-29',
     comparisonToDate: '2026-02-28',
-    comparisonMode: 'PREVIOUS_CALENDAR_MONTH',
+    comparisonMode: 'PREVIOUS_EQUAL_DAYS',
     summary: {
       totalRevenue: 32850.0,
       occupancyPercentage: 74.5,
@@ -125,7 +125,7 @@ const STUB_DATA = {
       revenuePerAvailableNight: 'Total revenue divided by all available room nights (empty nights included).',
       occupancyPercentage: 'Occupied room nights divided by available room nights for the selected period.',
       cancellationRate: 'Cancelled reservations divided by reservations with check-in dates in the selected period.',
-      comparisonMode: 'Full calendar months compare to the previous calendar month; other ranges compare to the immediately preceding equal-length window.',
+      comparisonMode: 'The selected range compares to the immediately preceding equal-length window.',
     },
   },
   operations: {

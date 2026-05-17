@@ -9,3 +9,4 @@ applyTo:
 - Prefer small, targeted changes rather than broad refactors unless explicitly requested.
 - When suggesting improvements, mention workspace-level settings that reduce indexing and watcher load.
 - Keep task execution efficient and avoid opening or scanning unnecessary large directories.
+- This application is in development and has not yet been deployed, do not think about backwards compatibility when suggesting changes.
