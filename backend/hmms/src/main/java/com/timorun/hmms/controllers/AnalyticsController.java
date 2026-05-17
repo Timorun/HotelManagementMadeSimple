@@ -46,14 +46,15 @@ public class AnalyticsController {
 
     /**
      * Get analytics report for a specific date range.
-     * GET /api/analytics/report?from=2026-01-01&to=2026-01-31
+     * GET /api/analytics/report?from=2026-01-01&to=2026-01-31&compare=false
      */
     @GetMapping("/report")
     public ResponseEntity<AnalyticsReportResponse> getAnalyticsReport(
             @RequestParam LocalDate from,
-            @RequestParam LocalDate to) {
+            @RequestParam LocalDate to,
+            @RequestParam(defaultValue = "false") boolean compare) {
         try {
-            AnalyticsReportResponse report = analyticsService.getAnalyticsReport(from, to);
+            AnalyticsReportResponse report = analyticsService.getAnalyticsReport(from, to, compare);
             return ResponseEntity.ok(report);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
