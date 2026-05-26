@@ -1,11 +1,21 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { fetchReservations, fetchSuites, fetchNationalities, createReservation, updateReservation, cancelReservation, searchGuests, updateReservationStatus, fetchGuest, updateGuest } from '../api/backend';
-import { Calendar, Plus, Edit, X, Search, AlertCircle, CheckCircle, Users, Euro, Download } from 'lucide-react';
+import { Calendar, Plus, Search, AlertCircle, CheckCircle, Users, Euro, Download, Eye } from 'lucide-react';
 import { format, differenceInDays, parseISO, isBefore, addDays, startOfMonth, endOfMonth } from 'date-fns';
 import { STATUS_META, getTransitionWarning } from '../api/reservationStatus';
 import { exportRowsToExcel } from '../utils/excelExport';
 import { useI18n } from '../context/I18nContext';
+import { ConfirmCancelReservationModal, ReservationDetailsModal } from './reservations/ReservationDetailsModal';
+
+const STATUS_FILTER_DEFAULTS = Object.keys(STATUS_META).reduce((accumulator, statusKey) => {
+  accumulator[statusKey] = true;
+  return accumulator;
+}, {});
+
+function isCompleteDateValue(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
+}
 
 export default function ReservationManagement() {
   const { t } = useI18n();
@@ -20,6 +30,8 @@ export default function ReservationManagement() {
   const [editingReservation, setEditingReservation] = useState(null);
   const [dateFrom, setDateFrom] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [dateTo, setDateTo] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [dateFromDraft, setDateFromDraft] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [dateToDraft, setDateToDraft] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
   const [searchTerm, setSearchTerm] = useState('');
   const [guestSearchResults, setGuestSearchResults] = useState([]);
   const [searchingGuests, setSearchingGuests] = useState(false);
@@ -27,12 +39,33 @@ export default function ReservationManagement() {
   const [validationErrors, setValidationErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState(null);
-  const [confirmDialog, setConfirmDialog] = useState(null);
   const searchTimerRef = useRef(null);
-  const [statusFilter, setStatusFilter] = useState('all');
+  const dateApplyTimerRef = useRef(null);
+  const statusDropdownRef = useRef(null);
+  const [statusFilters, setStatusFilters] = useState(STATUS_FILTER_DEFAULTS);
+  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
   const [channelFilter, setChannelFilter] = useState('all');
   const [guestFilter, setGuestFilter] = useState('');
+  const [sortBy, setSortBy] = useState('checkIn');
+  const [sortDirection, setSortDirection] = useState('asc');
   const [priceInputSource, setPriceInputSource] = useState('total');
+  const [selectedReservation, setSelectedReservation] = useState(null);
+  const [showReservationModal, setShowReservationModal] = useState(false);
+  const [showCancelConfirmModal, setShowCancelConfirmModal] = useState(false);
+  const [isEditingReservationDetails, setIsEditingReservationDetails] = useState(false);
+  const [savingReservationDetails, setSavingReservationDetails] = useState(false);
+  const [reservationModalError, setReservationModalError] = useState(null);
+  const [reservationEditForm, setReservationEditForm] = useState({
+    suiteId: '',
+    checkIn: '',
+    checkOut: '',
+    numGuests: 1,
+    priceTotal: '',
+    channel: 'direct',
+    notes: '',
+    guestNotes: '',
+    status: 'pending',
+  });
 
   const [formData, setFormData] = useState({
     suiteId: '',
@@ -202,7 +235,38 @@ export default function ReservationManagement() {
     [editingReservation, formData.guestId, formData.firstName, formData.lastName, formData.email]
   );
 
+  const canApplyDateFilters = useMemo(() => {
+    if (!isCompleteDateValue(dateFromDraft) || !isCompleteDateValue(dateToDraft)) {
+      return false;
+    }
+
+    return dateFromDraft !== dateFrom || dateToDraft !== dateTo;
+  }, [dateFromDraft, dateToDraft, dateFrom, dateTo]);
+
+  const statusFilterSummary = useMemo(() => {
+    const availableStatuses = Object.keys(STATUS_META);
+    const enabledStatuses = availableStatuses.filter((status) => Boolean(statusFilters[status]));
+
+    if (enabledStatuses.length === availableStatuses.length) {
+      return 'All statuses';
+    }
+
+    if (enabledStatuses.length === 0) {
+      return 'No statuses selected';
+    }
+
+    if (enabledStatuses.length <= 2) {
+      return enabledStatuses.map((status) => STATUS_META[status]?.label || status).join(', ');
+    }
+
+    return `${enabledStatuses.length} statuses selected`;
+  }, [statusFilters]);
+
   useEffect(() => {
+    if (!isCompleteDateValue(dateFrom) || !isCompleteDateValue(dateTo)) {
+      return;
+    }
+
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateFrom, dateTo]);
@@ -221,8 +285,30 @@ export default function ReservationManagement() {
       if (searchTimerRef.current) {
         clearTimeout(searchTimerRef.current);
       }
+
+      if (dateApplyTimerRef.current) {
+        clearTimeout(dateApplyTimerRef.current);
+      }
     };
   }, []);
+
+  useEffect(() => {
+    if (!isStatusDropdownOpen) {
+      return undefined;
+    }
+
+    const handleClickOutside = (event) => {
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(event.target)) {
+        setIsStatusDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isStatusDropdownOpen]);
 
   const loadData = useCallback(() => {
     setLoading(true);
@@ -244,6 +330,65 @@ export default function ReservationManagement() {
       })
       .finally(() => setLoading(false));
   }, [dateFrom, dateTo, showToast]);
+
+  const applyDateFilterDraft = useCallback(() => {
+    if (!isCompleteDateValue(dateFromDraft) || !isCompleteDateValue(dateToDraft)) {
+      return;
+    }
+
+    if (dateFromDraft === dateFrom && dateToDraft === dateTo) {
+      return;
+    }
+
+    setDateFrom(dateFromDraft);
+    setDateTo(dateToDraft);
+  }, [dateFromDraft, dateToDraft, dateFrom, dateTo]);
+
+  const scheduleDateFilterApply = useCallback(() => {
+    if (dateApplyTimerRef.current) {
+      clearTimeout(dateApplyTimerRef.current);
+    }
+
+    dateApplyTimerRef.current = setTimeout(() => {
+      applyDateFilterDraft();
+      dateApplyTimerRef.current = null;
+    }, 1000);
+  }, [applyDateFilterDraft]);
+
+  const handleDateInputChange = useCallback((field, value) => {
+    if (field === 'from') {
+      setDateFromDraft(value);
+    } else {
+      setDateToDraft(value);
+    }
+
+    scheduleDateFilterApply();
+  }, [scheduleDateFilterApply]);
+
+  const handleDateInputBlur = useCallback(() => {
+    if (dateApplyTimerRef.current) {
+      clearTimeout(dateApplyTimerRef.current);
+      dateApplyTimerRef.current = null;
+    }
+
+    applyDateFilterDraft();
+  }, [applyDateFilterDraft]);
+
+  const handleDateInputKeyDown = useCallback((event) => {
+    if (event.key !== 'Enter') {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (dateApplyTimerRef.current) {
+      clearTimeout(dateApplyTimerRef.current);
+      dateApplyTimerRef.current = null;
+    }
+
+    applyDateFilterDraft();
+    event.currentTarget.blur();
+  }, [applyDateFilterDraft]);
 
   const handleSearchGuests = useCallback(async (searchQuery) => {
     const normalizedQuery = searchQuery.trim();
@@ -275,7 +420,7 @@ export default function ReservationManagement() {
           const firstName = (guest.firstName || '').trim().toLowerCase();
           const lastName = (guest.lastName || '').trim().toLowerCase();
 
-          if (firstName === '[deleted]' || lastName === '[deleted]') {
+          if (firstName === 'anonymized' || lastName === 'guest') {
             return false;
           }
 
@@ -458,53 +603,6 @@ export default function ReservationManagement() {
     setShowModal(true);
   }, []);
 
-  const openEditModal = useCallback((reservation) => {
-    if (searchTimerRef.current) {
-      clearTimeout(searchTimerRef.current);
-      searchTimerRef.current = null;
-    }
-
-    const guestNameParts = (reservation.guestName || '').trim().split(' ').filter(Boolean);
-    const inferredFirstName = guestNameParts[0] || '';
-    const inferredLastName = guestNameParts.slice(1).join(' ');
-    let calculatedPricePerNight = '';
-
-    try {
-      const nights = differenceInDays(parseISO(reservation.checkOut), parseISO(reservation.checkIn));
-      const parsedTotal = parseCurrencyValue(reservation.priceTotal);
-
-      if (nights > 0 && parsedTotal !== null) {
-        calculatedPricePerNight = formatCurrencyValue(parsedTotal / nights);
-      }
-    } catch {
-      calculatedPricePerNight = '';
-    }
-
-    setEditingReservation(reservation);
-    setValidationErrors({});
-    setError(null);
-    setFormData({
-      suiteId: reservation.suiteId,
-      checkIn: reservation.checkIn,
-      checkOut: reservation.checkOut,
-      numGuests: reservation.numGuests,
-      pricePerNight: calculatedPricePerNight,
-      priceTotal: reservation.priceTotal,
-      channel: reservation.channel,
-      guestId: reservation.guestId,
-      firstName: inferredFirstName,
-      lastName: inferredLastName,
-      email: reservation.email || '',
-      phone: reservation.phone || '',
-      guestNotes: reservation.guestNotes || '',
-      nationalityCode: '',
-      notes: reservation.notes || '',
-      status: reservation.status || 'pending',
-    });
-    setPriceInputSource('total');
-    setShowModal(true);
-  }, [formatCurrencyValue, parseCurrencyValue]);
-
   const submitReservation = useCallback(async () => {
     setSubmitting(true);
     setError(null);
@@ -609,26 +707,31 @@ export default function ReservationManagement() {
     await submitReservation();
   }, [ showToast, submitReservation, validateForm]);
 
-  const handleCancel = useCallback((reservation) => {
-    setConfirmDialog({
-      title: 'Cancel Reservation',
-      message: `Are you sure you want to cancel the reservation for ${reservation.guestName}?`,
-      onConfirm: async () => {
-        try {
-          await cancelReservation(reservation.reservationId);
-          showToast('Reservation cancelled successfully', 'success');
-          loadData();
-        } catch (err) {
-          const errorMsg = err?.message || 'Failed to cancel reservation';
-          setError(errorMsg);
-          showToast(errorMsg, 'error');
-        } finally {
-          setConfirmDialog(null);
-        }
-      },
-      onCancel: () => setConfirmDialog(null),
-    });
-  }, [loadData, showToast]);
+  const toggleStatusFilter = useCallback((status) => {
+    setStatusFilters((prev) => ({
+      ...prev,
+      [status]: !prev[status],
+    }));
+  }, []);
+
+  const resetStatusFilters = useCallback(() => {
+    setStatusFilters(STATUS_FILTER_DEFAULTS);
+  }, []);
+
+  const enableAllStatusFilters = useCallback(() => {
+    const nextFilters = Object.keys(STATUS_META).reduce((accumulator, status) => {
+      accumulator[status] = true;
+      return accumulator;
+    }, {});
+    setStatusFilters(nextFilters);
+  }, []);
+
+  const clearReservationListFilters = useCallback(() => {
+    setStatusFilters(STATUS_FILTER_DEFAULTS);
+    setIsStatusDropdownOpen(false);
+    setChannelFilter('all');
+    setGuestFilter('');
+  }, []);
 
   const getStatusBadgeClass = (status) => {
     const statusMap = {
@@ -640,20 +743,246 @@ export default function ReservationManagement() {
     return `status-badge ${statusMap[status] || ''}`;
   };
 
+  const getReservationEditValidationErrors = useCallback(() => {
+    const errors = [];
+    const selectedSuite = suites.find((suite) => suite.suiteId === Number(reservationEditForm.suiteId));
+    const numGuests = Number(reservationEditForm.numGuests);
+    const priceTotal = Number(reservationEditForm.priceTotal);
+
+    if (!reservationEditForm.checkIn || !reservationEditForm.checkOut) {
+      errors.push('Check-in and check-out dates are required.');
+    } else if (parseISO(reservationEditForm.checkOut) <= parseISO(reservationEditForm.checkIn)) {
+      errors.push('Check-out must be after check-in.');
+    }
+
+    if (!Number.isFinite(numGuests) || numGuests < 1) {
+      errors.push('Guests must be at least 1.');
+    }
+
+    if (selectedSuite?.capacity && numGuests > selectedSuite.capacity) {
+      errors.push(`Guests exceed suite capacity (${selectedSuite.capacity}).`);
+    }
+
+    if (!Number.isFinite(priceTotal) || priceTotal < 0) {
+      errors.push('Price must be 0 or higher.');
+    }
+
+    return errors;
+  }, [reservationEditForm, suites]);
+
+  const reservationEditValidationErrors = useMemo(
+    () => getReservationEditValidationErrors(),
+    [getReservationEditValidationErrors]
+  );
+  const isReservationEditValid = reservationEditValidationErrors.length === 0;
+
+  const openReservationModal = useCallback((reservation) => {
+    setSelectedReservation(reservation);
+    setReservationModalError(null);
+    setReservationEditForm({
+      suiteId: reservation.suiteId,
+      checkIn: reservation.checkIn,
+      checkOut: reservation.checkOut,
+      numGuests: reservation.numGuests,
+      priceTotal: reservation.priceTotal,
+      channel: reservation.channel || 'direct',
+      notes: reservation.notes || '',
+      guestNotes: reservation.guestNotes || '',
+      status: reservation.status || 'pending',
+    });
+    setIsEditingReservationDetails(false);
+    setShowReservationModal(true);
+  }, []);
+
+  const closeReservationModal = useCallback(() => {
+    setShowReservationModal(false);
+    setShowCancelConfirmModal(false);
+    setSelectedReservation(null);
+    setIsEditingReservationDetails(false);
+    setReservationModalError(null);
+  }, []);
+
+  const requestCancelReservation = useCallback(() => {
+    setShowCancelConfirmModal(true);
+  }, []);
+
+  const handleSaveReservationFromModal = useCallback(async () => {
+    if (!selectedReservation) return;
+    if (!isReservationEditValid) {
+      setReservationModalError(reservationEditValidationErrors[0]);
+      return;
+    }
+
+    try {
+      setSavingReservationDetails(true);
+      setReservationModalError(null);
+
+      const statusChanged = reservationEditForm.status !== selectedReservation.status;
+
+      await updateReservation(selectedReservation.reservationId, {
+        suiteId: parseInt(reservationEditForm.suiteId, 10),
+        guestId: selectedReservation.guestId,
+        checkIn: reservationEditForm.checkIn,
+        checkOut: reservationEditForm.checkOut,
+        numGuests: parseInt(reservationEditForm.numGuests, 10),
+        priceTotal: parseFloat(reservationEditForm.priceTotal),
+        channel: reservationEditForm.channel,
+        notes: reservationEditForm.notes,
+      });
+
+      if (statusChanged) {
+        await updateReservationStatus(selectedReservation.reservationId, reservationEditForm.status);
+      }
+
+      let guestNotesSyncError = null;
+      const guestNotesChanged = (reservationEditForm.guestNotes || '') !== (selectedReservation.guestNotes || '');
+      if (guestNotesChanged && selectedReservation.guestId) {
+        try {
+          const guestProfile = await fetchGuest(selectedReservation.guestId);
+          await updateGuest(selectedReservation.guestId, {
+            firstName: guestProfile.firstName,
+            lastName: guestProfile.lastName,
+            email: guestProfile.email,
+            phone: guestProfile.phone,
+            nationalityCode: guestProfile.nationalityCode,
+            marketingConsent: guestProfile.marketingConsent,
+            notes: reservationEditForm.guestNotes || '',
+          });
+        } catch (guestErr) {
+          console.error('Failed to update guest profile notes:', guestErr);
+          guestNotesSyncError = 'Reservation was saved, but guest profile notes could not be saved. Please try again.';
+        }
+      }
+
+      await loadData();
+
+      if (guestNotesSyncError) {
+        setSelectedReservation((prev) => {
+          if (!prev) {
+            return prev;
+          }
+
+          return {
+            ...prev,
+            suiteId: parseInt(reservationEditForm.suiteId, 10),
+            checkIn: reservationEditForm.checkIn,
+            checkOut: reservationEditForm.checkOut,
+            numGuests: parseInt(reservationEditForm.numGuests, 10),
+            priceTotal: parseFloat(reservationEditForm.priceTotal),
+            channel: reservationEditForm.channel,
+            notes: reservationEditForm.notes,
+            guestNotes: reservationEditForm.guestNotes,
+            status: reservationEditForm.status,
+          };
+        });
+        setReservationModalError(guestNotesSyncError);
+        return;
+      }
+
+      showToast('Reservation updated successfully', 'success');
+      setIsEditingReservationDetails(false);
+      closeReservationModal();
+    } catch (err) {
+      console.error('Failed to update reservation:', err);
+      setReservationModalError(err?.message || 'Failed to update reservation');
+    } finally {
+      setSavingReservationDetails(false);
+    }
+  }, [
+    closeReservationModal,
+    isReservationEditValid,
+    loadData,
+    reservationEditForm,
+    reservationEditValidationErrors,
+    selectedReservation,
+    showToast,
+  ]);
+
+  const handleConfirmCancelReservation = useCallback(async () => {
+    if (!selectedReservation) return;
+
+    try {
+      setSavingReservationDetails(true);
+      setReservationModalError(null);
+
+      await cancelReservation(selectedReservation.reservationId);
+      await loadData();
+      showToast('Reservation cancelled successfully', 'success');
+      closeReservationModal();
+    } catch (err) {
+      console.error('Failed to cancel reservation:', err);
+      setReservationModalError(err?.message || 'Failed to cancel reservation');
+    } finally {
+      setShowCancelConfirmModal(false);
+      setSavingReservationDetails(false);
+    }
+  }, [closeReservationModal, loadData, selectedReservation, showToast]);
+
   const filteredReservations = useMemo(() => {
     const needle = guestFilter.toLowerCase();
+    const hasEnabledStatus = Object.values(statusFilters).some(Boolean);
 
-    return reservations.filter((res) => {
-      const statusMatches = statusFilter === 'all' || res.status === statusFilter;
+    const matchingReservations = reservations.filter((res) => {
+      const normalizedStatus = (res.status || '').toLowerCase();
+      const statusMatches = hasEnabledStatus
+        ? (statusFilters[normalizedStatus] ?? true)
+        : true;
       const channelMatches = channelFilter === 'all' || res.channel === channelFilter;
       const guestMatches = !needle || (res.guestDisplayName || res.guestName || '').toLowerCase().includes(needle);
 
       return statusMatches && channelMatches && guestMatches;
     });
-  }, [reservations, statusFilter, channelFilter, guestFilter]);
+
+    const sortedReservations = [...matchingReservations].sort((left, right) => {
+      const directionMultiplier = sortDirection === 'asc' ? 1 : -1;
+
+      if (sortBy === 'checkIn' || sortBy === 'checkOut') {
+        const leftDate = Date.parse(left[sortBy] || '');
+        const rightDate = Date.parse(right[sortBy] || '');
+        const leftTimestamp = Number.isFinite(leftDate) ? leftDate : 0;
+        const rightTimestamp = Number.isFinite(rightDate) ? rightDate : 0;
+
+        if (leftTimestamp === rightTimestamp) {
+          return (Number(left.reservationId || 0) - Number(right.reservationId || 0)) * directionMultiplier;
+        }
+
+        return (leftTimestamp - rightTimestamp) * directionMultiplier;
+      }
+
+      if (sortBy === 'priceTotal') {
+        const leftPrice = Number.parseFloat(left.priceTotal || 0);
+        const rightPrice = Number.parseFloat(right.priceTotal || 0);
+        return (leftPrice - rightPrice) * directionMultiplier;
+      }
+
+      const leftValue = sortBy === 'guest'
+        ? (left.guestDisplayName || left.guestName || '')
+        : (left[sortBy] || '');
+      const rightValue = sortBy === 'guest'
+        ? (right.guestDisplayName || right.guestName || '')
+        : (right[sortBy] || '');
+
+      return String(leftValue).localeCompare(String(rightValue), undefined, { sensitivity: 'base' }) * directionMultiplier;
+    });
+
+    return sortedReservations;
+  }, [reservations, statusFilters, channelFilter, guestFilter, sortBy, sortDirection]);
+
+  const activeReservationFilterCount = useMemo(() => {
+    const hasCustomStatusFilters = Object.keys(STATUS_META).some(
+      (status) => Boolean(statusFilters[status]) !== Boolean(STATUS_FILTER_DEFAULTS[status])
+    );
+
+    return [
+      hasCustomStatusFilters,
+      channelFilter !== 'all',
+      Boolean(guestFilter.trim()),
+    ].filter(Boolean).length;
+  }, [statusFilters, channelFilter, guestFilter]);
 
   const handleExportReservations = useCallback(() => {
     const rows = filteredReservations.map((res) => ({
+      nights: Math.max(0, differenceInDays(parseISO(res.checkOut), parseISO(res.checkIn))),
       reservationId: res.reservationId,
       guest: res.guestDisplayName || res.guestName,
       guestAnonymized: res.guestAnonymized ? 'Yes' : 'No',
@@ -661,6 +990,11 @@ export default function ReservationManagement() {
       checkIn: res.checkIn,
       checkOut: res.checkOut,
       numGuests: res.numGuests,
+      pricePerNight: (() => {
+        const nights = Math.max(0, differenceInDays(parseISO(res.checkOut), parseISO(res.checkIn)));
+        if (nights === 0) return '';
+        return (Number.parseFloat(res.priceTotal || 0) / nights).toFixed(2);
+      })(),
       priceTotal: res.priceTotal,
       channel: res.channel,
       status: res.status,
@@ -675,6 +1009,30 @@ export default function ReservationManagement() {
     }
     return getTransitionWarning(editingReservation.status, formData.status);
   }, [editingReservation, formData.status]);
+
+  const handleTableSort = useCallback((field) => {
+    if (sortBy === field) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+
+    setSortBy(field);
+    setSortDirection('asc');
+  }, [sortBy]);
+
+  const getSortIndicator = useCallback((field) => {
+    if (sortBy !== field) {
+      return '↕';
+    }
+
+    return sortDirection === 'asc' ? '↑' : '↓';
+  }, [sortBy, sortDirection]);
+
+  const getAriaSort = useCallback((field) => (
+    sortBy === field
+      ? (sortDirection === 'asc' ? 'ascending' : 'descending')
+      : 'none'
+  ), [sortBy, sortDirection]);
 
   if (loading) {
     return (
@@ -729,38 +1087,6 @@ export default function ReservationManagement() {
         </div>
       )}
 
-      {/* Confirmation Dialog */}
-      {confirmDialog && (
-        <div className="modal-overlay" onClick={confirmDialog.onCancel}>
-          <div 
-            className="modal" 
-            style={{ maxWidth: '400px' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="modal-header">
-              <h3 className="modal-title">{confirmDialog.title}</h3>
-            </div>
-            <div className="modal-body">
-              <p>{confirmDialog.message}</p>
-            </div>
-            <div className="modal-footer">
-              <button 
-                onClick={confirmDialog.onCancel} 
-                className="btn btn-outline"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={confirmDialog.onConfirm} 
-                className="btn btn-danger"
-              >
-                Confirm
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="card">
         <div className="card-header">
           <h2>
@@ -791,15 +1117,39 @@ export default function ReservationManagement() {
           </div>
         )}
 
-        <div className="form-group">
-          <div style={{ display: 'grid', gridTemplateColumns: 'auto auto 1fr 1fr 1fr auto', gap: '0.75rem', alignItems: 'end' }}>
+        <div className="form-group reservation-filters-panel">
+          <div className="list-filters-head">
+            <div>
+              <h3 className="list-filters-title">Filter Reservations</h3>
+              <p className="list-filters-subtitle">Narrow the list quickly by status, dates, channel, and guest name.</p>
+            </div>
+            <div className="list-filters-actions">
+              <span className="list-filters-count">{filteredReservations.length} shown</span>
+              <button type="button" className="btn btn-outline btn-sm" onClick={handleExportReservations}>
+                <Download size={16} />
+                {t('filters.exportExcel')}
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={clearReservationListFilters}
+                disabled={activeReservationFilterCount === 0}
+              >
+                Clear filters
+              </button>
+            </div>
+          </div>
+
+          <div className="reservation-filters-grid">
             <div>
               <label className="form-label">From:</label>
               <input
                 type="date"
                 className="form-input"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
+                value={dateFromDraft}
+                onChange={(e) => handleDateInputChange('from', e.target.value)}
+                onBlur={handleDateInputBlur}
+                onKeyDown={handleDateInputKeyDown}
               />
             </div>
             <div>
@@ -807,18 +1157,47 @@ export default function ReservationManagement() {
               <input
                 type="date"
                 className="form-input"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
+                value={dateToDraft}
+                onChange={(e) => handleDateInputChange('to', e.target.value)}
+                onBlur={handleDateInputBlur}
+                onKeyDown={handleDateInputKeyDown}
               />
             </div>
             <div>
               <label className="form-label">{t('filters.status')}:</label>
-              <select className="form-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-                <option value="all">{t('filters.all')}</option>
-                {Object.keys(STATUS_META).map((status) => (
-                  <option key={status} value={status}>{STATUS_META[status].label}</option>
-                ))}
-              </select>
+              <div className="status-filter-dropdown" ref={statusDropdownRef}>
+                <button
+                  type="button"
+                  className="form-select status-filter-trigger"
+                  onClick={() => setIsStatusDropdownOpen((prev) => !prev)}
+                  aria-expanded={isStatusDropdownOpen}
+                  aria-haspopup="menu"
+                >
+                  <span className="status-filter-trigger-label">{statusFilterSummary}</span>
+                  <span className="status-filter-trigger-caret">▾</span>
+                </button>
+
+                {isStatusDropdownOpen && (
+                  <div className="status-filter-menu" role="menu">
+                    <div className="status-filter-menu-actions">
+                      <button type="button" className="btn btn-outline btn-xs" onClick={enableAllStatusFilters}>All</button>
+                    </div>
+
+                    <div className="status-filter-menu-list">
+                      {Object.entries(STATUS_META).map(([status, meta]) => (
+                        <label key={status} className="status-filter-option">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(statusFilters[status])}
+                            onChange={() => toggleStatusFilter(status)}
+                          />
+                          <span>{meta.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
             <div>
               <label className="form-label">{t('filters.channel')}:</label>
@@ -841,10 +1220,6 @@ export default function ReservationManagement() {
                 onChange={(e) => setGuestFilter(e.target.value)}
               />
             </div>
-            <button className="btn btn-outline" onClick={handleExportReservations}>
-              <Download size={16} />
-              {t('filters.exportExcel')}
-            </button>
           </div>
         </div>
 
@@ -854,40 +1229,102 @@ export default function ReservationManagement() {
             <p>No reservations found for this date range</p>
           </div>
         ) : (
-          <table className="data-table">
+          <table className="data-table reservation-table">
             <thead>
               <tr>
-                <th>ID</th>
-                <th>Guest</th>
-                <th>Suite</th>
-                <th>Check-In</th>
-                <th>Check-Out</th>
-                <th>Guests</th>
-                <th>Price</th>
-                <th>Channel</th>
-                <th>Status</th>
-                <th>Actions</th>
+                <th className="col-id">ID</th>
+                <th className="col-guest" aria-sort={getAriaSort('guest')}>
+                  <button
+                    type="button"
+                    className={`sort-header-btn ${sortBy === 'guest' ? 'active' : ''}`}
+                    onClick={() => handleTableSort('guest')}
+                  >
+                    <span>Guest</span>
+                    <span className="sort-indicator" aria-hidden="true">{getSortIndicator('guest')}</span>
+                  </button>
+                </th>
+                <th className="col-suite">Suite</th>
+                <th className="col-checkin" aria-sort={getAriaSort('checkIn')}>
+                  <button
+                    type="button"
+                    className={`sort-header-btn ${sortBy === 'checkIn' ? 'active' : ''}`}
+                    onClick={() => handleTableSort('checkIn')}
+                  >
+                    <span>Check-In</span>
+                    <span className="sort-indicator" aria-hidden="true">{getSortIndicator('checkIn')}</span>
+                  </button>
+                </th>
+                <th className="col-checkout" aria-sort={getAriaSort('checkOut')}>
+                  <button
+                    type="button"
+                    className={`sort-header-btn ${sortBy === 'checkOut' ? 'active' : ''}`}
+                    onClick={() => handleTableSort('checkOut')}
+                  >
+                    <span>Check-Out</span>
+                    <span className="sort-indicator" aria-hidden="true">{getSortIndicator('checkOut')}</span>
+                  </button>
+                </th>
+                <th className="col-guests">Guests</th>
+                <th className="col-price" aria-sort={getAriaSort('priceTotal')}>
+                  <button
+                    type="button"
+                    className={`sort-header-btn ${sortBy === 'priceTotal' ? 'active' : ''}`}
+                    onClick={() => handleTableSort('priceTotal')}
+                  >
+                    <span>Price</span>
+                    <span className="sort-indicator" aria-hidden="true">{getSortIndicator('priceTotal')}</span>
+                  </button>
+                </th>
+                <th className="col-channel">Channel</th>
+                <th className="col-status" aria-sort={getAriaSort('status')}>
+                  <button
+                    type="button"
+                    className={`sort-header-btn ${sortBy === 'status' ? 'active' : ''}`}
+                    onClick={() => handleTableSort('status')}
+                  >
+                    <span>Status</span>
+                    <span className="sort-indicator" aria-hidden="true">{getSortIndicator('status')}</span>
+                  </button>
+                </th>
+                <th className="col-actions">Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredReservations.map((res) => (
                 <tr key={res.reservationId}>
-                  <td>#{res.reservationId}</td>
-                  <td style={{ fontWeight: 600 }}>
-                    {res.guestDisplayName || res.guestName}
+                  <td className="col-id">#{res.reservationId}</td>
+                  <td className="col-guest reservation-guest-cell" style={{ fontWeight: 600 }}>
                     {res.guestAnonymized && (
-                      <span style={{ marginLeft: '0.5rem', color: 'var(--dark-gray)', fontSize: '0.8rem' }}>
-                        (Anonymized)
-                      </span>
+                      <span style={{ color: 'var(--dark-gray)' }}>Anonymized/Deleted</span>
+                    )}
+                    {!res.guestAnonymized && (
+                      <>{res.guestDisplayName || res.guestName}</>
                     )}
                   </td>
-                  <td>{res.suiteName}</td>
-                  <td>{format(parseISO(res.checkIn), 'dd/MM/yyyy')}</td>
-                  <td>{format(parseISO(res.checkOut), 'dd/MM/yyyy')}</td>
-                  <td>{res.numGuests}</td>
-                  <td>€{res.priceTotal}</td>
-                  <td style={{ textTransform: 'capitalize' }}>{res.channel}</td>
-                  <td>
+                  <td className="col-suite reservation-suite-cell">{res.suiteName}</td>
+                  <td className="col-checkin">{format(parseISO(res.checkIn), 'dd/MM/yyyy')}</td>
+                  <td className="col-checkout">{format(parseISO(res.checkOut), 'dd/MM/yyyy')}</td>
+                  <td className="col-guests">{res.numGuests}</td>
+                  <td className="col-price reservation-price-cell">
+                    {(() => {
+                      const total = Number.parseFloat(res.priceTotal || 0);
+                      const nights = Math.max(0, differenceInDays(parseISO(res.checkOut), parseISO(res.checkIn)));
+                      const perNight = nights > 0 ? total / nights : null;
+
+                      return (
+                        <>
+                          <div className="reservation-price-total">{new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(total)}</div>
+                          <div className="reservation-price-night">
+                            {perNight === null
+                              ? '-'
+                              : `${new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(perNight)} / night`}
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </td>
+                  <td className="col-channel" style={{ textTransform: 'capitalize' }}>{res.channel}</td>
+                  <td className="col-status">
                     <span
                       className={getStatusBadgeClass(res.status)}
                       style={{
@@ -904,22 +1341,15 @@ export default function ReservationManagement() {
                       {STATUS_META[res.status]?.label || res.status}
                     </span>
                   </td>
-                  <td>
+                  <td className="col-actions">
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                       <button
-                        onClick={() => openEditModal(res)}
+                        onClick={() => openReservationModal(res)}
                         className="btn btn-primary btn-sm"
-                        title="Edit reservation"
+                        title="Open reservation"
                       >
-                        <Edit size={14} />
-                      </button>
-                      <button
-                        onClick={() => handleCancel(res)}
-                        className="btn btn-danger btn-sm"
-                        disabled={res.status === 'cancelled'}
-                        title="Cancel reservation"
-                      >
-                        <X size={14} />
+                        <Eye size={14} />
+                        Open
                       </button>
                     </div>
                   </td>
@@ -1396,7 +1826,7 @@ export default function ReservationManagement() {
                       placeholder="Guest profile notes (preferences, allergies, communication reminders)."
                     />
                     <span style={{ fontSize: '0.85rem', color: 'var(--dark-gray)', marginTop: '0.35rem', display: 'block' }}>
-                      Saved on the guest profile and reused in future reservations.
+                      Saved on the guest profile and visible on all reservations for this guest.
                     </span>
                   </div>
                 )}
@@ -1422,6 +1852,34 @@ export default function ReservationManagement() {
             </form>
           </div>
         </div>
+      )}
+
+      {showReservationModal && selectedReservation && (
+        <ReservationDetailsModal
+          reservation={selectedReservation}
+          suites={suites}
+          isEditing={isEditingReservationDetails}
+          setIsEditing={setIsEditingReservationDetails}
+          editForm={reservationEditForm}
+          setEditForm={setReservationEditForm}
+          onClose={closeReservationModal}
+          onSave={handleSaveReservationFromModal}
+          onRequestCancelReservation={requestCancelReservation}
+          saving={savingReservationDetails}
+          validationErrors={reservationEditValidationErrors}
+          isEditValid={isReservationEditValid}
+          modalError={reservationModalError}
+          setModalError={setReservationModalError}
+        />
+      )}
+
+      {showCancelConfirmModal && selectedReservation && (
+        <ConfirmCancelReservationModal
+          reservation={selectedReservation}
+          saving={savingReservationDetails}
+          onClose={() => setShowCancelConfirmModal(false)}
+          onConfirm={handleConfirmCancelReservation}
+        />
       )}
     </div>
   );

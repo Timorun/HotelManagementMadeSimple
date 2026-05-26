@@ -120,13 +120,6 @@ const STUB_DATA = {
       'Direct channel drives 56.3% of revenue; monitor channel concentration risk.',
       'Top revenue day was 2026-03-04 with €1560 and occupancy at 100.0%.',
     ],
-    metricDefinitions: {
-      averageDailyRate: 'Total revenue divided by occupied room nights (empty nights excluded).',
-      revenuePerAvailableNight: 'Total revenue divided by all available room nights (empty nights included).',
-      occupancyPercentage: 'Occupied room nights divided by available room nights for the selected period.',
-      cancellationRate: 'Cancelled reservations divided by reservations with check-in dates in the selected period.',
-      comparisonMode: 'The selected range compares to the immediately preceding equal-length window.',
-    },
   },
   operations: {
     arrivalsToday: [

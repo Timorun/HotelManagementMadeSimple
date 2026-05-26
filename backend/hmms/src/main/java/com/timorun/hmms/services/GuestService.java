@@ -134,8 +134,8 @@ public class GuestService {
         Guest guest = guestRepository.findById(guestId)
                 .orElseThrow(() -> new IllegalArgumentException("Guest not found with ID: " + guestId));
         
-        guest.setFirstName("[DELETED]");
-        guest.setLastName("[DELETED]");
+        guest.setFirstName("Anonymized");
+        guest.setLastName("Guest");
         guest.setEmail(null);
         guest.setPhone(null);
         guest.setNotes(null);

@@ -35,7 +35,6 @@ public class AnalyticsReportResponse {
     private List<StatusBreakdown> reservationStatusBreakdown;
     private List<DayHighlight> topRevenueDays;
     private List<String> insights;
-    private Map<String, String> metricDefinitions;
 
     @Data
     @NoArgsConstructor

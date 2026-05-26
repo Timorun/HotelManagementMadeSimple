@@ -281,8 +281,8 @@ Update guest information.
 GDPR-compliant data deletion. Removes personal data but keeps reservation history.
 
 **Fields Anonymized:**
-- firstName → "[DELETED]"
-- lastName → "[DELETED]"
+- firstName → "Anonimyzed"
+- lastName → "Guest"
 - email → NULL
 - phone → NULL
 - notes → NULL

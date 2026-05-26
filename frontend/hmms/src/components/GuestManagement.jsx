@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { fetchGuests, createGuest, updateGuest, fetchNationalities, anonymizeGuest } from '../api/backend';
 import { Users, Plus, Edit, Search, Mail, Phone, Globe, UserX, Download } from 'lucide-react';
 import { exportRowsToExcel } from '../utils/excelExport';
@@ -17,6 +17,9 @@ export default function GuestManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [guestTypeFilter, setGuestTypeFilter] = useState('all');
   const [marketingFilter, setMarketingFilter] = useState('all');
+  const [nationalityFilter, setNationalityFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('name');
+  const [sortDirection, setSortDirection] = useState('asc');
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -34,6 +37,8 @@ export default function GuestManagement() {
 
   useEffect(() => {
     const normalizedSearch = searchTerm.toLowerCase();
+    const selectedNationality = nationalityFilter.toLowerCase();
+
     const filtered = guests.filter((guest) => {
       const fullName = `${guest.firstName || ''} ${guest.lastName || ''}`.toLowerCase();
       const email = (guest.email || '').toLowerCase();
@@ -47,11 +52,41 @@ export default function GuestManagement() {
         || (marketingFilter === 'yes' && guest.marketingConsent)
         || (marketingFilter === 'no' && !guest.marketingConsent);
 
-      return searchMatches && guestTypeMatches && marketingMatches;
+      const guestNationalityCode = String(guest.nationalityCode || '').toLowerCase();
+      const guestNationalityName = String(guest.nationalityName || '').toLowerCase();
+      const nationalityMatches = selectedNationality === 'all'
+        || guestNationalityCode === selectedNationality
+        || guestNationalityName === selectedNationality;
+
+      return searchMatches && guestTypeMatches && marketingMatches && nationalityMatches;
     });
 
-    setFilteredGuests(filtered);
-  }, [searchTerm, guests, guestTypeFilter, marketingFilter]);
+    const sorted = [...filtered].sort((left, right) => {
+      const directionMultiplier = sortDirection === 'asc' ? 1 : -1;
+
+      if (sortBy === 'reservations') {
+        const leftCount = Number(left.reservationCount || 0);
+        const rightCount = Number(right.reservationCount || 0);
+
+        if (leftCount === rightCount) {
+          return (Number(left.guestId || 0) - Number(right.guestId || 0)) * directionMultiplier;
+        }
+
+        return (leftCount - rightCount) * directionMultiplier;
+      }
+
+      const leftName = left.anonymized
+        ? `Anonymous guest #${left.guestId}`
+        : `${left.firstName || ''} ${left.lastName || ''}`.trim();
+      const rightName = right.anonymized
+        ? `Anonymous guest #${right.guestId}`
+        : `${right.firstName || ''} ${right.lastName || ''}`.trim();
+
+      return leftName.localeCompare(rightName, undefined, { sensitivity: 'base' }) * directionMultiplier;
+    });
+
+    setFilteredGuests(sorted);
+  }, [searchTerm, guests, guestTypeFilter, marketingFilter, nationalityFilter, sortBy, sortDirection]);
 
   const loadData = () => {
     setLoading(true);
@@ -147,6 +182,46 @@ export default function GuestManagement() {
     exportRowsToExcel(rows, 'guests-export.xlsx', 'Guests');
   };
 
+  const activeGuestFilterCount = useMemo(() => {
+    return [
+      Boolean(searchTerm.trim()),
+      guestTypeFilter !== 'all',
+      marketingFilter !== 'all',
+      nationalityFilter !== 'all',
+    ].filter(Boolean).length;
+  }, [searchTerm, guestTypeFilter, marketingFilter, nationalityFilter]);
+
+  const clearGuestListFilters = () => {
+    setSearchTerm('');
+    setGuestTypeFilter('all');
+    setMarketingFilter('all');
+    setNationalityFilter('all');
+  };
+
+  const handleTableSort = (field) => {
+    if (sortBy === field) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+
+    setSortBy(field);
+    setSortDirection('asc');
+  };
+
+  const getSortIndicator = (field) => {
+    if (sortBy !== field) {
+      return '↕';
+    }
+
+    return sortDirection === 'asc' ? '↑' : '↓';
+  };
+
+  const getAriaSort = (field) => (
+    sortBy === field
+      ? (sortDirection === 'asc' ? 'ascending' : 'descending')
+      : 'none'
+  );
+
   if (loading) {
     return (
       <div className="loading-spinner">
@@ -176,9 +251,31 @@ export default function GuestManagement() {
           </div>
         )}
 
-        <div className="form-group">
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: '0.75rem' }}>
-            <div style={{ position: 'relative' }}>
+        <div className="form-group reservation-filters-panel guest-filters-panel">
+          <div className="list-filters-head">
+            <div>
+              <h3 className="list-filters-title">Filter Guests</h3>
+              <p className="list-filters-subtitle">Search by identity and refine by profile tags or activity.</p>
+            </div>
+            <div className="list-filters-actions">
+              <span className="list-filters-count">{filteredGuests.length} shown</span>
+              <button type="button" className="btn btn-outline btn-sm" onClick={handleExport}>
+                <Download size={16} />
+                {t('filters.exportExcel')}
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={clearGuestListFilters}
+                disabled={activeGuestFilterCount === 0}
+              >
+                Clear filters
+              </button>
+            </div>
+          </div>
+
+          <div className="guest-filters-grid">
+            <div className="guest-search-field" style={{ position: 'relative' }}>
               <input
                 type="text"
                 className="form-input"
@@ -198,10 +295,17 @@ export default function GuestManagement() {
               <option value="yes">Marketing: Yes</option>
               <option value="no">Marketing: No</option>
             </select>
-            <button className="btn btn-outline" onClick={handleExport}>
-              <Download size={16} />
-              {t('filters.exportExcel')}
-            </button>
+            <select className="form-select" value={nationalityFilter} onChange={(e) => setNationalityFilter(e.target.value)}>
+              <option value="all">Nationality: {t('filters.all')}</option>
+              {nationalities.map((nat) => {
+                const nationalityValue = String(nat.nationalityCode || nat.name || '').toLowerCase();
+                return (
+                  <option key={nat.nationalityCode || nat.name} value={nationalityValue}>
+                    {nat.name}
+                  </option>
+                );
+              })}
+            </select>
           </div>
         </div>
 
@@ -215,11 +319,29 @@ export default function GuestManagement() {
             <thead>
               <tr>
                 <th>ID</th>
-                <th>Name</th>
+                <th aria-sort={getAriaSort('name')}>
+                  <button
+                    type="button"
+                    className={`sort-header-btn ${sortBy === 'name' ? 'active' : ''}`}
+                    onClick={() => handleTableSort('name')}
+                  >
+                    <span>Name</span>
+                    <span className="sort-indicator" aria-hidden="true">{getSortIndicator('name')}</span>
+                  </button>
+                </th>
                 <th>Email</th>
                 <th>Phone</th>
                 <th>Nationality</th>
-                <th>Reservations</th>
+                <th aria-sort={getAriaSort('reservations')}>
+                  <button
+                    type="button"
+                    className={`sort-header-btn ${sortBy === 'reservations' ? 'active' : ''}`}
+                    onClick={() => handleTableSort('reservations')}
+                  >
+                    <span>Reservations</span>
+                    <span className="sort-indicator" aria-hidden="true">{getSortIndicator('reservations')}</span>
+                  </button>
+                </th>
                 <th>Marketing</th>
                 <th>Actions</th>
               </tr>
@@ -412,7 +534,7 @@ export default function GuestManagement() {
                     placeholder="Guest profile notes (preferences, allergies, communication reminders)."
                   />
                   <small style={{ color: 'var(--dark-gray)' }}>
-                    Saved on the guest profile and reused in future reservations.
+                    Saved on the guest profile and visible on all reservations for this guest.
                   </small>
                 </div>
                 <div className="form-group">

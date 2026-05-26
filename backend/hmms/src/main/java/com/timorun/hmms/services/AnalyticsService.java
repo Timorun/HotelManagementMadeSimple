@@ -113,7 +113,6 @@ public class AnalyticsService {
                 .reservationStatusBreakdown(currentPeriod.statusBreakdown)
                 .topRevenueDays(currentPeriod.topRevenueDays)
                 .insights(buildInsights(currentPeriod, deltas, includeComparison))
-                .metricDefinitions(buildMetricDefinitions())
                 .build();
     }
 
@@ -422,16 +421,6 @@ public class AnalyticsService {
         }
 
         return insights;
-    }
-
-    private Map<String, String> buildMetricDefinitions() {
-        Map<String, String> definitions = new LinkedHashMap<>();
-        definitions.put("averageDailyRate", "Total revenue divided by occupied room nights (empty nights excluded).");
-        definitions.put("revenuePerAvailableNight", "Total revenue divided by all available room nights (empty nights included).");
-        definitions.put("occupancyPercentage", "Occupied room nights divided by available room nights for the selected period.");
-        definitions.put("cancellationRate", "Cancelled reservations divided by reservations with check-in dates in the selected period.");
-        definitions.put("comparisonMode", "The selected range compares to the immediately preceding equal-length window.");
-        return definitions;
     }
 
     private ReservationSlice buildSlice(Reservation reservation, LocalDate periodStart, LocalDate periodEnd) {

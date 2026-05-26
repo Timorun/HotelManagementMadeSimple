@@ -101,7 +101,7 @@ export default function AnalyticsView() {
     },
     {
       key: 'thisMonth',
-      label: 'Current Month (Full)',
+      label: 'Current Month',
       range: () => {
         const today = new Date();
         return {
@@ -131,18 +131,7 @@ export default function AnalyticsView() {
           to: format(today, 'yyyy-MM-dd'),
         };
       },
-    },
-    {
-      key: 'ytd',
-      label: 'Year To Date',
-      range: () => {
-        const today = new Date();
-        return {
-          from: format(startOfYear(today), 'yyyy-MM-dd'),
-          to: format(today, 'yyyy-MM-dd'),
-        };
-      },
-    },
+    }
   ]), []);
 
   const applyQuickRange = useCallback((rangeKey) => {
@@ -181,6 +170,28 @@ export default function AnalyticsView() {
     return `${sign}${adjusted.toFixed(1)}${suffix}`;
   }, []);
 
+  const calculateRelativeChange = useCallback((currentValue, previousValue) => {
+    const current = Number(currentValue);
+    const previous = Number(previousValue);
+
+    if (!Number.isFinite(current) || !Number.isFinite(previous)) {
+      return null;
+    }
+
+    if (Math.abs(previous) < 0.00001) {
+      return null;
+    }
+
+    return ((current - previous) / previous) * 100;
+  }, []);
+
+  const metricDefinitions = [
+    { metric: "averageDailyRate", definition: "Total revenue divided by occupied room nights (empty nights excluded)." },
+    { metric: "revenuePerAvailableNight", definition: "Total revenue divided by all available room nights (empty nights included)." },
+    { metric: "occupancyPercentage", definition: "Occupied room nights divided by available room nights for the selected period." },
+    { metric: "cancellationRate", definition: "Cancelled reservations divided by reservations with check-in dates in the selected period." }
+  ];
+
   const handleExportAnalytics = useCallback(() => {
     if (!report) return;
 
@@ -188,6 +199,8 @@ export default function AnalyticsView() {
     const previous = report.previousPeriodSummary || {};
     const deltas = report.deltas || {};
     const exportIncludesComparison = !!report.previousPeriodSummary && !!report.deltas;
+    const occupancyChangePercentage = calculateRelativeChange(summary.occupancyPercentage, previous.occupancyPercentage);
+    const cancellationChangePercentage = calculateRelativeChange(summary.cancellationRate, previous.cancellationRate);
 
     const summaryRows = [
       { metric: 'From', value: report.fromDate },
@@ -202,12 +215,13 @@ export default function AnalyticsView() {
       { metric: 'Previous Revenue', value: exportIncludesComparison ? Number(previous.totalRevenue || 0) : '' },
       { metric: 'Revenue Change %', value: exportIncludesComparison ? Number(deltas.revenueChangePercentage || 0) : '' },
       { metric: 'Occupancy %', value: Number(summary.occupancyPercentage || 0) },
-      { metric: 'Occupancy Delta pp', value: exportIncludesComparison ? Number(deltas.occupancyChangePercentagePoints || 0) : '' },
+      { metric: 'Occupancy Change %', value: exportIncludesComparison ? Number(occupancyChangePercentage || 0) : '' },
       { metric: 'ADR', value: Number(summary.averageDailyRate || 0) },
       { metric: 'ADR Change %', value: exportIncludesComparison ? Number(deltas.averageDailyRateChangePercentage || 0) : '' },
       { metric: 'RevPAR', value: Number(summary.revenuePerAvailableNight || 0) },
       { metric: 'RevPAR Change %', value: exportIncludesComparison ? Number(deltas.revParChangePercentage || 0) : '' },
       { metric: 'Cancellation Rate %', value: Number(summary.cancellationRate || 0) },
+      { metric: 'Cancellation Change %', value: exportIncludesComparison ? Number(cancellationChangePercentage || 0) : '' },
       { metric: 'Average Length Of Stay', value: Number(summary.averageLengthOfStay || 0) },
       { metric: 'Occupied Nights', value: Number(summary.occupiedNights || 0) },
       { metric: 'Available Nights', value: Number(summary.availableNights || 0) },
@@ -268,7 +282,7 @@ export default function AnalyticsView() {
       Insights: insightRows,
       Definitions: definitionRows,
     }, `analytics-report-${dateFrom}_to_${dateTo}.xlsx`);
-  }, [report, dateFrom, dateTo, formatChannelLabel, formatStatusLabel]);
+  }, [report, dateFrom, dateTo, formatChannelLabel, formatStatusLabel, calculateRelativeChange]);
 
   const trendData = useMemo(() => {
     const points = report?.dailyTrend || [];
@@ -417,6 +431,16 @@ export default function AnalyticsView() {
   const previousSummary = report?.previousPeriodSummary || EMPTY_OBJECT;
   const deltas = report?.deltas || EMPTY_OBJECT;
 
+  const occupancyChangePercentage = useMemo(
+    () => calculateRelativeChange(summary.occupancyPercentage, previousSummary.occupancyPercentage),
+    [summary.occupancyPercentage, previousSummary.occupancyPercentage, calculateRelativeChange]
+  );
+
+  const cancellationChangePercentage = useMemo(
+    () => calculateRelativeChange(summary.cancellationRate, previousSummary.cancellationRate),
+    [summary.cancellationRate, previousSummary.cancellationRate, calculateRelativeChange]
+  );
+
   const selectedRangeDays = useMemo(() => {
     try {
       return differenceInCalendarDays(parseISO(dateTo), parseISO(dateFrom)) + 1;
@@ -449,7 +473,7 @@ export default function AnalyticsView() {
     const currentStart = report?.fromDate || dateFrom;
     const days = Number(report?.daysInPeriod || selectedRangeDays || 0);
     if (!currentStart || days <= 0) {
-      return 'Baseline unavailable';
+      return 'Comparison unavailable';
     }
 
     try {
@@ -458,7 +482,7 @@ export default function AnalyticsView() {
       const previousFrom = subDays(previousTo, days - 1);
       return `${format(previousFrom, 'dd MMM yyyy')} - ${format(previousTo, 'dd MMM yyyy')}`;
     } catch {
-      return 'Baseline unavailable';
+      return 'Comparison unavailable';
     }
   }, [report?.comparisonFromDate, report?.comparisonToDate, report?.fromDate, report?.daysInPeriod, dateFrom, selectedRangeDays]);
 
@@ -472,8 +496,8 @@ export default function AnalyticsView() {
       title: 'Total Revenue',
       value: formatCurrency(summary.totalRevenue, 0),
       secondary: hasComparisonData
-        ? `Baseline: ${formatCurrency(previousSummary.totalRevenue, 0)}`
-        : 'Baseline unavailable',
+        ? `Comparison: ${formatCurrency(previousSummary.totalRevenue, 0)}`
+        : 'Comparison unavailable',
       delta: hasComparisonData ? formatDelta(deltas.revenueChangePercentage) : 'n/a',
       deltaClassName: hasComparisonData ? deltaClass(deltas.revenueChangePercentage) : 'neutral',
       icon: Euro,
@@ -483,10 +507,10 @@ export default function AnalyticsView() {
       title: 'Occupancy',
       value: formatPercent(summary.occupancyPercentage),
       secondary: hasComparisonData
-        ? `Baseline: ${formatPercent(previousSummary.occupancyPercentage)}`
+        ? `Comparison: ${formatPercent(previousSummary.occupancyPercentage)}`
         : `${formatNumber(summary.occupiedNights)} of ${formatNumber(summary.availableNights)} nights`,
-      delta: hasComparisonData ? formatDelta(deltas.occupancyChangePercentagePoints, 'pp') : 'n/a',
-      deltaClassName: hasComparisonData ? deltaClass(deltas.occupancyChangePercentagePoints) : 'neutral',
+      delta: hasComparisonData ? formatDelta(occupancyChangePercentage) : 'n/a',
+      deltaClassName: hasComparisonData ? deltaClass(occupancyChangePercentage) : 'neutral',
       icon: Percent,
       tone: 'occupancy',
     },
@@ -494,7 +518,7 @@ export default function AnalyticsView() {
       title: 'ADR',
       value: formatCurrency(summary.averageDailyRate, 2),
       secondary: hasComparisonData
-        ? `Baseline: ${formatCurrency(previousSummary.averageDailyRate, 2)}`
+        ? `Comparison: ${formatCurrency(previousSummary.averageDailyRate, 2)}`
         : 'Average daily rate on occupied nights',
       delta: hasComparisonData ? formatDelta(deltas.averageDailyRateChangePercentage) : 'n/a',
       deltaClassName: hasComparisonData ? deltaClass(deltas.averageDailyRateChangePercentage) : 'neutral',
@@ -505,7 +529,7 @@ export default function AnalyticsView() {
       title: 'RevPAR',
       value: formatCurrency(summary.revenuePerAvailableNight, 2),
       secondary: hasComparisonData
-        ? `Baseline: ${formatCurrency(previousSummary.revenuePerAvailableNight, 2)}`
+        ? `Comparison: ${formatCurrency(previousSummary.revenuePerAvailableNight, 2)}`
         : 'Revenue per available room night',
       delta: hasComparisonData ? formatDelta(deltas.revParChangePercentage) : 'n/a',
       deltaClassName: hasComparisonData ? deltaClass(deltas.revParChangePercentage) : 'neutral',
@@ -516,11 +540,11 @@ export default function AnalyticsView() {
       title: 'Cancellation Rate',
       value: formatPercent(summary.cancellationRate),
       secondary: hasComparisonData
-        ? `Baseline: ${formatPercent(previousSummary.cancellationRate)}`
+        ? `Comparison: ${formatPercent(previousSummary.cancellationRate)}`
         : `${formatNumber(summary.cancelledReservations)} cancelled bookings`,
-      delta: hasComparisonData ? formatDelta(deltas.cancellationRateChangePercentagePoints, 'pp', true) : 'n/a',
+      delta: hasComparisonData ? formatDelta(cancellationChangePercentage, '%', true) : 'n/a',
       deltaClassName: hasComparisonData
-        ? deltaClass(-(Number(deltas.cancellationRateChangePercentagePoints || 0)))
+        ? deltaClass(-(Number(cancellationChangePercentage || 0)))
         : 'neutral',
       icon: AlertTriangle,
       tone: 'risk',
@@ -535,6 +559,8 @@ export default function AnalyticsView() {
     formatDelta,
     deltaClass,
     hasComparisonData,
+    occupancyChangePercentage,
+    cancellationChangePercentage,
   ]);
 
   const hasChartData = (report?.dailyTrend || []).length > 0;
@@ -631,53 +657,60 @@ export default function AnalyticsView() {
         </div>
 
         <div className="analytics-control-grid">
-          <div className="analytics-date-cluster">
-            <div>
-              <label className="form-label">From</label>
-              <input
-                type="date"
-                className="form-input analytics-date-input"
-                value={dateFrom}
-                onChange={(event) => {
-                  setDateFrom(event.target.value);
-                  setActivePreset('custom');
-                }}
-              />
+          <div className="analytics-control-left">
+            <div className="analytics-date-cluster">
+              <div>
+                <label className="form-label">From</label>
+                <input
+                  type="date"
+                  className="form-input analytics-date-input"
+                  value={dateFrom}
+                  onChange={(event) => {
+                    setDateFrom(event.target.value);
+                    setActivePreset('custom');
+                  }}
+                />
+              </div>
+              <div>
+                <label className="form-label">To</label>
+                <input
+                  type="date"
+                  className="form-input analytics-date-input"
+                  value={dateTo}
+                  onChange={(event) => {
+                    setDateTo(event.target.value);
+                    setActivePreset('custom');
+                  }}
+                />
+              </div>
             </div>
-            <div>
-              <label className="form-label">To</label>
-              <input
-                type="date"
-                className="form-input analytics-date-input"
-                value={dateTo}
-                onChange={(event) => {
-                  setDateTo(event.target.value);
-                  setActivePreset('custom');
-                }}
-              />
+
+            <div className="analytics-presets">
+              <span className="analytics-presets-label">Quick Range</span>
+              <div className="analytics-presets-buttons">
+                {quickRanges.map((preset) => (
+                  <button
+                    key={preset.key}
+                    className={`analytics-preset-btn ${activePreset === preset.key ? 'active' : ''}`}
+                    onClick={() => applyQuickRange(preset.key)}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
+
           <div className="analytics-period-inline">
             <span className="analytics-strip-label">Selected Period</span>
             <strong>{periodLabel || `${dateFrom} - ${dateTo}`}</strong>
-            <small className="analytics-strip-subtle">Compared with {previousPeriodLabel}</small>
             <small className="analytics-strip-subtle">{selectedLengthLabel}</small>
-          </div>
-          <div className="analytics-presets">
-            <span className="analytics-presets-label">Quick Range</span>
-            <div className="analytics-presets-buttons">
-              {quickRanges.map((preset) => (
-                <button
-                  key={preset.key}
-                  className={`analytics-preset-btn ${activePreset === preset.key ? 'active' : ''}`}
-                  onClick={() => applyQuickRange(preset.key)}
-                >
-                  {preset.label}
-                </button>
-              ))}
-            </div>
+            <small className="analytics-strip-subtle">Compared with {previousPeriodLabel}</small>
+
             <small className="analytics-presets-hint">
-              Baseline comparison is always on and uses the immediately preceding window with equal length.
+              Statistics are compared with the preceding period of equal length.
+              <br />
+              Eg. selecting June 1st to 10th will compare statistics to May 22nd to 31st.
             </small>
           </div>
         </div>
@@ -696,7 +729,7 @@ export default function AnalyticsView() {
               {hasComparisonData ? (
                 <span className={`analytics-delta ${card.deltaClassName}`}>{card.delta}</span>
               ) : (
-                <span className="analytics-delta neutral">Baseline unavailable</span>
+                <span className="analytics-delta neutral">Comparison unavailable</span>
               )}
             </div>
           </article>
@@ -848,15 +881,15 @@ export default function AnalyticsView() {
 
         <article className="card analytics-panel">
           <div className="analytics-panel-head">
-            <h3>Metric Playbook</h3>
+            <h3>Metric Guide</h3>
             <span>Definitions used in this dashboard</span>
           </div>
-          {Object.entries(report.metricDefinitions || {}).length > 0 ? (
+          {metricDefinitions.length > 0 ? (
             <dl className="analytics-definition-list">
-              {Object.entries(report.metricDefinitions || {}).map(([metric, definition]) => (
-                <div key={metric}>
-                  <dt>{metric}</dt>
-                  <dd>{definition}</dd>
+              {metricDefinitions.map((item) => (
+                <div key={item.metric}>
+                  <dt>{item.metric}</dt>
+                  <dd>{item.definition}</dd>
                 </div>
               ))}
             </dl>
