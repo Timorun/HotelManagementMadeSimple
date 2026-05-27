@@ -12,6 +12,7 @@ import {
   updateReservationStatus,
   cancelReservation,
 } from '../api/backend';
+import { useI18n } from '../context/I18nContext';
 import { ConfirmCancelReservationModal, ReservationDetailsModal } from './reservations/ReservationDetailsModal';
 
 function pluralize(count, singular, plural = `${singular}s`) {
@@ -70,6 +71,7 @@ function countryCodeToFlag(code) {
 }
 
 export default function TodaysOperationsView() {
+  const { tr, dateLocale } = useI18n();
   const [arrivalsToday, setArrivalsToday] = useState([]);
   const [departuresToday, setDeparturesToday] = useState([]);
   const [suites, setSuites] = useState([]);
@@ -128,10 +130,10 @@ export default function TodaysOperationsView() {
           reservation: occupyingReservation,
           guest,
           flag: countryCodeToFlag(nationalityCode),
-          nationality: guest?.nationalityName || nationalityCode || 'Nationality unknown',
+          nationality: guest?.nationalityName || nationalityCode || tr('Nationality unknown', 'Nacionalidad desconocida'),
         };
       });
-  }, [activeSuites, reservations, guestById]);
+  }, [activeSuites, reservations, guestById, tr]);
 
   const occupancyCount = useMemo(
     () => quickViewSuites.filter((entry) => Boolean(entry.reservation)).length,
@@ -145,21 +147,21 @@ export default function TodaysOperationsView() {
     const priceTotal = Number(editForm.priceTotal);
 
     if (!editForm.checkIn || !editForm.checkOut) {
-      errors.push('Check-in and check-out dates are required.');
+      errors.push(tr('Check-in and check-out dates are required.', 'Las fechas de check-in y check-out son obligatorias.'));
     } else if (parseISO(editForm.checkOut) <= parseISO(editForm.checkIn)) {
-      errors.push('Check-out must be after check-in.');
+      errors.push(tr('Check-out must be after check-in.', 'El check-out debe ser posterior al check-in.'));
     }
 
     if (!Number.isFinite(numGuests) || numGuests < 1) {
-      errors.push('Guests must be at least 1.');
+      errors.push(tr('Guests must be at least 1.', 'Los huespedes deben ser al menos 1.'));
     }
 
     if (selectedSuite?.capacity && numGuests > selectedSuite.capacity) {
-      errors.push(`Guests exceed suite capacity (${selectedSuite.capacity}).`);
+      errors.push(tr(`Guests exceed suite capacity (${selectedSuite.capacity}).`, `Los huespedes exceden la capacidad de la suite (${selectedSuite.capacity}).`));
     }
 
     if (!Number.isFinite(priceTotal) || priceTotal < 0) {
-      errors.push('Price must be 0 or higher.');
+      errors.push(tr('Price must be 0 or higher.', 'El precio debe ser 0 o mayor.'));
     }
 
     return errors;
@@ -237,7 +239,7 @@ export default function TodaysOperationsView() {
   const openReservationById = (reservationId) => {
     const reservation = reservations.find((item) => Number(item.reservationId) === Number(reservationId));
     if (!reservation) {
-      setError('Reservation details are not available in the current quick view range.');
+      setError(tr('Reservation details are not available in the current quick view range.', 'Los detalles de la reserva no estan disponibles en el rango actual de vista rapida.'));
       return;
     }
 
@@ -251,6 +253,35 @@ export default function TodaysOperationsView() {
     setIsEditingReservation(false);
     setModalError(null);
   };
+
+  useEffect(() => {
+    if (!showReservationModal && !showCancelConfirmModal) {
+      return undefined;
+    }
+
+    const handleEscapeKey = (event) => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+
+      if (showCancelConfirmModal) {
+        if (!savingReservation) {
+          setShowCancelConfirmModal(false);
+        }
+        return;
+      }
+
+      if (showReservationModal && !savingReservation) {
+        closeReservationModal();
+      }
+    };
+
+    window.addEventListener('keydown', handleEscapeKey);
+
+    return () => {
+      window.removeEventListener('keydown', handleEscapeKey);
+    };
+  }, [showReservationModal, showCancelConfirmModal, savingReservation, closeReservationModal]);
 
   const requestCancelReservation = () => {
     setShowCancelConfirmModal(true);
@@ -303,7 +334,7 @@ export default function TodaysOperationsView() {
           });
         } catch (guestErr) {
           console.error('Failed to update guest profile notes:', guestErr);
-          guestNotesSyncError = 'Reservation was saved, but guest profile notes could not be saved. Please try again.';
+          guestNotesSyncError = tr('Reservation was saved, but guest profile notes could not be saved. Please try again.', 'La reserva se guardo, pero no se pudieron guardar las notas del huesped. Intentalo de nuevo.');
         }
       }
 
@@ -317,7 +348,7 @@ export default function TodaysOperationsView() {
       closeReservationModal();
     } catch (err) {
       console.error('Failed to update reservation:', err);
-      setModalError(err?.message || 'Failed to update reservation');
+      setModalError(err?.message || tr('Failed to update reservation', 'No se pudo actualizar la reserva'));
     } finally {
       setSavingReservation(false);
     }
@@ -337,7 +368,7 @@ export default function TodaysOperationsView() {
       closeReservationModal();
     } catch (err) {
       console.error('Failed to cancel reservation:', err);
-      setModalError(err?.message || 'Failed to cancel reservation');
+      setModalError(err?.message || tr('Failed to cancel reservation', 'No se pudo cancelar la reserva'));
     } finally {
       setShowCancelConfirmModal(false);
       setSavingReservation(false);
@@ -348,7 +379,7 @@ export default function TodaysOperationsView() {
     return (
       <div className="loading-spinner">
         <div className="spinner"></div>
-        <p className="mt-2">Loading operations...</p>
+        <p className="mt-2">{tr('Loading operations...', 'Cargando operaciones...')}</p>
       </div>
     );
   }
@@ -356,7 +387,7 @@ export default function TodaysOperationsView() {
   if (error) {
     return (
       <div className="error-message">
-        Could not load today's operations. Please refresh and try again.
+        {tr("Could not load today's operations. Please refresh and try again.", 'No se pudieron cargar las operaciones de hoy. Actualiza e intentalo de nuevo.')}
       </div>
     );
   }
@@ -368,10 +399,10 @@ export default function TodaysOperationsView() {
           <div>
             <h2 className="operations-title">
               <ClipboardCheck size={28} />
-              {format(new Date(), 'EEEE, MMMM d, yyyy')}
+              {format(new Date(), 'EEEE, MMMM d, yyyy', { locale: dateLocale })}
             </h2>
             <p className="operations-subtitle">
-              Last updated {format(lastUpdated, 'HH:mm')}
+              {tr('Last updated', 'Ultima actualizacion')} {format(lastUpdated, 'HH:mm')}
             </p>
           </div>
 
@@ -381,7 +412,7 @@ export default function TodaysOperationsView() {
             disabled={refreshing}
           >
             <RefreshCw size={16} className={refreshing ? 'spin-icon' : ''} />
-            {refreshing ? 'Refreshing...' : 'Refresh'}
+            {refreshing ? tr('Refreshing...', 'Actualizando...') : tr('Refresh', 'Actualizar')}
           </button>
         </div>
       </section>
@@ -391,11 +422,11 @@ export default function TodaysOperationsView() {
           <div>
             <h3 style={{ fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Home size={20} color="var(--primary)" />
-              Suites
+              {tr('Suites', 'Suites')}
             </h3>
-            <p className="quick-view-subtitle mb-1">Occupied suites today</p>
+            <p className="quick-view-subtitle mb-1">{tr('Occupied suites today', 'Suites ocupadas hoy')}</p>
           </div>
-          <span className="status-badge status-confirmed">{occupancyCount} / {activeSuites.length} occupied</span>
+          <span className="status-badge status-confirmed">{occupancyCount} / {activeSuites.length} {tr('occupied', 'ocupadas')}</span>
         </div>
 
         <div className="suite-house-grid">
@@ -406,9 +437,6 @@ export default function TodaysOperationsView() {
             >
               <div className="suite-room-head">
                 <span className="suite-room-title">{entry.suite.suiteName}</span>
-                <span className={`suite-room-state ${entry.reservation ? 'occupied' : 'vacant'}`}>
-                  {entry.reservation ? 'Occupied' : 'Vacant'}
-                </span>
               </div>
 
               {entry.reservation ? (
@@ -424,12 +452,12 @@ export default function TodaysOperationsView() {
                     onClick={() => openReservationModal(entry.reservation)}
                   >
                     <Eye size={14} />
-                    Open
+                    {tr('Open', 'Abrir')}
                   </button>
                 </>
               ) : (
                 <>
-                  <div className="suite-room-meta">Unnocupied</div>
+                  <div className="suite-room-meta">{tr('Unoccupied', 'Sin ocupacion')}</div>
                 </>
               )}
             </article>
@@ -442,7 +470,7 @@ export default function TodaysOperationsView() {
           <div className="card-header operations-column-header">
             <h3>
               <LogOut size={18} color="#E67E22" />
-              Check-outs
+              {tr('Check-outs', 'Check-outs')}
             </h3>
             <span className="status-badge status-pending">{departuresToday.length}</span>
           </div>
@@ -455,7 +483,7 @@ export default function TodaysOperationsView() {
                     <div className="operations-item-title">{departure.guestName}</div>
                     <div className="operations-item-sub">{departure.suiteName}</div>
                     <em className="operations-item-sub muted">
-                      {pluralize(departure.numGuests, 'guest')} | Ref #{departure.reservationId}
+                      {pluralize(departure.numGuests, tr('guest', 'huesped'), tr('guests', 'huespedes'))} | {tr('Ref', 'Ref')} #{departure.reservationId}
                     </em>
                   </div>
                   <button
@@ -464,13 +492,13 @@ export default function TodaysOperationsView() {
                     onClick={() => openReservationById(departure.reservationId)}
                   >
                     <Eye size={14} />
-                    Open
+                    {tr('Open', 'Abrir')}
                   </button>
                 </li>
               ))}
             </ul>
           ) : (
-            <div className="empty-state compact-empty">No check-outs scheduled.</div>
+            <div className="empty-state compact-empty">{tr('No check-outs scheduled.', 'No hay check-outs programados.')}</div>
           )}
         </article>
 
@@ -478,7 +506,7 @@ export default function TodaysOperationsView() {
           <div className="card-header operations-column-header">
             <h3>
               <LogIn size={18} color="#27AE60" />
-              Check-ins
+              {tr('Check-ins', 'Check-ins')}
             </h3>
             <span className="status-badge status-checked-in">{arrivalsToday.length}</span>
           </div>
@@ -491,7 +519,7 @@ export default function TodaysOperationsView() {
                     <div className="operations-item-title">{arrival.guestName}</div>
                     <div className="operations-item-sub">{arrival.suiteName}</div>
                     <em className="operations-item-sub muted">
-                      {pluralize(arrival.numGuests, 'guest')} | Ref #{arrival.reservationId}
+                      {pluralize(arrival.numGuests, tr('guest', 'huesped'), tr('guests', 'huespedes'))} | {tr('Ref', 'Ref')} #{arrival.reservationId}
                     </em>
                   </div>
                   <button
@@ -500,13 +528,13 @@ export default function TodaysOperationsView() {
                     onClick={() => openReservationById(arrival.reservationId)}
                   >
                     <Eye size={14} />
-                    Open
+                    {tr('Open', 'Abrir')}
                   </button>
                 </li>
               ))}
             </ul>
           ) : (
-            <div className="empty-state compact-empty">No check-ins scheduled.</div>
+            <div className="empty-state compact-empty">{tr('No check-ins scheduled.', 'No hay check-ins programados.')}</div>
           )}
         </article>
       </section>

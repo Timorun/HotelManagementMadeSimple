@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { fetchReservations, fetchSuites, fetchNationalities, createReservation, updateReservation, cancelReservation, searchGuests, updateReservationStatus, fetchGuest, updateGuest } from '../api/backend';
 import { Calendar, Plus, Search, AlertCircle, CheckCircle, Users, Euro, Download, Eye } from 'lucide-react';
 import { format, differenceInDays, parseISO, isBefore, addDays, startOfDay, startOfMonth, endOfMonth } from 'date-fns';
-import { STATUS_META, getTransitionWarning } from '../api/reservationStatus';
+import { STATUS_META, getStatusLabel, getTransitionWarning } from '../api/reservationStatus';
 import { exportRowsToExcel } from '../utils/excelExport';
 import { useI18n } from '../context/I18nContext';
 import { ConfirmCancelReservationModal, ReservationDetailsModal } from './reservations/ReservationDetailsModal';
@@ -18,7 +18,7 @@ function isCompleteDateValue(value) {
 }
 
 export default function ReservationManagement() {
-  const { t } = useI18n();
+  const { t, tr, locale, dateLocale } = useI18n();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [reservations, setReservations] = useState([]);
@@ -290,19 +290,19 @@ export default function ReservationManagement() {
     const enabledStatuses = availableStatuses.filter((status) => Boolean(statusFilters[status]));
 
     if (enabledStatuses.length === availableStatuses.length) {
-      return 'All statuses';
+      return tr('All statuses', 'Todos los estados');
     }
 
     if (enabledStatuses.length === 0) {
-      return 'No statuses selected';
+      return tr('No statuses selected', 'No hay estados seleccionados');
     }
 
     if (enabledStatuses.length <= 2) {
-      return enabledStatuses.map((status) => STATUS_META[status]?.label || status).join(', ');
+      return enabledStatuses.map((status) => getStatusLabel(status, tr) || status).join(', ');
     }
 
-    return `${enabledStatuses.length} statuses selected`;
-  }, [statusFilters]);
+    return tr(`${enabledStatuses.length} statuses selected`, `${enabledStatuses.length} estados seleccionados`);
+  }, [statusFilters, tr]);
 
   useEffect(() => {
     if (!isCompleteDateValue(dateFrom) || !isCompleteDateValue(dateTo)) {
@@ -547,15 +547,15 @@ export default function ReservationManagement() {
     
     // Suite validation
     if (!formData.suiteId) {
-      errors.suiteId = 'Please select a suite';
+      errors.suiteId = tr('Please select a suite', 'Selecciona una suite');
     }
     
     // Date validation
     if (!formData.checkIn) {
-      errors.checkIn = 'Check-in date is required';
+      errors.checkIn = tr('Check-in date is required', 'La fecha de check-in es obligatoria');
     }
     if (!formData.checkOut) {
-      errors.checkOut = 'Check-out date is required';
+      errors.checkOut = tr('Check-out date is required', 'La fecha de check-out es obligatoria');
     }
     if (formData.checkIn && formData.checkOut) {
       try {
@@ -563,53 +563,53 @@ export default function ReservationManagement() {
         const checkOutDate = parseISO(formData.checkOut);
 
         if (isBefore(checkOutDate, checkInDate) || checkOutDate.getTime() === checkInDate.getTime()) {
-          errors.checkOut = 'Check-out must be after check-in';
+          errors.checkOut = tr('Check-out must be after check-in', 'El check-out debe ser posterior al check-in');
         }
         if (nightsCount > 365) {
-          errors.checkOut = 'Reservation cannot exceed 365 nights';
+          errors.checkOut = tr('Reservation cannot exceed 365 nights', 'La reserva no puede superar 365 noches');
         }
       } catch {
-        errors.checkIn = 'Invalid date format';
+        errors.checkIn = tr('Invalid date format', 'Formato de fecha invalido');
       }
     }
     
     // Capacity validation
     if (selectedSuite && formData.numGuests > selectedSuite.capacity) {
-      errors.numGuests = `Maximum capacity is ${selectedSuite.capacity} guests`;
+      errors.numGuests = tr(`Maximum capacity is ${selectedSuite.capacity} guests`, `La capacidad maxima es ${selectedSuite.capacity} huespedes`);
     }
     if (formData.numGuests < 1) {
-      errors.numGuests = 'At least 1 guest is required';
+      errors.numGuests = tr('At least 1 guest is required', 'Se requiere al menos 1 huesped');
     }
     
     // Price validation
     if (!formData.priceTotal || parseFloat(formData.priceTotal) <= 0) {
-      errors.priceTotal = 'Please enter a valid price';
+      errors.priceTotal = tr('Please enter a valid price', 'Introduce un precio valido');
     }
     
     // Guest validation for new reservations
     if (!editingReservation) {
       if (guestMode === 'existing') {
         if (!formData.guestId) {
-          errors.guestSelection = 'Select an existing guest or switch to "Create New Guest".';
+          errors.guestSelection = tr('Select an existing guest or switch to "Create New Guest".', 'Selecciona un huesped existente o cambia a "Crear nuevo huesped".');
         }
       } else if (!formData.guestId) {
         if (!formData.firstName?.trim()) {
-          errors.firstName = 'First name is required';
+          errors.firstName = tr('First name is required', 'El nombre es obligatorio');
         }
         if (!formData.lastName?.trim()) {
-          errors.lastName = 'Last name is required';
+          errors.lastName = tr('Last name is required', 'El apellido es obligatorio');
         }
         if (!formData.email?.trim()) {
-          errors.email = 'Email is required';
+          errors.email = tr('Email is required', 'El correo electronico es obligatorio');
         } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-          errors.email = 'Please enter a valid email address';
+          errors.email = tr('Please enter a valid email address', 'Introduce un correo electronico valido');
         }
       }
     }
     
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
-  }, [formData, selectedSuite, nightsCount, editingReservation, guestMode]);
+  }, [formData, selectedSuite, nightsCount, editingReservation, guestMode, tr]);
 
   const openNewReservationModal = useCallback(() => {
     if (searchTimerRef.current) {
@@ -672,7 +672,7 @@ export default function ReservationManagement() {
           await updateReservationStatus(editingReservation.reservationId, formData.status);
         }
 
-        reservationSuccessMessage = 'Reservation updated successfully';
+        reservationSuccessMessage = tr('Reservation updated successfully', 'Reserva actualizada correctamente');
       } else {
         const normalizedGuestName = `${formData.firstName || ''} ${formData.lastName || ''}`.trim().toLowerCase();
         const hasDuplicateReservation = reservations.some((reservation) => {
@@ -699,7 +699,7 @@ export default function ReservationManagement() {
         });
 
         if (hasDuplicateReservation) {
-          const duplicateMessage = 'A reservation with the same guest, suite, and date range already exists.';
+          const duplicateMessage = tr('A reservation with the same guest, suite, and date range already exists.', 'Ya existe una reserva con el mismo huesped, suite y rango de fechas.');
           setError(duplicateMessage);
           showToast(duplicateMessage, 'error');
           window.alert(duplicateMessage);
@@ -726,7 +726,7 @@ export default function ReservationManagement() {
           setFormData((prev) => ({ ...prev, guestId: createdReservation.guestId }));
         }
 
-        reservationSuccessMessage = 'Reservation created successfully';
+        reservationSuccessMessage = tr('Reservation created successfully', 'Reserva creada correctamente');
       }
 
       const guestIdFromForm = formData.guestId ? parseInt(formData.guestId) : NaN;
@@ -753,7 +753,7 @@ export default function ReservationManagement() {
       }
 
       if (guestNotesUpdateFailed) {
-        showToast(`${reservationSuccessMessage}, but guest notes could not be saved`, 'error');
+        showToast(tr(`${reservationSuccessMessage}, but guest notes could not be saved`, `${reservationSuccessMessage}, pero no se pudieron guardar las notas del huesped`), 'error');
       } else {
         showToast(reservationSuccessMessage, 'success');
       }
@@ -761,7 +761,7 @@ export default function ReservationManagement() {
       setShowModal(false);
       loadData();
     } catch (err) {
-      const errorMsg = err?.message || 'Failed to save reservation';
+      const errorMsg = err?.message || tr('Failed to save reservation', 'No se pudo guardar la reserva');
       setError(errorMsg);
       showToast(errorMsg, 'error');
       if (String(errorMsg).toLowerCase().includes('already exists')) {
@@ -770,19 +770,19 @@ export default function ReservationManagement() {
     } finally {
       setSubmitting(false);
     }
-  }, [editingReservation, formData, guestMode, loadData, reservations, showToast]);
+  }, [editingReservation, formData, guestMode, loadData, reservations, showToast, tr]);
 
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
     
     // Validate form
     if (!validateForm()) {
-      showToast('Please fix validation errors', 'error');
+      showToast(tr('Please fix validation errors', 'Corrige los errores de validacion'), 'error');
       return;
     }
 
     await submitReservation();
-  }, [ showToast, submitReservation, validateForm]);
+  }, [ showToast, submitReservation, validateForm, tr]);
 
   const toggleStatusFilter = useCallback((status) => {
     setStatusFilters((prev) => ({
@@ -827,25 +827,25 @@ export default function ReservationManagement() {
     const priceTotal = Number(reservationEditForm.priceTotal);
 
     if (!reservationEditForm.checkIn || !reservationEditForm.checkOut) {
-      errors.push('Check-in and check-out dates are required.');
+      errors.push(tr('Check-in and check-out dates are required.', 'Las fechas de check-in y check-out son obligatorias.'));
     } else if (parseISO(reservationEditForm.checkOut) <= parseISO(reservationEditForm.checkIn)) {
-      errors.push('Check-out must be after check-in.');
+      errors.push(tr('Check-out must be after check-in.', 'El check-out debe ser posterior al check-in.'));
     }
 
     if (!Number.isFinite(numGuests) || numGuests < 1) {
-      errors.push('Guests must be at least 1.');
+      errors.push(tr('Guests must be at least 1.', 'Los huespedes deben ser al menos 1.'));
     }
 
     if (selectedSuite?.capacity && numGuests > selectedSuite.capacity) {
-      errors.push(`Guests exceed suite capacity (${selectedSuite.capacity}).`);
+      errors.push(tr(`Guests exceed suite capacity (${selectedSuite.capacity}).`, `Los huespedes exceden la capacidad de la suite (${selectedSuite.capacity}).`));
     }
 
     if (!Number.isFinite(priceTotal) || priceTotal < 0) {
-      errors.push('Price must be 0 or higher.');
+      errors.push(tr('Price must be 0 or higher.', 'El precio debe ser 0 o mayor.'));
     }
 
     return errors;
-  }, [reservationEditForm, suites]);
+  }, [reservationEditForm, suites, tr]);
 
   const reservationEditValidationErrors = useMemo(
     () => getReservationEditValidationErrors(),
@@ -879,6 +879,48 @@ export default function ReservationManagement() {
     setIsEditingReservationDetails(false);
     setReservationModalError(null);
   }, []);
+
+  useEffect(() => {
+    if (!showModal && !showReservationModal && !showCancelConfirmModal) {
+      return undefined;
+    }
+
+    const handleEscapeKey = (event) => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+
+      if (showCancelConfirmModal) {
+        if (!savingReservationDetails) {
+          setShowCancelConfirmModal(false);
+        }
+        return;
+      }
+
+      if (showReservationModal) {
+        if (!savingReservationDetails) {
+          closeReservationModal();
+        }
+        return;
+      }
+
+      if (showModal) {
+        setShowModal(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleEscapeKey);
+
+    return () => {
+      window.removeEventListener('keydown', handleEscapeKey);
+    };
+  }, [
+    showModal,
+    showReservationModal,
+    showCancelConfirmModal,
+    savingReservationDetails,
+    closeReservationModal,
+  ]);
 
   const requestCancelReservation = useCallback(() => {
     setShowCancelConfirmModal(true);
@@ -928,7 +970,7 @@ export default function ReservationManagement() {
           });
         } catch (guestErr) {
           console.error('Failed to update guest profile notes:', guestErr);
-          guestNotesSyncError = 'Reservation was saved, but guest profile notes could not be saved. Please try again.';
+          guestNotesSyncError = tr('Reservation was saved, but guest profile notes could not be saved. Please try again.', 'La reserva se guardo, pero no se pudieron guardar las notas del huesped. Intentalo de nuevo.');
         }
       }
 
@@ -958,12 +1000,12 @@ export default function ReservationManagement() {
         return;
       }
 
-      showToast('Reservation updated successfully', 'success');
+      showToast(tr('Reservation updated successfully', 'Reserva actualizada correctamente'), 'success');
       setIsEditingReservationDetails(false);
       closeReservationModal();
     } catch (err) {
       console.error('Failed to update reservation:', err);
-      setReservationModalError(err?.message || 'Failed to update reservation');
+      setReservationModalError(err?.message || tr('Failed to update reservation', 'No se pudo actualizar la reserva'));
     } finally {
       setSavingReservationDetails(false);
     }
@@ -975,6 +1017,7 @@ export default function ReservationManagement() {
     reservationEditValidationErrors,
     selectedReservation,
     showToast,
+    tr,
   ]);
 
   const handleConfirmCancelReservation = useCallback(async () => {
@@ -986,16 +1029,16 @@ export default function ReservationManagement() {
 
       await cancelReservation(selectedReservation.reservationId);
       await loadData();
-      showToast('Reservation cancelled successfully', 'success');
+      showToast(tr('Reservation cancelled successfully', 'Reserva cancelada correctamente'), 'success');
       closeReservationModal();
     } catch (err) {
       console.error('Failed to cancel reservation:', err);
-      setReservationModalError(err?.message || 'Failed to cancel reservation');
+      setReservationModalError(err?.message || tr('Failed to cancel reservation', 'No se pudo cancelar la reserva'));
     } finally {
       setShowCancelConfirmModal(false);
       setSavingReservationDetails(false);
     }
-  }, [closeReservationModal, loadData, selectedReservation, showToast]);
+  }, [closeReservationModal, loadData, selectedReservation, showToast, tr]);
 
   const filteredReservations = useMemo(() => {
     const needle = guestFilter.toLowerCase();
@@ -1086,8 +1129,8 @@ export default function ReservationManagement() {
     if (!editingReservation) {
       return null;
     }
-    return getTransitionWarning(editingReservation.status, formData.status);
-  }, [editingReservation, formData.status]);
+    return getTransitionWarning(editingReservation.status, formData.status, tr);
+  }, [editingReservation, formData.status, tr]);
 
   const handleTableSort = useCallback((field) => {
     if (sortBy === field) {
@@ -1117,7 +1160,7 @@ export default function ReservationManagement() {
     return (
       <div className="loading-spinner">
         <div className="spinner"></div>
-        <p className="mt-2">Loading reservations...</p>
+        <p className="mt-2">{tr('Loading reservations...', 'Cargando reservas...')}</p>
       </div>
     );
   }
@@ -1170,11 +1213,11 @@ export default function ReservationManagement() {
         <div className="card-header">
           <h2>
             <Calendar size={28} />
-            Reservation Management
+            {tr('Reservation Management', 'Gestion de reservas')}
           </h2>
           <button onClick={openNewReservationModal} className="btn btn-accent">
             <Plus size={16} />
-            New Reservation
+            {tr('New Reservation', 'Nueva reserva')}
           </button>
         </div>
 
@@ -1199,11 +1242,11 @@ export default function ReservationManagement() {
         <div className="form-group reservation-filters-panel">
           <div className="list-filters-head">
             <div>
-              <h3 className="list-filters-title">Filter Reservations</h3>
-              <p className="list-filters-subtitle">Narrow the list quickly by status, dates, channel, and guest name.</p>
+              <h3 className="list-filters-title">{tr('Filter Reservations', 'Filtrar reservas')}</h3>
+              <p className="list-filters-subtitle">{tr('Narrow the list quickly by status, dates, channel, and guest name.', 'Reduce la lista rapidamente por estado, fechas, canal y nombre del huesped.')}</p>
             </div>
             <div className="list-filters-actions">
-              <span className="list-filters-count">{filteredReservations.length} shown</span>
+              <span className="list-filters-count">{filteredReservations.length} {tr('shown', 'mostradas')}</span>
               <button type="button" className="btn btn-outline btn-sm" onClick={handleExportReservations}>
                 <Download size={16} />
                 {t('filters.exportExcel')}
@@ -1214,14 +1257,14 @@ export default function ReservationManagement() {
                 onClick={clearReservationListFilters}
                 disabled={activeReservationFilterCount === 0}
               >
-                Clear filters
+                {tr('Clear filters', 'Limpiar filtros')}
               </button>
             </div>
           </div>
 
           <div className="reservation-filters-grid">
             <div>
-              <label className="form-label">From:</label>
+              <label className="form-label">{tr('From:', 'Desde:')}</label>
               <input
                 type="date"
                 className="form-input"
@@ -1232,7 +1275,7 @@ export default function ReservationManagement() {
               />
             </div>
             <div>
-              <label className="form-label">To:</label>
+              <label className="form-label">{tr('To:', 'Hasta:')}</label>
               <input
                 type="date"
                 className="form-input"
@@ -1259,7 +1302,7 @@ export default function ReservationManagement() {
                 {isStatusDropdownOpen && (
                   <div className="status-filter-menu" role="menu">
                     <div className="status-filter-menu-actions">
-                      <button type="button" className="btn btn-outline btn-xs" onClick={enableAllStatusFilters}>All</button>
+                      <button type="button" className="btn btn-outline btn-xs" onClick={enableAllStatusFilters}>{tr('All', 'Todos')}</button>
                     </div>
 
                     <div className="status-filter-menu-list">
@@ -1270,7 +1313,7 @@ export default function ReservationManagement() {
                             checked={Boolean(statusFilters[status])}
                             onChange={() => toggleStatusFilter(status)}
                           />
-                          <span>{meta.label}</span>
+                          <span>{getStatusLabel(status, tr)}</span>
                         </label>
                       ))}
                     </div>
@@ -1282,19 +1325,19 @@ export default function ReservationManagement() {
               <label className="form-label">{t('filters.channel')}:</label>
               <select className="form-select" value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)}>
                 <option value="all">{t('filters.all')}</option>
-                <option value="direct">Direct</option>
+                <option value="direct">{tr('Direct', 'Directo')}</option>
                 <option value="booking.com">Booking.com</option>
                 <option value="airbnb">Airbnb</option>
                 <option value="expedia">Expedia</option>
-                <option value="other">Other</option>
+                <option value="other">{tr('Other', 'Otro')}</option>
               </select>
             </div>
             <div>
-              <label className="form-label">Guest:</label>
+              <label className="form-label">{tr('Guest:', 'Huesped:')}</label>
               <input
                 type="text"
                 className="form-input"
-                placeholder="Search guest..."
+                placeholder={tr('Search guest...', 'Buscar huesped...')}
                 value={guestFilter}
                 onChange={(e) => setGuestFilter(e.target.value)}
               />
@@ -1305,7 +1348,7 @@ export default function ReservationManagement() {
         {filteredReservations.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-icon">📅</div>
-            <p>No reservations found for this date range</p>
+            <p>{tr('No reservations found for this date range', 'No se encontraron reservas para este rango de fechas')}</p>
           </div>
         ) : (
           <table className="data-table reservation-table">
@@ -1318,18 +1361,18 @@ export default function ReservationManagement() {
                     className={`sort-header-btn ${sortBy === 'guest' ? 'active' : ''}`}
                     onClick={() => handleTableSort('guest')}
                   >
-                    <span>Guest</span>
+                    <span>{tr('Guest', 'Huesped')}</span>
                     <span className="sort-indicator" aria-hidden="true">{getSortIndicator('guest')}</span>
                   </button>
                 </th>
-                <th className="col-suite">Suite</th>
+                <th className="col-suite">{tr('Suite', 'Suite')}</th>
                 <th className="col-checkin" aria-sort={getAriaSort('checkIn')}>
                   <button
                     type="button"
                     className={`sort-header-btn ${sortBy === 'checkIn' ? 'active' : ''}`}
                     onClick={() => handleTableSort('checkIn')}
                   >
-                    <span>Check-In</span>
+                    <span>{tr('Check-In', 'Check-In')}</span>
                     <span className="sort-indicator" aria-hidden="true">{getSortIndicator('checkIn')}</span>
                   </button>
                 </th>
@@ -1339,33 +1382,33 @@ export default function ReservationManagement() {
                     className={`sort-header-btn ${sortBy === 'checkOut' ? 'active' : ''}`}
                     onClick={() => handleTableSort('checkOut')}
                   >
-                    <span>Check-Out</span>
+                    <span>{tr('Check-Out', 'Check-Out')}</span>
                     <span className="sort-indicator" aria-hidden="true">{getSortIndicator('checkOut')}</span>
                   </button>
                 </th>
-                <th className="col-guests">Guests</th>
+                <th className="col-guests">{tr('Guests', 'Huespedes')}</th>
                 <th className="col-price" aria-sort={getAriaSort('priceTotal')}>
                   <button
                     type="button"
                     className={`sort-header-btn ${sortBy === 'priceTotal' ? 'active' : ''}`}
                     onClick={() => handleTableSort('priceTotal')}
                   >
-                    <span>Price</span>
+                    <span>{tr('Price', 'Precio')}</span>
                     <span className="sort-indicator" aria-hidden="true">{getSortIndicator('priceTotal')}</span>
                   </button>
                 </th>
-                <th className="col-channel">Channel</th>
+                <th className="col-channel">{tr('Channel', 'Canal')}</th>
                 <th className="col-status" aria-sort={getAriaSort('status')}>
                   <button
                     type="button"
                     className={`sort-header-btn ${sortBy === 'status' ? 'active' : ''}`}
                     onClick={() => handleTableSort('status')}
                   >
-                    <span>Status</span>
+                    <span>{tr('Status', 'Estado')}</span>
                     <span className="sort-indicator" aria-hidden="true">{getSortIndicator('status')}</span>
                   </button>
                 </th>
-                <th className="col-actions">Actions</th>
+                <th className="col-actions">{tr('Actions', 'Acciones')}</th>
               </tr>
             </thead>
             <tbody>
@@ -1374,7 +1417,7 @@ export default function ReservationManagement() {
                   <td className="col-id">#{res.reservationId}</td>
                   <td className="col-guest reservation-guest-cell" style={{ fontWeight: 600 }}>
                     {res.guestAnonymized && (
-                      <span style={{ color: 'var(--dark-gray)' }}>Anonymized/Deleted</span>
+                      <span style={{ color: 'var(--dark-gray)' }}>{tr('Anonymized/Deleted', 'Anonimizado/Eliminado')}</span>
                     )}
                     {!res.guestAnonymized && (
                       <>{res.guestDisplayName || res.guestName}</>
@@ -1382,7 +1425,7 @@ export default function ReservationManagement() {
                   </td>
                   <td className="col-suite reservation-suite-cell">{res.suiteName}</td>
                   <td className="col-checkin">{format(parseISO(res.checkIn), 'dd/MM/yyyy')}</td>
-                  <td className="col-checkout">{format(parseISO(res.checkOut), 'dd/MM/yyyy')}</td>
+                  <td className="col-checkout">{format(parseISO(res.checkOut), 'dd/MM/yyyy', { locale: dateLocale })}</td>
                   <td className="col-guests">{res.numGuests}</td>
                   <td className="col-price reservation-price-cell">
                     {(() => {
@@ -1392,11 +1435,11 @@ export default function ReservationManagement() {
 
                       return (
                         <>
-                          <div className="reservation-price-total">{new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(total)}</div>
+                          <div className="reservation-price-total">{new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(total)}</div>
                           <div className="reservation-price-night">
                             {perNight === null
                               ? '-'
-                              : `${new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(perNight)} / night`}
+                              : `${new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(perNight)} / ${tr('night', 'noche')}`}
                           </div>
                         </>
                       );
@@ -1417,7 +1460,7 @@ export default function ReservationManagement() {
                         display: 'inline-block',
                       }}
                     >
-                      {STATUS_META[res.status]?.label || res.status}
+                      {getStatusLabel(res.status, tr) || res.status}
                     </span>
                   </td>
                   <td className="col-actions">
@@ -1425,10 +1468,10 @@ export default function ReservationManagement() {
                       <button
                         onClick={() => openReservationModal(res)}
                         className="btn btn-primary btn-sm"
-                        title="Open reservation"
+                        title={tr('Open reservation', 'Abrir reserva')}
                       >
                         <Eye size={14} />
-                        Open
+                        {tr('Open', 'Abrir')}
                       </button>
                     </div>
                   </td>
@@ -1445,7 +1488,7 @@ export default function ReservationManagement() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3 className="modal-title">
-                {editingReservation ? 'Edit Reservation' : 'New Reservation'}
+                {editingReservation ? tr('Edit Reservation', 'Editar reserva') : tr('New Reservation', 'Nueva reserva')}
               </h3>
               <button className="modal-close" onClick={() => setShowModal(false)}>×</button>
             </div>
@@ -1499,7 +1542,7 @@ export default function ReservationManagement() {
                         style={{ justifyContent: 'center' }}
                       >
                         <Search size={16} />
-                        Use Existing Guest
+                        {tr('Use Existing Guest', 'Usar huesped existente')}
                       </button>
                       <button
                         type="button"
@@ -1508,13 +1551,13 @@ export default function ReservationManagement() {
                         style={{ justifyContent: 'center' }}
                       >
                         <Plus size={16} />
-                        Create New Guest
+                        {tr('Create New Guest', 'Crear nuevo huesped')}
                       </button>
                     </div>
                     <p style={{ marginTop: '0.75rem', marginBottom: '0.75rem', fontSize: '0.875rem', color: 'var(--dark-gray)' }}>
                       {guestMode === 'existing'
-                        ? 'Search by first or last name to reuse an existing guest profile.'
-                        : 'Enter guest details below. A new guest profile will be created with this reservation.'}
+                        ? tr('Search by first or last name to reuse an existing guest profile.', 'Busca por nombre o apellido para reutilizar un perfil de huesped existente.')
+                        : tr('Enter guest details below. A new guest profile will be created with this reservation.', 'Introduce abajo los datos del huesped. Se creara un nuevo perfil con esta reserva.')}
                     </p>
 
                   {/* Existing Guest Search */}
@@ -1524,7 +1567,7 @@ export default function ReservationManagement() {
                         <input
                           type="text"
                           className={`form-input ${validationErrors.guestSelection ? 'error' : ''}`}
-                          placeholder="Type first or last name..."
+                          placeholder={tr('Type first or last name...', 'Escribe nombre o apellido...')}
                           value={searchTerm}
                           onChange={(e) => {
                             setSearchTerm(e.target.value);
@@ -1534,7 +1577,7 @@ export default function ReservationManagement() {
                         <Search style={{ position: 'absolute', right: '0.75rem', top: '0.75rem', color: 'var(--gray)' }} size={20} />
                       </div>
                       <span style={{ fontSize: '0.85rem', color: 'var(--dark-gray)', marginTop: '0.35rem', display: 'block' }}>
-                        Enter at least 2 characters.
+                        {tr('Enter at least 2 characters.', 'Introduce al menos 2 caracteres.')}
                       </span>
                       {validationErrors.guestSelection && (
                         <span style={{ color: 'var(--danger)', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
@@ -1544,7 +1587,7 @@ export default function ReservationManagement() {
 
                       {searchingGuests && (
                         <span style={{ color: 'var(--dark-gray)', fontSize: '0.875rem', marginTop: '0.35rem', display: 'block' }}>
-                          Searching guests...
+                          {tr('Searching guests...', 'Buscando huespedes...')}
                         </span>
                       )}
 
@@ -1584,7 +1627,7 @@ export default function ReservationManagement() {
 
                       {!searchingGuests && searchTerm.trim().length >= 2 && guestSearchResults.length === 0 && !formData.guestId && (
                         <div style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: 'var(--dark-gray)' }}>
-                          No guest found. Switch to Create New Guest to add a profile.
+                          {tr('No guest found. Switch to Create New Guest to add a profile.', 'No se encontro ningun huesped. Cambia a Crear nuevo huesped para agregar un perfil.')}
                         </div>
                       )}
                     </div>
@@ -1594,7 +1637,7 @@ export default function ReservationManagement() {
                   {!editingReservation && guestMode === 'new' && !formData.guestId && (
                     <>
                       <div className="form-group">
-                        <label className="form-label">First Name *</label>
+                        <label className="form-label">{tr('First Name *', 'Nombre *')}</label>
                         <input
                           type="text"
                           className={`form-input ${validationErrors.firstName ? 'error' : ''}`}
@@ -1609,7 +1652,7 @@ export default function ReservationManagement() {
                         )}
                       </div>
                       <div className="form-group">
-                        <label className="form-label">Last Name *</label>
+                        <label className="form-label">{tr('Last Name *', 'Apellido *')}</label>
                         <input
                           type="text"
                           className={`form-input ${validationErrors.lastName ? 'error' : ''}`}
@@ -1624,7 +1667,7 @@ export default function ReservationManagement() {
                         )}
                       </div>
                       <div className="form-group">
-                        <label className="form-label">Email *</label>
+                        <label className="form-label">{tr('Email *', 'Correo *')}</label>
                         <input
                           type="email"
                           className={`form-input ${validationErrors.email ? 'error' : ''}`}
@@ -1639,7 +1682,7 @@ export default function ReservationManagement() {
                         )}
                       </div>
                       <div className="form-group">
-                        <label className="form-label">Phone</label>
+                        <label className="form-label">{tr('Phone', 'Telefono')}</label>
                         <input
                           type="tel"
                           className="form-input"
@@ -1649,13 +1692,13 @@ export default function ReservationManagement() {
                         />
                       </div>
                       <div className="form-group">
-                        <label className="form-label">Nationality</label>
+                        <label className="form-label">{tr('Nationality', 'Nacionalidad')}</label>
                         <select
                           className="form-select"
                           value={formData.nationalityCode}
                           onChange={(e) => setFormData({ ...formData, nationalityCode: e.target.value })}
                         >
-                          <option value="">Select nationality</option>
+                          <option value="">{tr('Select nationality', 'Seleccionar nacionalidad')}</option>
                           {nationalities.map(nat => (
                             <option key={nat.nationalityCode} value={nat.nationalityCode}>{nat.name}</option>
                           ))}
@@ -1671,11 +1714,11 @@ export default function ReservationManagement() {
                 {formData.guestId && !editingReservation && guestMode === 'existing' && (
                   <div className="success-message" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
                     <span>
-                      Selected: {formData.firstName} {formData.lastName}{' '}
+                      {tr('Selected:', 'Seleccionado:')} {formData.firstName} {formData.lastName}{' '}
                       {formData.email ? `(${formData.email})` : null}
                     </span>
                     <button type="button" className="btn btn-outline btn-sm" onClick={resetGuestSelection}>
-                      Clear Selection
+                      {tr('Clear Selection', 'Limpiar seleccion')}
                     </button>
                   </div>
                 )}
@@ -1684,17 +1727,17 @@ export default function ReservationManagement() {
 
                 {/* Reservation Details */}
                 <div className="form-group">
-                  <label className="form-label">Suite *</label>
+                  <label className="form-label">{tr('Suite *', 'Suite *')}</label>
                   <select
                     className={`form-select ${validationErrors.suiteId ? 'error' : ''}`}
                     value={formData.suiteId}
                     onChange={(e) => setFormData({ ...formData, suiteId: e.target.value })}
                     required
                   >
-                    <option value="">Select suite</option>
+                    <option value="">{tr('Select suite', 'Seleccionar suite')}</option>
                     {suites.filter(s => s.active).map(suite => (
                       <option key={suite.suiteId} value={suite.suiteId}>
-                        {suite.suiteName}  (max {suite.capacity} guests)
+                        {suite.suiteName}  ({tr('max', 'max')} {suite.capacity} {tr('guests', 'huespedes')})
                       </option>
                     ))}
                   </select>
@@ -1706,7 +1749,7 @@ export default function ReservationManagement() {
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                   <div className="form-group">
-                    <label className="form-label">Check-In *</label>
+                    <label className="form-label">{tr('Check-In *', 'Check-In *')}</label>
                     <input
                       type="date"
                       className={`form-input ${validationErrors.checkIn ? 'error' : ''}`}
@@ -1721,12 +1764,12 @@ export default function ReservationManagement() {
                     )}
                     {!validationErrors.checkIn && isCheckInInPast && (
                       <span style={{ color: 'var(--warning)', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
-                        Check-in is in the past. Are you sure?
+                        {tr('Check-in is in the past. Are you sure?', 'El check-in esta en el pasado. Seguro?')}
                       </span>
                     )}
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Check-Out *</label>
+                    <label className="form-label">{tr('Check-Out *', 'Check-Out *')}</label>
                     <input
                       type="date"
                       className={`form-input ${validationErrors.checkOut ? 'error' : ''}`}
@@ -1752,10 +1795,10 @@ export default function ReservationManagement() {
                     gap: '0.5rem'
                   }}>
                     <Calendar size={16} style={{ color: 'var(--primary)' }} />
-                    <strong>{nightsCount}</strong> night{nightsCount !== 1 ? 's' : ''}
+                    <strong>{nightsCount}</strong> {nightsCount !== 1 ? tr('nights', 'noches') : tr('night', 'noche')}
                     {suggestedPrice && (
                       <span style={{ marginLeft: 'auto', color: 'var(--dark-gray)' }}>
-                        Suggested price: €{suggestedPrice}
+                        {tr('Suggested price:', 'Precio sugerido:')} €{suggestedPrice}
                       </span>
                     )}
                   </div>
@@ -1768,7 +1811,7 @@ export default function ReservationManagement() {
                   <div className="form-group" style={{ minWidth: 0 }}>
                     <label className="form-label">
                       <Users size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
-                      Guests *
+                      {tr('Guests *', 'Huespedes *')}
                     </label>
                     <input
                       type="number"
@@ -1787,14 +1830,14 @@ export default function ReservationManagement() {
                     )}
                     {selectedSuite && (
                       <span style={{ fontSize: '0.875rem', color: 'var(--dark-gray)', marginTop: '0.25rem', display: 'block' }}>
-                        Max capacity: {selectedSuite.capacity}
+                        {tr('Max capacity:', 'Capacidad maxima:')} {selectedSuite.capacity}
                       </span>
                     )}
                   </div>
                   <div className="form-group">
                     <label className="form-label">
                       <Euro size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
-                      Price per Night
+                      {tr('Price per Night', 'Precio por noche')}
                     </label>
                     <input
                       type="number"
@@ -1809,7 +1852,7 @@ export default function ReservationManagement() {
                   <div className="form-group">
                     <label className="form-label">
                       <Euro size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
-                      Total Price *
+                      {tr('Total Price *', 'Precio total *')}
                     </label>
                     <input
                       type="number"
@@ -1848,40 +1891,40 @@ export default function ReservationManagement() {
                           cursor: 'pointer'
                         }}
                       >
-                        Use suggested €{suggestedPrice}
+                        {tr('Use suggested', 'Usar sugerido')} €{suggestedPrice}
                       </button>
                     )}
                   </div>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Booking Channel *</label>
+                  <label className="form-label">{tr('Booking Channel *', 'Canal de reserva *')}</label>
                   <select
                     className="form-select"
                     value={formData.channel}
                     onChange={(e) => setFormData({ ...formData, channel: e.target.value })}
                     required
                   >
-                    <option value="direct">Direct</option>
+                    <option value="direct">{tr('Direct', 'Directo')}</option>
                     <option value="booking.com">Booking.com</option>
                     <option value="airbnb">Airbnb</option>
                     <option value="expedia">Expedia</option>
-                    <option value="other">Other</option>
+                    <option value="other">{tr('Other', 'Otro')}</option>
                   </select>
                 </div>
                 {editingReservation && (
                   <div className="form-group">
-                    <label className="form-label">Status</label>
+                    <label className="form-label">{tr('Status', 'Estado')}</label>
                     <select
                       className="form-select"
                       value={formData.status}
                       onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                     >
-                      <option value="pending">Pending</option>
-                      <option value="confirmed">Confirmed</option>
-                      <option value="checked_in">Checked In</option>
-                      <option value="checked_out">Checked Out</option>
-                      <option value="cancelled">Cancelled</option>
-                      <option value="no_show">No Show</option>
+                      <option value="pending">{getStatusLabel('pending', tr)}</option>
+                      <option value="confirmed">{getStatusLabel('confirmed', tr)}</option>
+                      <option value="checked_in">{getStatusLabel('checked_in', tr)}</option>
+                      <option value="checked_out">{getStatusLabel('checked_out', tr)}</option>
+                      <option value="cancelled">{getStatusLabel('cancelled', tr)}</option>
+                      <option value="no_show">{getStatusLabel('no_show', tr)}</option>
                     </select>
                     {statusTransitionWarning && (
                       <div style={{
@@ -1901,36 +1944,38 @@ export default function ReservationManagement() {
                 {showGuestNotesField && (
                   <div className="form-group">
                     <label className="form-label">
-                      Guest Notes{guestNotesOwnerLabel ? ` of ${guestNotesOwnerLabel}` : ''}
+                      {tr('Guest Notes', 'Notas del huesped')}{guestNotesOwnerLabel ? ` ${tr('of', 'de')} ${guestNotesOwnerLabel}` : ''}
                     </label>
                     <textarea
                       className="form-textarea"
                       value={formData.guestNotes}
                       onChange={(e) => setFormData({ ...formData, guestNotes: e.target.value })}
-                      placeholder="Guest profile notes (preferences, allergies, communication reminders)."
+                      placeholder={tr('Guest profile notes (preferences, allergies, communication reminders).', 'Notas del perfil del huesped (preferencias, alergias, recordatorios de comunicacion).')}
                     />
                     <span style={{ fontSize: '0.85rem', color: 'var(--dark-gray)', marginTop: '0.35rem', display: 'block' }}>
-                      Saved on the guest profile and visible on all reservations for this guest.
+                      {tr('Saved on the guest profile and visible on all reservations for this guest.', 'Se guarda en el perfil del huesped y se muestra en todas las reservas de este huesped.')}
                     </span>
                   </div>
                 )}
 
                 <div className="form-group">
-                  <label className="form-label">Reservation Notes</label>
+                  <label className="form-label">{tr('Reservation Notes', 'Notas de reserva')}</label>
                   <textarea
                     className="form-textarea"
                     value={formData.notes}
                     onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                    placeholder="Stay-specific notes for this reservation only."
+                    placeholder={tr('Stay-specific notes for this reservation only.', 'Notas especificas para esta estancia solamente.')}
                   />
                 </div>
               </div>
               <div className="modal-footer">
                 <button type="button" onClick={() => setShowModal(false)} className="btn btn-outline" disabled={submitting}>
-                  Cancel
+                  {tr('Cancel', 'Cancelar')}
                 </button>
                 <button type="submit" className="btn btn-accent" disabled={submitting}>
-                  {submitting ? 'Saving...' : (editingReservation ? 'Update' : 'Create')} Reservation
+                  {submitting
+                    ? tr('Saving...', 'Guardando...')
+                    : `${editingReservation ? tr('Update', 'Actualizar') : tr('Create', 'Crear')} ${tr('Reservation', 'reserva')}`}
                 </button>
               </div>
             </form>

@@ -12,7 +12,8 @@ import {
   subMonths
 } from 'date-fns';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
-import { STATUS_META } from '../api/reservationStatus';
+import { STATUS_META, getStatusLabel } from '../api/reservationStatus';
+import { useI18n } from '../context/I18nContext';
 import { ConfirmCancelReservationModal, ReservationDetailsModal } from './reservations/ReservationDetailsModal';
 
 const STATUS_FILTER_DEFAULTS = {
@@ -25,6 +26,7 @@ const STATUS_FILTER_DEFAULTS = {
 };
 
 export default function CalendarView() {
+  const { tr, dateLocale } = useI18n();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [reservations, setReservations] = useState([]);
   const [suites, setSuites] = useState([]);
@@ -65,7 +67,7 @@ export default function CalendarView() {
       setError(null);
     } catch (err) {
       console.error('Error loading calendar data:', err);
-      setError(err?.message || 'Failed to load calendar data.');
+      setError(err?.message || tr('Failed to load calendar data.', 'No se pudieron cargar los datos del calendario.'));
       setReservations([]);
       setSuites([]);
     } finally {
@@ -140,21 +142,21 @@ export default function CalendarView() {
     const priceTotal = Number(editForm.priceTotal);
 
     if (!editForm.checkIn || !editForm.checkOut) {
-      errors.push('Check-in and check-out dates are required.');
+      errors.push(tr('Check-in and check-out dates are required.', 'Las fechas de check-in y check-out son obligatorias.'));
     } else if (parseISO(editForm.checkOut) <= parseISO(editForm.checkIn)) {
-      errors.push('Check-out must be after check-in.');
+      errors.push(tr('Check-out must be after check-in.', 'El check-out debe ser posterior al check-in.'));
     }
 
     if (!Number.isFinite(numGuests) || numGuests < 1) {
-      errors.push('Guests must be at least 1.');
+      errors.push(tr('Guests must be at least 1.', 'Los huespedes deben ser al menos 1.'));
     }
 
     if (selectedSuite?.capacity && numGuests > selectedSuite.capacity) {
-      errors.push(`Guests exceed suite capacity (${selectedSuite.capacity}).`);
+      errors.push(tr(`Guests exceed suite capacity (${selectedSuite.capacity}).`, `Los huespedes exceden la capacidad de la suite (${selectedSuite.capacity}).`));
     }
 
     if (!Number.isFinite(priceTotal) || priceTotal < 0) {
-      errors.push('Price must be 0 or higher.');
+      errors.push(tr('Price must be 0 or higher.', 'El precio debe ser 0 o mayor.'));
     }
 
     return errors;
@@ -189,6 +191,35 @@ export default function CalendarView() {
     setIsEditingReservation(false);
     setModalError(null);
   };
+
+  useEffect(() => {
+    if (!showReservationModal && !showCancelConfirmModal) {
+      return undefined;
+    }
+
+    const handleEscapeKey = (event) => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+
+      if (showCancelConfirmModal) {
+        if (!savingReservation) {
+          setShowCancelConfirmModal(false);
+        }
+        return;
+      }
+
+      if (showReservationModal && !savingReservation) {
+        closeReservationModal();
+      }
+    };
+
+    window.addEventListener('keydown', handleEscapeKey);
+
+    return () => {
+      window.removeEventListener('keydown', handleEscapeKey);
+    };
+  }, [showReservationModal, showCancelConfirmModal, savingReservation, closeReservationModal]);
 
   const requestCancelReservation = () => {
     setShowCancelConfirmModal(true);
@@ -242,7 +273,7 @@ export default function CalendarView() {
           });
         } catch (guestErr) {
           console.error('Failed to update guest profile notes:', guestErr);
-          guestNotesSyncError = 'Reservation was saved, but guest profile notes could not be saved. Please try again.';
+          guestNotesSyncError = tr('Reservation was saved, but guest profile notes could not be saved. Please try again.', 'La reserva se guardo, pero no se pudieron guardar las notas del huesped. Intentalo de nuevo.');
         }
       }
 
@@ -276,7 +307,7 @@ export default function CalendarView() {
       closeReservationModal();
     } catch (err) {
       console.error('Failed to update reservation:', err);
-      setModalError(err?.message || 'Failed to update reservation');
+      setModalError(err?.message || tr('Failed to update reservation', 'No se pudo actualizar la reserva'));
     } finally {
       setSavingReservation(false);
     }
@@ -293,7 +324,7 @@ export default function CalendarView() {
       closeReservationModal();
     } catch (err) {
       console.error('Failed to cancel reservation:', err);
-      setModalError(err?.message || 'Failed to cancel reservation');
+      setModalError(err?.message || tr('Failed to cancel reservation', 'No se pudo cancelar la reserva'));
     } finally {
       setShowCancelConfirmModal(false);
       setSavingReservation(false);
@@ -315,7 +346,7 @@ export default function CalendarView() {
     return (
       <div className="loading-spinner">
         <div className="spinner"></div>
-        <p className="mt-2">Loading calendar...</p>
+        <p className="mt-2">{tr('Loading calendar...', 'Cargando calendario...')}</p>
       </div>
     );
   }
@@ -327,18 +358,18 @@ export default function CalendarView() {
         <div className="card-header">
           <h2>
             <CalendarIcon size={28} />
-            Calendar & Planning
+            {tr('Calendar & Planning', 'Calendario y planificacion')}
           </h2>
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
               <button onClick={goToToday} className="btn btn-outline btn-sm">
-                Today
+                {tr('Today', 'Hoy')}
               </button>
               <button onClick={previousMonth} className="btn btn-primary btn-sm">
                 <ChevronLeft size={16} />
               </button>
               <h3 style={{ margin: 0, fontSize: '1.125rem', minWidth: '140px', textAlign: 'center' }}>
-                {format(currentDate, 'MMMM yyyy')}
+                {format(currentDate, 'MMMM yyyy', { locale: dateLocale })}
               </h3>
               <button onClick={nextMonth} className="btn btn-primary btn-sm">
                 <ChevronRight size={16} />
@@ -359,8 +390,8 @@ export default function CalendarView() {
         <div className="card">
           <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--dark-gray)' }}>
             <CalendarIcon size={48} style={{ marginBottom: '1rem', opacity: 0.5 }} />
-            <p style={{ fontSize: '1.125rem', marginBottom: '0.5rem' }}>No active suites</p>
-            <p style={{ fontSize: '0.875rem' }}>Add suites to start managing reservations</p>
+            <p style={{ fontSize: '1.125rem', marginBottom: '0.5rem' }}>{tr('No active suites', 'No hay suites activas')}</p>
+            <p style={{ fontSize: '0.875rem' }}>{tr('Add suites to start managing reservations', 'Agrega suites para empezar a gestionar reservas')}</p>
           </div>
         </div>
       ) : (
@@ -374,6 +405,8 @@ export default function CalendarView() {
           statusFilters={statusFilters}
           onToggleStatusFilter={toggleStatusFilter}
           onResetStatusFilters={resetStatusFilters}
+          tr={tr}
+          dateLocale={dateLocale}
         />
       )}
 
@@ -389,35 +422,35 @@ export default function CalendarView() {
         }}>
           <div>
             <div style={{ fontSize: '0.875rem', color: 'var(--dark-gray)', marginBottom: '0.25rem' }}>
-              Total Reservations
+              {tr('Total Reservations', 'Reservas totales')}
             </div>
             <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--primary)' }}>
               {filteredReservations.length}
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--dark-gray)', marginTop: '0.125rem' }}>
-              {activeReservations.length} active
+              {activeReservations.length} {tr('active', 'activas')}
             </div>
           </div>
           <div>
             <div style={{ fontSize: '0.875rem', color: 'var(--dark-gray)', marginBottom: '0.25rem' }}>
-              Occupancy Rate
+              {tr('Occupancy Rate', 'Tasa de ocupacion')}
             </div>
             <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--accent)' }}>
               {occupancyRate.toFixed(1)}%
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--dark-gray)', marginTop: '0.125rem' }}>
-              {occupiedDays} of {totalSuiteDays} days
+              {occupiedDays} {tr('of', 'de')} {totalSuiteDays} {tr('days', 'dias')}
             </div>
           </div>
           <div>
             <div style={{ fontSize: '0.875rem', color: 'var(--dark-gray)', marginBottom: '0.25rem' }}>
-              Active Suites
+              {tr('Active Suites', 'Suites activas')}
             </div>
             <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--success)' }}>
               {activeSuites.length}
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--dark-gray)', marginTop: '0.125rem' }}>
-              of {suites.length} total
+              {tr('of', 'de')} {suites.length} {tr('total', 'total')}
             </div>
           </div>
         </div>
@@ -465,6 +498,8 @@ function TimelineView({
   statusFilters,
   onToggleStatusFilter,
   onResetStatusFilters,
+  tr,
+  dateLocale,
 }) {
   const getReservationsForSuite = (suiteId, source = reservations) => {
     return source.filter((res) => res.suiteId === suiteId);
@@ -520,7 +555,7 @@ function TimelineView({
             borderRight: '2px solid var(--gray)',
             background: 'var(--light-gray)'
           }}>
-            Suite
+            {tr('Suite', 'Suite')}
           </div>
           <div style={{ flex: 1, display: 'flex', minWidth: '800px' }}>
             {daysInMonth.map((day, idx) => (
@@ -539,7 +574,7 @@ function TimelineView({
                   borderBottom: '1px solid var(--gray)'
                 }}
               >
-                <div>{format(day, 'EEE')}</div>
+                <div>{format(day, 'EEE', { locale: dateLocale })}</div>
                 <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>{format(day, 'd')}</div>
               </div>
             ))}
@@ -569,7 +604,7 @@ function TimelineView({
                 gap: '0.25rem'
               }}>
                 <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{suite.suiteName}</div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--dark-gray)' }}>Capacity: {suite.capacity}</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--dark-gray)' }}>{tr('Capacity:', 'Capacidad:')} {suite.capacity}</div>
               </div>
               <div style={{ 
                 flex: 1, 
@@ -623,7 +658,7 @@ function TimelineView({
                         boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
                         zIndex: 10
                       }}
-                      title={`${reservation.guestName}\n${format(parseISO(reservation.checkIn), 'dd/MM/yyyy')} → ${format(parseISO(reservation.checkOut), 'dd/MM/yyyy')}\n${reservation.numGuests} guest${reservation.numGuests > 1 ? 's' : ''}\nStatus: ${reservation.status}`}
+                      title={`${reservation.guestName}\n${format(parseISO(reservation.checkIn), 'dd/MM/yyyy', { locale: dateLocale })} → ${format(parseISO(reservation.checkOut), 'dd/MM/yyyy', { locale: dateLocale })}\n${reservation.numGuests} ${reservation.numGuests > 1 ? tr('guests', 'huespedes') : tr('guest', 'huesped')}\n${tr('Status', 'Estado')}: ${getStatusLabel(reservation.status, tr)}`}
                       onClick={() => onReservationClick(reservation)}
                     >
                       {reservation.guestName}
@@ -656,12 +691,12 @@ function TimelineView({
               }}
             >
               <div style={{ width: '20px', height: '14px', background: meta.color, borderRadius: '3px' }}></div>
-              <span>{meta.label}</span>
+              <span>{getStatusLabel(key, tr)}</span>
             </button>
           ))}
 
           <button type="button" className="btn btn-outline btn-sm" onClick={onResetStatusFilters}>
-            Reset filters
+            {tr('Reset filters', 'Restablecer filtros')}
           </button>
         </div>
       </div>

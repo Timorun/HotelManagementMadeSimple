@@ -24,7 +24,7 @@ function buildWhatsAppLink(phone) {
 }
 
 export default function GuestManagement() {
-  const { t } = useI18n();
+  const { t, tr } = useI18n();
   const [guests, setGuests] = useState([]);
   const [nationalities, setNationalities] = useState([]);
   const [filteredGuests, setFilteredGuests] = useState([]);
@@ -54,6 +54,33 @@ export default function GuestManagement() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (!showModal && !anonymizeTarget) {
+      return undefined;
+    }
+
+    const handleEscapeKey = (event) => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+
+      if (anonymizeTarget) {
+        setAnonymizeTarget(null);
+        return;
+      }
+
+      if (showModal) {
+        setShowModal(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleEscapeKey);
+
+    return () => {
+      window.removeEventListener('keydown', handleEscapeKey);
+    };
+  }, [showModal, anonymizeTarget]);
 
   const guestsMatchingPrimaryFilters = useMemo(() => {
     const normalizedSearch = searchTerm.toLowerCase();
@@ -208,7 +235,7 @@ export default function GuestManagement() {
     });
 
     if (duplicateNameExists) {
-      const duplicateMessage = 'A guest with this first and last name already exists.';
+      const duplicateMessage = tr('A guest with this first and last name already exists.', 'Ya existe un huesped con este nombre y apellido.');
       setError(duplicateMessage);
       window.alert(duplicateMessage);
       return;
@@ -228,7 +255,7 @@ export default function GuestManagement() {
       setError(null);
       setShowModal(false);
     } catch (err) {
-      const errorMessage = err?.message || 'Failed to save guest';
+      const errorMessage = err?.message || tr('Failed to save guest', 'No se pudo guardar el huesped');
       setError(errorMessage);
       if (errorMessage.toLowerCase().includes('already exists')) {
         window.alert(errorMessage);
@@ -267,8 +294,8 @@ export default function GuestManagement() {
       phone: guest.phone || '',
       nationality: guest.nationalityName || '',
       reservationCount: guest.reservationCount || 0,
-      marketingConsent: guest.marketingConsent ? 'Yes' : 'No',
-      anonymized: guest.anonymized ? 'Yes' : 'No',
+      marketingConsent: guest.marketingConsent ? tr('Yes', 'Si') : tr('No', 'No'),
+      anonymized: guest.anonymized ? tr('Yes', 'Si') : tr('No', 'No'),
       anonymizedAt: guest.anonymizedAt || '',
     }));
 
@@ -318,7 +345,7 @@ export default function GuestManagement() {
   const handleCopyContact = async (value, contactKey) => {
     const copied = await copyTextToClipboard(value);
     if (!copied) {
-      setError('Unable to copy to clipboard. Please copy manually.');
+      setError(tr('Unable to copy to clipboard. Please copy manually.', 'No se pudo copiar al portapapeles. Copia manualmente.'));
       return;
     }
 
@@ -332,7 +359,7 @@ export default function GuestManagement() {
     return (
       <div className="loading-spinner">
         <div className="spinner"></div>
-        <p className="mt-2">Loading guests...</p>
+        <p className="mt-2">{tr('Loading guests...', 'Cargando huespedes...')}</p>
       </div>
     );
   }
@@ -343,11 +370,11 @@ export default function GuestManagement() {
         <div className="card-header">
           <h2>
             <Users size={28} />
-            Guest Management
+            {tr('Guest Management', 'Gestion de huespedes')}
           </h2>
           <button onClick={openNewGuestModal} className="btn btn-accent">
             <Plus size={16} />
-            New Guest
+            {tr('New Guest', 'Nuevo huesped')}
           </button>
         </div>
 
@@ -360,11 +387,11 @@ export default function GuestManagement() {
         <div className="form-group reservation-filters-panel guest-filters-panel">
           <div className="list-filters-head">
             <div>
-              <h3 className="list-filters-title">Filter Guests</h3>
-              <p className="list-filters-subtitle">Search by identity and refine by profile tags or activity.</p>
+              <h3 className="list-filters-title">{tr('Filter Guests', 'Filtrar huespedes')}</h3>
+              <p className="list-filters-subtitle">{tr('Search by identity and refine by profile tags or activity.', 'Busca por identidad y refina por etiquetas de perfil o actividad.')}</p>
             </div>
             <div className="list-filters-actions">
-              <span className="list-filters-count">{filteredGuests.length} shown</span>
+              <span className="list-filters-count">{filteredGuests.length} {tr('shown', 'mostrados')}</span>
               <button type="button" className="btn btn-outline btn-sm" onClick={handleExport}>
                 <Download size={16} />
                 {t('filters.exportExcel')}
@@ -375,7 +402,7 @@ export default function GuestManagement() {
                 onClick={clearGuestListFilters}
                 disabled={activeGuestFilterCount === 0}
               >
-                Clear filters
+                {tr('Clear filters', 'Limpiar filtros')}
               </button>
             </div>
           </div>
@@ -385,7 +412,7 @@ export default function GuestManagement() {
               <input
                 type="text"
                 className="form-input"
-                placeholder="Search guests by name or email..."
+                placeholder={tr('Search guests by name or email...', 'Buscar huespedes por nombre o correo...')}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -397,12 +424,12 @@ export default function GuestManagement() {
               <option value="anonymized">{t('filters.anonymized')}</option>
             </select>
             <select className="form-select" value={marketingFilter} onChange={(e) => setMarketingFilter(e.target.value)}>
-              <option value="all">Marketing: {t('filters.all')}</option>
-              <option value="yes">Marketing: Yes</option>
-              <option value="no">Marketing: No</option>
+              <option value="all">{tr('Marketing:', 'Marketing:')} {t('filters.all')}</option>
+              <option value="yes">{tr('Marketing: Yes', 'Marketing: Si')}</option>
+              <option value="no">{tr('Marketing: No', 'Marketing: No')}</option>
             </select>
             <select className="form-select" value={nationalityFilter} onChange={(e) => setNationalityFilter(e.target.value)}>
-              <option value="all">Nationality: {t('filters.all')}</option>
+              <option value="all">{tr('Nationality:', 'Nacionalidad:')} {t('filters.all')}</option>
               {availableNationalityOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
@@ -415,38 +442,38 @@ export default function GuestManagement() {
         {filteredGuests.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-icon">👥</div>
-            <p>{searchTerm ? 'No guests found matching your search' : 'No guests in the system'}</p>
+            <p>{searchTerm ? tr('No guests found matching your search', 'No se encontraron huespedes para tu busqueda') : tr('No guests in the system', 'No hay huespedes en el sistema')}</p>
           </div>
         ) : (
           <table className="data-table guest-table">
             <thead>
               <tr>
-                <th>ID</th>
-                <th aria-sort={getAriaSort('name')}>
+                <th className="col-id">ID</th>
+                <th className="col-name" aria-sort={getAriaSort('name')}>
                   <button
                     type="button"
                     className={`sort-header-btn ${sortBy === 'name' ? 'active' : ''}`}
                     onClick={() => handleTableSort('name')}
                   >
-                    <span>Name</span>
+                    <span>{tr('Name', 'Nombre')}</span>
                     <span className="sort-indicator" aria-hidden="true">{getSortIndicator('name')}</span>
                   </button>
                 </th>
-                <th>Email</th>
-                <th>Phone</th>
-                <th>Nationality</th>
-                <th aria-sort={getAriaSort('reservations')}>
+                <th className="col-email">{tr('Email', 'Correo')}</th>
+                <th className="col-phone">{tr('Phone', 'Telefono')}</th>
+                <th className="col-nationality">{tr('Nationality', 'Nacionalidad')}</th>
+                <th className="col-reservations" aria-sort={getAriaSort('reservations')}>
                   <button
                     type="button"
                     className={`sort-header-btn ${sortBy === 'reservations' ? 'active' : ''}`}
                     onClick={() => handleTableSort('reservations')}
                   >
-                    <span>Reservations</span>
+                    <span>{tr('Reservations', 'Reservas')}</span>
                     <span className="sort-indicator" aria-hidden="true">{getSortIndicator('reservations')}</span>
                   </button>
                 </th>
-                <th>Marketing</th>
-                <th>Actions</th>
+                <th className="col-marketing">{tr('Marketing', 'Marketing')}</th>
+                <th className="col-actions">{tr('Actions', 'Acciones')}</th>
               </tr>
             </thead>
             <tbody>
@@ -460,7 +487,7 @@ export default function GuestManagement() {
                     <td>#{guest.guestId}</td>
                     <td style={{ fontWeight: 600 }}>
                       {guest.anonymized && (
-                        <span style={{ color: 'var(--dark-gray)' }}>Anonymized/Deleted</span>
+                        <span style={{ color: 'var(--dark-gray)' }}>{tr('Anonymized/Deleted', 'Anonimizado/Eliminado')}</span>
                       )}
                       {!guest.anonymized && (
                         <span>{guest.firstName} {guest.lastName}</span>
@@ -468,7 +495,7 @@ export default function GuestManagement() {
                     </td>
                     <td>
                       <div className="contact-cell">
-                        {guest.anonymized ? 'Anonymized' : (
+                        {guest.anonymized ? tr('Anonymized', 'Anonimizado') : (
                           guest.email
                             ? (
                               <span className="contact-data-group">
@@ -477,8 +504,8 @@ export default function GuestManagement() {
                                   <a
                                     className="contact-action-btn action-primary compact"
                                     href={`mailto:${guest.email}`}
-                                    aria-label={`Send email to ${guest.firstName} ${guest.lastName}`}
-                                    title="Send email"
+                                    aria-label={`${tr('Send email to', 'Enviar correo a')} ${guest.firstName} ${guest.lastName}`}
+                                    title={tr('Send email', 'Enviar correo')}
                                   >
                                     <Send size={12} />                                    
                                   </a>
@@ -486,8 +513,8 @@ export default function GuestManagement() {
                                     type="button"
                                     className="contact-action-btn action-copy compact"
                                     onClick={() => handleCopyContact(guest.email, emailCopyKey)}
-                                    aria-label={`Copy email for ${guest.firstName} ${guest.lastName}`}
-                                    title={copiedContactKey === emailCopyKey ? 'Copied' : 'Copy email'}
+                                    aria-label={`${tr('Copy email for', 'Copiar correo de')} ${guest.firstName} ${guest.lastName}`}
+                                    title={copiedContactKey === emailCopyKey ? tr('Copied', 'Copiado') : tr('Copy email', 'Copiar correo')}
                                   >
                                     {copiedContactKey === emailCopyKey ? <Check size={11} /> : <Copy size={11} />}
                                   </button>
@@ -500,7 +527,7 @@ export default function GuestManagement() {
                     </td>
                     <td>
                       <div className="contact-cell">
-                        {guest.anonymized ? 'Anonymized' : (
+                        {guest.anonymized ? tr('Anonymized', 'Anonimizado') : (
                           guest.phone
                             ? (
                               <span className="contact-data-group">
@@ -512,8 +539,8 @@ export default function GuestManagement() {
                                       href={whatsappLink}
                                       target="_blank"
                                       rel="noreferrer noopener"
-                                      aria-label={`Open WhatsApp chat for ${guest.firstName} ${guest.lastName}`}
-                                      title="Open WhatsApp"
+                                      aria-label={`${tr('Open WhatsApp chat for', 'Abrir chat de WhatsApp para')} ${guest.firstName} ${guest.lastName}`}
+                                      title={tr('Open WhatsApp', 'Abrir WhatsApp')}
                                     >
                                       <MessageCircle size={11} />
                                     </a>
@@ -522,8 +549,8 @@ export default function GuestManagement() {
                                     type="button"
                                     className="contact-action-btn action-copy compact"
                                     onClick={() => handleCopyContact(guest.phone, phoneCopyKey)}
-                                    aria-label={`Copy phone for ${guest.firstName} ${guest.lastName}`}
-                                    title={copiedContactKey === phoneCopyKey ? 'Copied' : 'Copy phone'}
+                                    aria-label={`${tr('Copy phone for', 'Copiar telefono de')} ${guest.firstName} ${guest.lastName}`}
+                                    title={copiedContactKey === phoneCopyKey ? tr('Copied', 'Copiado') : tr('Copy phone', 'Copiar telefono')}
                                   >
                                     {copiedContactKey === phoneCopyKey ? <Check size={11} /> : <Copy size={11} />}
                                   </button>
@@ -547,29 +574,31 @@ export default function GuestManagement() {
                     </td>
                     <td>
                       {guest.marketingConsent ? (
-                        <span className="status-badge status-checked-in">Yes</span>
+                        <span className="status-badge status-checked-in">{tr('Yes', 'Si')}</span>
                       ) : (
-                        <span className="status-badge status-cancelled">No</span>
+                        <span className="status-badge status-cancelled">{tr('No', 'No')}</span>
                       )}
                     </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button
-                          onClick={() => openEditModal(guest)}
-                          className="btn btn-primary btn-sm"
-                          disabled={guest.anonymized}
-                        >
-                          <Edit size={14} />
-                        </button>
-                        <button
-                          onClick={() => handleAnonymize(guest)}
-                          className="btn btn-danger btn-sm"
-                          disabled={guest.anonymized}
-                          title="Anonymize guest"
-                        >
-                          <UserX size={18} />
-                        </button>
-                      </div>
+                    <td className="col-actions">
+                      {guest.anonymized ? (
+                        <span style={{ color: 'var(--dark-gray)' }}>-</span>
+                      ) : (
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button
+                            onClick={() => openEditModal(guest)}
+                            className="btn btn-primary btn-sm"
+                          >
+                            <Edit size={14} />
+                          </button>
+                          <button
+                            onClick={() => handleAnonymize(guest)}
+                            className="btn btn-danger btn-sm"
+                            title={tr('Anonymize guest', 'Anonimizar huesped')}
+                          >
+                            <UserX size={18} />
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );
@@ -580,7 +609,7 @@ export default function GuestManagement() {
 
         <div className="mt-3" style={{ padding: '1rem', background: 'var(--light-gray)', borderRadius: '8px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontWeight: 600 }}>Total Guests: {guests.length}</span>
+            <span style={{ fontWeight: 600 }}>{tr('Total Guests:', 'Total de huespedes:')} {guests.length}</span>
           </div>
         </div>
       </div>
@@ -591,13 +620,13 @@ export default function GuestManagement() {
             <div className="modal-header">
               <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--danger)' }}>
                 <UserX size={22} />
-                Anonymize Guest
+                {tr('Anonymize Guest', 'Anonimizar huesped')}
               </h3>
               <button className="modal-close" onClick={cancelAnonymize}>×</button>
             </div>
             <div className="modal-body">
               <p style={{ marginBottom: '1rem', lineHeight: 1.6 }}>
-                You are about to anonymize <strong>{anonymizeTarget.firstName} {anonymizeTarget.lastName}</strong>.
+                {tr('You are about to anonymize', 'Estas a punto de anonimizar')} <strong>{anonymizeTarget.firstName} {anonymizeTarget.lastName}</strong>.
               </p>
               <div
                 style={{
@@ -608,21 +637,21 @@ export default function GuestManagement() {
                 }}
               >
                 <p style={{ fontWeight: 600, color: 'var(--danger)', marginBottom: '0.5rem' }}>
-                  This action cannot be undone.
+                  {tr('This action cannot be undone.', 'Esta accion no se puede deshacer.')}
                 </p>
                 <ul style={{ margin: 0, paddingLeft: '1.2rem', lineHeight: 1.5 }}>
-                  <li>Personal details such as name, email, and phone will be removed.</li>
-                  <li>Reservation history remains available for reporting and accounting.</li>
+                  <li>{tr('Personal details such as name, email, and phone will be removed.', 'Se eliminaran datos personales como nombre, correo y telefono.')}</li>
+                  <li>{tr('Reservation history remains available for reporting and accounting.', 'El historial de reservas seguira disponible para informes y contabilidad.')}</li>
                 </ul>
               </div>
             </div>
             <div className="modal-footer">
               <button type="button" onClick={cancelAnonymize} className="btn btn-outline">
-                Keep Guest Data
+                {tr('Keep Guest Data', 'Mantener datos del huesped')}
               </button>
               <button type="button" onClick={confirmAnonymize} className="btn btn-danger">
                 <UserX size={16} />
-                Yes, Anonymize
+                {tr('Yes, Anonymize', 'Si, anonimizar')}
               </button>
             </div>
           </div>
@@ -635,14 +664,14 @@ export default function GuestManagement() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3 className="modal-title">
-                {editingGuest ? 'Edit Guest' : 'New Guest'}
+                {editingGuest ? tr('Edit Guest', 'Editar huesped') : tr('New Guest', 'Nuevo huesped')}
               </h3>
               <button className="modal-close" onClick={() => setShowModal(false)}>×</button>
             </div>
             <form onSubmit={handleSubmit}>
               <div className="modal-body">
                 <div className="form-group">
-                  <label className="form-label">First Name *</label>
+                  <label className="form-label">{tr('First Name *', 'Nombre *')}</label>
                   <input
                     type="text"
                     className="form-input"
@@ -652,7 +681,7 @@ export default function GuestManagement() {
                   />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Last Name *</label>
+                  <label className="form-label">{tr('Last Name *', 'Apellido *')}</label>
                   <input
                     type="text"
                     className="form-input"
@@ -662,7 +691,7 @@ export default function GuestManagement() {
                   />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Email *</label>
+                  <label className="form-label">{tr('Email *', 'Correo *')}</label>
                   <input
                     type="email"
                     className="form-input"
@@ -672,7 +701,7 @@ export default function GuestManagement() {
                   />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Phone</label>
+                  <label className="form-label">{tr('Phone', 'Telefono')}</label>
                   <input
                     type="tel"
                     className="form-input"
@@ -682,28 +711,28 @@ export default function GuestManagement() {
                   />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Nationality</label>
+                  <label className="form-label">{tr('Nationality', 'Nacionalidad')}</label>
                   <select
                     className="form-select"
                     value={formData.nationalityCode}
                     onChange={(e) => setFormData({ ...formData, nationalityCode: e.target.value })}
                   >
-                    <option value="">Select nationality</option>
+                    <option value="">{tr('Select nationality', 'Seleccionar nacionalidad')}</option>
                     {nationalities.map(nat => (
                       <option key={nat.nationalityCode} value={nat.nationalityCode}>{nat.name}</option>
                     ))}
                   </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Guest Notes</label>
+                  <label className="form-label">{tr('Guest Notes', 'Notas del huesped')}</label>
                   <textarea
                     className="form-textarea"
                     value={formData.notes}
                     onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                    placeholder="Guest profile notes (preferences, allergies, communication reminders)."
+                    placeholder={tr('Guest profile notes (preferences, allergies, communication reminders).', 'Notas del perfil del huesped (preferencias, alergias, recordatorios de comunicacion).')}
                   />
                   <small style={{ color: 'var(--dark-gray)' }}>
-                    Saved on the guest profile and visible on all reservations for this guest.
+                    {tr('Saved on the guest profile and visible on all reservations for this guest.', 'Se guarda en el perfil del huesped y se muestra en todas las reservas de este huesped.')}
                   </small>
                 </div>
                 <div className="form-group">
@@ -714,16 +743,16 @@ export default function GuestManagement() {
                       onChange={(e) => setFormData({ ...formData, marketingConsent: e.target.checked })}
                       style={{ width: 'auto' }}
                     />
-                    <span>Marketing consent (emails, newsletters)</span>
+                    <span>{tr('Marketing consent (emails, newsletters)', 'Consentimiento de marketing (correos, boletines)')}</span>
                   </label>
                 </div>
               </div>
               <div className="modal-footer">
                 <button type="button" onClick={() => setShowModal(false)} className="btn btn-outline">
-                  Cancel
+                  {tr('Cancel', 'Cancelar')}
                 </button>
                 <button type="submit" className="btn btn-accent">
-                  {editingGuest ? 'Update' : 'Create'} Guest
+                  {editingGuest ? tr('Update Guest', 'Actualizar huesped') : tr('Create Guest', 'Crear huesped')}
                 </button>
               </div>
             </form>

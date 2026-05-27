@@ -15,6 +15,7 @@ import {
 } from 'chart.js';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import { format } from 'date-fns';
+import { useI18n } from '../context/I18nContext';
 
 ChartJS.register(
   CategoryScale,
@@ -29,6 +30,7 @@ ChartJS.register(
 );
 
 export default function Dashboard() {
+  const { tr, locale, dateLocale } = useI18n();
   const [analytics, setAnalytics] = useState(null);
   const [operations, setOperations] = useState(null);
   const [suites, setSuites] = useState([]);
@@ -57,7 +59,7 @@ export default function Dashboard() {
     return (
       <div className="loading-spinner">
         <div className="spinner"></div>
-        <p className="mt-2">Loading dashboard...</p>
+        <p className="mt-2">{tr('Loading dashboard...', 'Cargando panel...')}</p>
       </div>
     );
   }
@@ -65,44 +67,53 @@ export default function Dashboard() {
   if (error) {
     return (
       <div className="error-message">
-        Error loading dashboard data. Please try again.
+        {tr('Error loading dashboard data. Please try again.', 'Error al cargar datos del panel. Intentalo de nuevo.')}
       </div>
     );
   }
 
+  const formatCurrency = (value, maximumFractionDigits = 0) => (
+    new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency: 'EUR',
+      minimumFractionDigits: 0,
+      maximumFractionDigits,
+    }).format(Number(value || 0))
+  );
+
   const kpiData = [
     {
-      title: 'Arrivals Today',
+      title: tr('Arrivals Today', 'Llegadas de hoy'),
       value: operations?.arrivalsToday?.length || 0,
       icon: LogIn,
       color: '#27AE60',
-      description: 'Check-ins',
+      description: tr('Check-ins', 'Check-ins'),
     },
     {
-      title: 'Departures Today',
+      title: tr('Departures Today', 'Salidas de hoy'),
       value: operations?.departuresToday?.length || 0,
       icon: LogOut,
       color: '#E67E22',
-      description: 'Check-outs',
+      description: tr('Check-outs', 'Check-outs'),
     },
     {
-      title: 'Rooms to Clean',
+      title: tr('Rooms to Clean', 'Habitaciones por limpiar'),
       value: operations?.roomsToClean?.length || 0,
       icon: Sparkles,
       color: '#3498DB',
-      description: 'Housekeeping',
+      description: tr('Housekeeping', 'Limpieza'),
     },
     {
-      title: 'Occupancy Rate',
+      title: tr('Occupancy Rate', 'Tasa de ocupacion'),
       value: analytics?.occupancyRate ? `${analytics.occupancyRate.toFixed(0)}%` : '0%',
       icon: Home,
       color: '#9B59B6',
-      description: 'Today\'s suites',
+      description: tr("Today's suites", 'Suites de hoy'),
     },
   ];
 
   const occupancyChartData = {
-    labels: ['Occupied', 'Available'],
+    labels: [tr('Occupied', 'Ocupadas'), tr('Available', 'Disponibles')],
     datasets: [
       {
         data: [
@@ -116,10 +127,10 @@ export default function Dashboard() {
   };
 
   const revenueChartData = {
-    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+    labels: [tr('Jan', 'Ene'), tr('Feb', 'Feb'), tr('Mar', 'Mar'), tr('Apr', 'Abr'), tr('May', 'May'), tr('Jun', 'Jun')],
     datasets: [
       {
-        label: 'Revenue (€)',
+        label: tr('Revenue (€)', 'Ingresos (€)'),
         data: [28000, 31000, 29500, 32850, 30200, 33500],
         backgroundColor: '#E67E22',
         borderRadius: 8,
@@ -158,10 +169,10 @@ export default function Dashboard() {
         <div className="card-header">
           <h2>
             <ClipboardCheck size={28} />
-            Today's Operations
+            {tr("Today's Operations", 'Operaciones de hoy')}
           </h2>
           <span className="text-muted">
-            {format(new Date(), 'EEEE, MMMM d, yyyy')}
+            {format(new Date(), 'EEEE, MMMM d, yyyy', { locale: dateLocale })}
           </span>
         </div>
       </div>
@@ -173,7 +184,7 @@ export default function Dashboard() {
           <div className="card-header">
             <h3 style={{ fontSize: '1.125rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <LogIn size={20} color="#27AE60" />
-              Arrivals Today
+              {tr('Arrivals Today', 'Llegadas de hoy')}
             </h3>
             <span className="status-badge status-checked-in" style={{ fontSize: '0.875rem', padding: '0.5rem 1rem' }}>
               {operations?.arrivalsToday?.length || 0}
@@ -201,18 +212,18 @@ export default function Dashboard() {
                         {arrival.suiteName}
                       </div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--dark-gray)', marginTop: '0.25rem' }}>
-                        {arrival.numGuests} guest{arrival.numGuests > 1 ? 's' : ''}
+                        {arrival.numGuests} {arrival.numGuests > 1 ? tr('guests', 'huespedes') : tr('guest', 'huesped')}
                       </div>
                     </div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--dark-gray)', textAlign: 'right' }}>
-                      Res #{arrival.reservationId}
+                      {tr('Res', 'Res')} #{arrival.reservationId}
                     </div>
                   </li>
                 ))}
               </ul>
             ) : (
               <div className="empty-state">
-                <p>✓ No arrivals scheduled</p>
+                <p>{tr('No arrivals scheduled', 'No hay llegadas programadas')}</p>
               </div>
             )}
           </div>
@@ -223,7 +234,7 @@ export default function Dashboard() {
           <div className="card-header">
             <h3 style={{ fontSize: '1.125rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <LogOut size={20} color="#E67E22" />
-              Departures Today
+              {tr('Departures Today', 'Salidas de hoy')}
             </h3>
             <span className="status-badge status-pending" style={{ fontSize: '0.875rem', padding: '0.5rem 1rem' }}>
               {operations?.departuresToday?.length || 0}
@@ -251,18 +262,18 @@ export default function Dashboard() {
                         {departure.suiteName}
                       </div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--dark-gray)', marginTop: '0.25rem' }}>
-                        {departure.numGuests} guest{departure.numGuests > 1 ? 's' : ''}
+                        {departure.numGuests} {departure.numGuests > 1 ? tr('guests', 'huespedes') : tr('guest', 'huesped')}
                       </div>
                     </div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--dark-gray)', textAlign: 'right' }}>
-                      Res #{departure.reservationId}
+                      {tr('Res', 'Res')} #{departure.reservationId}
                     </div>
                   </li>
                 ))}
               </ul>
             ) : (
               <div className="empty-state">
-                <p>✓ No departures scheduled</p>
+                <p>{tr('No departures scheduled', 'No hay salidas programadas')}</p>
               </div>
             )}
           </div>
@@ -273,7 +284,7 @@ export default function Dashboard() {
           <div className="card-header">
             <h3 style={{ fontSize: '1.125rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Sparkles size={20} color="#3498DB" />
-              Rooms to Clean
+              {tr('Rooms to Clean', 'Habitaciones por limpiar')}
             </h3>
             <span className="status-badge status-confirmed" style={{ fontSize: '0.875rem', padding: '0.5rem 1rem' }}>
               {operations?.roomsToClean?.length || 0}
@@ -295,12 +306,12 @@ export default function Dashboard() {
                     </div>
                     {room.status === "needs_turnover" && (
                       <span className="status-badge status-pending" style={{ fontSize: '0.7rem' }}>
-                        Turnover Required
+                        {tr('Turnover Required', 'Cambio requerido')}
                       </span>
                     )}
                     {room.status != "needs_turnover" && (
                       <span className="status-badge status-confirmed" style={{ fontSize: '0.7rem' }}>
-                        Standard Clean
+                        {tr('Standard Clean', 'Limpieza estandar')}
                       </span>
                     )}
                   </li>
@@ -308,7 +319,7 @@ export default function Dashboard() {
               </ul>
             ) : (
               <div className="empty-state">
-                <p>✓ All rooms clean</p>
+                <p>{tr('All rooms clean', 'Todas las habitaciones limpias')}</p>
               </div>
             )}
           </div>
@@ -318,12 +329,12 @@ export default function Dashboard() {
       {/* Tertiary: Analytics Overview - Bottom */}
       <div className="card">
         <div className="card-header">
-          <h3>Monthly Overview</h3>
+          <h3>{tr('Monthly Overview', 'Resumen mensual')}</h3>
         </div>
         <div className="grid grid-3" style={{ gap: '1rem' }}>
           <div style={{ padding: '1rem', background: 'var(--light-gray)', borderRadius: '8px' }}>
             <div style={{ fontSize: '0.875rem', color: 'var(--dark-gray)', marginBottom: '0.5rem' }}>
-              Total Reservations
+              {tr('Total Reservations', 'Reservas totales')}
             </div>
             <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--primary)' }}>
               {analytics?.totalReservations || 0}
@@ -331,18 +342,18 @@ export default function Dashboard() {
           </div>
           <div style={{ padding: '1rem', background: 'var(--light-gray)', borderRadius: '8px' }}>
             <div style={{ fontSize: '0.875rem', color: 'var(--dark-gray)', marginBottom: '0.5rem' }}>
-              Total Revenue
+              {tr('Total Revenue', 'Ingresos totales')}
             </div>
             <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--primary)' }}>
-              €{analytics?.totalRevenue?.toLocaleString() || '0'}
+              {formatCurrency(analytics?.totalRevenue, 0)}
             </div>
           </div>
           <div style={{ padding: '1rem', background: 'var(--light-gray)', borderRadius: '8px' }}>
             <div style={{ fontSize: '0.875rem', color: 'var(--dark-gray)', marginBottom: '0.5rem' }}>
-              Avg Price Per Night
+              {tr('Avg Price Per Night', 'Precio medio por noche')}
             </div>
             <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--primary)' }}>
-              €{analytics?.averagePricePerNight?.toFixed(0) || '0'}
+              {formatCurrency(analytics?.averagePricePerNight, 0)}
             </div>
           </div>
         </div>

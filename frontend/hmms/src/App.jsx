@@ -8,16 +8,18 @@ import CalendarView from './components/CalendarView'
 import AppShell from './components/layout/AppShell'
 import LoginPage from './components/auth/LoginPage'
 import { useAuth } from './context/AuthContext'
+import { useI18n } from './context/I18nContext'
 
 function RequireAuth({ children }) {
   const { isAuthenticated, authLoading } = useAuth()
+  const { tr } = useI18n()
   const location = useLocation()
 
   if (authLoading) {
     return (
       <div className="loading-spinner">
         <div className="spinner"></div>
-        <p className="mt-2">Loading session...</p>
+        <p className="mt-2">{tr('Loading session...', 'Cargando sesion...')}</p>
       </div>
     )
   }

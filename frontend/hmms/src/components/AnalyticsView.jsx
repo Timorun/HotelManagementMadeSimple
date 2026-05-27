@@ -29,10 +29,11 @@ import {
   isAfter,
   parseISO,
   startOfMonth,
-  startOfYear,
   subDays,
 } from 'date-fns';
 import { exportSheetsToExcel } from '../utils/excelExport';
+import { useI18n } from '../context/I18nContext';
+import { getStatusLabel } from '../api/reservationStatus';
 
 ChartJS.register(
   ArcElement,
@@ -49,6 +50,7 @@ ChartJS.register(
 const EMPTY_OBJECT = {};
 
 export default function AnalyticsView() {
+  const { tr, locale, dateLocale } = useI18n();
   const [report, setReport] = useState(null);
   const [dateFrom, setDateFrom] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [dateTo, setDateTo] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -57,40 +59,56 @@ export default function AnalyticsView() {
   const [activePreset, setActivePreset] = useState('mtd');
 
   const formatCurrency = useCallback((value, maximumFractionDigits = 0) => (
-    new Intl.NumberFormat('nl-NL', {
+    new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: report?.currency || 'EUR',
       minimumFractionDigits: 0,
       maximumFractionDigits,
     }).format(Number(value || 0))
-  ), [report?.currency]);
+  ), [locale, report?.currency]);
 
   const formatNumber = useCallback((value, maximumFractionDigits = 0) => (
-    Number(value || 0).toLocaleString(undefined, {
+    Number(value || 0).toLocaleString(locale, {
       minimumFractionDigits: 0,
       maximumFractionDigits,
     })
-  ), []);
+  ), [locale]);
 
   const formatPercent = useCallback((value, digits = 1) => (
-    `${Number(value || 0).toFixed(digits)}%`
-  ), []);
+    `${formatNumber(value, digits)}%`
+  ), [formatNumber]);
 
   const formatChannelLabel = useCallback((channel) => {
-    if (!channel) return 'Other';
+    if (!channel) return tr('Other', 'Otro');
     if (channel.toLowerCase() === 'booking.com') return 'Booking.com';
-    return channel.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
-  }, []);
+    const normalized = channel.replaceAll('_', ' ').toLowerCase();
+    const mapped = {
+      direct: tr('Direct', 'Directo'),
+      website: tr('Website', 'Sitio web'),
+      phone: tr('Phone', 'Telefono'),
+      'walk in': tr('Walk In', 'Sin reserva'),
+    };
+
+    if (mapped[normalized]) {
+      return mapped[normalized];
+    }
+
+    return normalized.replace(/\b\w/g, (letter) => letter.toUpperCase());
+  }, [tr]);
 
   const formatStatusLabel = useCallback((status) => {
-    if (!status) return 'Unknown';
-    return status.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
-  }, []);
+    if (!status) return tr('Unknown', 'Desconocido');
+    const localized = getStatusLabel(status, tr);
+    if (localized === status) {
+      return status.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+    }
+    return localized;
+  }, [tr]);
 
   const quickRanges = useMemo(() => ([
     {
       key: 'mtd',
-      label: 'Month To Date',
+      label: tr('Month To Date', 'Mes hasta hoy'),
       range: () => {
         const today = new Date();
         return {
@@ -101,7 +119,7 @@ export default function AnalyticsView() {
     },
     {
       key: 'thisMonth',
-      label: 'Current Month',
+      label: tr('Current Month', 'Mes actual'),
       range: () => {
         const today = new Date();
         return {
@@ -112,7 +130,7 @@ export default function AnalyticsView() {
     },
     {
       key: 'last30',
-      label: 'Last 30 Days',
+      label: tr('Last 30 Days', 'Ultimos 30 dias'),
       range: () => {
         const today = new Date();
         return {
@@ -123,7 +141,7 @@ export default function AnalyticsView() {
     },
     {
       key: 'last90',
-      label: 'Last 90 Days',
+      label: tr('Last 90 Days', 'Ultimos 90 dias'),
       range: () => {
         const today = new Date();
         return {
@@ -132,7 +150,7 @@ export default function AnalyticsView() {
         };
       },
     }
-  ]), []);
+  ]), [tr]);
 
   const applyQuickRange = useCallback((rangeKey) => {
     const selected = quickRanges.find((preset) => preset.key === rangeKey);
@@ -157,18 +175,18 @@ export default function AnalyticsView() {
 
   const formatDelta = useCallback((value, suffix = '%', reverseDirection = false) => {
     if (value === null || value === undefined || value === '') {
-      return 'n/a';
+      return tr('n/a', 'n/d');
     }
 
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) {
-      return 'n/a';
+      return tr('n/a', 'n/d');
     }
 
     const adjusted = reverseDirection ? -numeric : numeric;
     const sign = adjusted > 0 ? '+' : '';
     return `${sign}${adjusted.toFixed(1)}${suffix}`;
-  }, []);
+  }, [tr]);
 
   const calculateRelativeChange = useCallback((currentValue, previousValue) => {
     const current = Number(currentValue);
@@ -186,10 +204,22 @@ export default function AnalyticsView() {
   }, []);
 
   const metricDefinitions = [
-    { metric: "averageDailyRate", definition: "Total revenue divided by occupied room nights (empty nights excluded)." },
-    { metric: "revenuePerAvailableNight", definition: "Total revenue divided by all available room nights (empty nights included)." },
-    { metric: "occupancyPercentage", definition: "Occupied room nights divided by available room nights for the selected period." },
-    { metric: "cancellationRate", definition: "Cancelled reservations divided by reservations with check-in dates in the selected period." }
+    {
+      metric: tr('Average Daily Rate (ADR)', 'Tarifa diaria promedio (ADR)'),
+      definition: tr('Total revenue divided by occupied room nights (empty nights excluded).', 'Ingresos totales divididos por noches ocupadas (se excluyen noches vacias).')
+    },
+    {
+      metric: tr('Revenue Per Available Night (RevPAR)', 'Ingreso por noche disponible (RevPAR)'),
+      definition: tr('Total revenue divided by all available room nights (empty nights included).', 'Ingresos totales divididos por todas las noches disponibles (incluye noches vacias).')
+    },
+    {
+      metric: tr('Occupancy Percentage', 'Porcentaje de ocupacion'),
+      definition: tr('Occupied room nights divided by available room nights for the selected period.', 'Noches ocupadas divididas por noches disponibles para el periodo seleccionado.')
+    },
+    {
+      metric: tr('Cancellation Rate', 'Tasa de cancelacion'),
+      definition: tr('Cancelled reservations divided by reservations with check-in dates in the selected period.', 'Reservas canceladas divididas por reservas con fecha de check-in en el periodo seleccionado.')
+    }
   ];
 
   const handleExportAnalytics = useCallback(() => {
@@ -203,30 +233,30 @@ export default function AnalyticsView() {
     const cancellationChangePercentage = calculateRelativeChange(summary.cancellationRate, previous.cancellationRate);
 
     const summaryRows = [
-      { metric: 'From', value: report.fromDate },
-      { metric: 'To', value: report.toDate },
-      { metric: 'Comparison Enabled', value: exportIncludesComparison ? 'Yes' : 'No' },
-      { metric: 'Comparison From', value: exportIncludesComparison ? (report.comparisonFromDate || '') : '' },
-      { metric: 'Comparison To', value: exportIncludesComparison ? (report.comparisonToDate || '') : '' },
-      { metric: 'Comparison Mode', value: exportIncludesComparison ? (report.comparisonMode || '') : 'DISABLED' },
-      { metric: 'Days In Period', value: report.daysInPeriod },
-      { metric: 'Currency', value: report.currency || 'EUR' },
-      { metric: 'Total Revenue', value: Number(summary.totalRevenue || 0) },
-      { metric: 'Previous Revenue', value: exportIncludesComparison ? Number(previous.totalRevenue || 0) : '' },
-      { metric: 'Revenue Change %', value: exportIncludesComparison ? Number(deltas.revenueChangePercentage || 0) : '' },
-      { metric: 'Occupancy %', value: Number(summary.occupancyPercentage || 0) },
-      { metric: 'Occupancy Change %', value: exportIncludesComparison ? Number(occupancyChangePercentage || 0) : '' },
+      { metric: tr('From', 'Desde'), value: report.fromDate },
+      { metric: tr('To', 'Hasta'), value: report.toDate },
+      { metric: tr('Comparison Enabled', 'Comparacion habilitada'), value: exportIncludesComparison ? tr('Yes', 'Si') : tr('No', 'No') },
+      { metric: tr('Comparison From', 'Comparacion desde'), value: exportIncludesComparison ? (report.comparisonFromDate || '') : '' },
+      { metric: tr('Comparison To', 'Comparacion hasta'), value: exportIncludesComparison ? (report.comparisonToDate || '') : '' },
+      { metric: tr('Comparison Mode', 'Modo de comparacion'), value: exportIncludesComparison ? (report.comparisonMode || '') : tr('DISABLED', 'DESACTIVADO') },
+      { metric: tr('Days In Period', 'Dias en el periodo'), value: report.daysInPeriod },
+      { metric: tr('Currency', 'Moneda'), value: report.currency || 'EUR' },
+      { metric: tr('Total Revenue', 'Ingresos totales'), value: Number(summary.totalRevenue || 0) },
+      { metric: tr('Previous Revenue', 'Ingresos del periodo anterior'), value: exportIncludesComparison ? Number(previous.totalRevenue || 0) : '' },
+      { metric: tr('Revenue Change %', 'Cambio de ingresos %'), value: exportIncludesComparison ? Number(deltas.revenueChangePercentage || 0) : '' },
+      { metric: tr('Occupancy %', 'Ocupacion %'), value: Number(summary.occupancyPercentage || 0) },
+      { metric: tr('Occupancy Change %', 'Cambio de ocupacion %'), value: exportIncludesComparison ? Number(occupancyChangePercentage || 0) : '' },
       { metric: 'ADR', value: Number(summary.averageDailyRate || 0) },
-      { metric: 'ADR Change %', value: exportIncludesComparison ? Number(deltas.averageDailyRateChangePercentage || 0) : '' },
+      { metric: tr('ADR Change %', 'Cambio ADR %'), value: exportIncludesComparison ? Number(deltas.averageDailyRateChangePercentage || 0) : '' },
       { metric: 'RevPAR', value: Number(summary.revenuePerAvailableNight || 0) },
-      { metric: 'RevPAR Change %', value: exportIncludesComparison ? Number(deltas.revParChangePercentage || 0) : '' },
-      { metric: 'Cancellation Rate %', value: Number(summary.cancellationRate || 0) },
-      { metric: 'Cancellation Change %', value: exportIncludesComparison ? Number(cancellationChangePercentage || 0) : '' },
-      { metric: 'Average Length Of Stay', value: Number(summary.averageLengthOfStay || 0) },
-      { metric: 'Occupied Nights', value: Number(summary.occupiedNights || 0) },
-      { metric: 'Available Nights', value: Number(summary.availableNights || 0) },
-      { metric: 'Reservations Overlapping', value: Number(summary.reservationsOverlappingPeriod || 0) },
-      { metric: 'Reservations Starting', value: Number(summary.reservationsStartingInPeriod || 0) },
+      { metric: tr('RevPAR Change %', 'Cambio RevPAR %'), value: exportIncludesComparison ? Number(deltas.revParChangePercentage || 0) : '' },
+      { metric: tr('Cancellation Rate %', 'Tasa de cancelacion %'), value: Number(summary.cancellationRate || 0) },
+      { metric: tr('Cancellation Change %', 'Cambio en cancelaciones %'), value: exportIncludesComparison ? Number(cancellationChangePercentage || 0) : '' },
+      { metric: tr('Average Length Of Stay', 'Estancia media'), value: Number(summary.averageLengthOfStay || 0) },
+      { metric: tr('Occupied Nights', 'Noches ocupadas'), value: Number(summary.occupiedNights || 0) },
+      { metric: tr('Available Nights', 'Noches disponibles'), value: Number(summary.availableNights || 0) },
+      { metric: tr('Reservations Overlapping', 'Reservas superpuestas'), value: Number(summary.reservationsOverlappingPeriod || 0) },
+      { metric: tr('Reservations Starting', 'Reservas iniciadas'), value: Number(summary.reservationsStartingInPeriod || 0) },
     ];
 
     const dailyRows = (report.dailyTrend || []).map((point) => ({
@@ -274,23 +304,23 @@ export default function AnalyticsView() {
     }));
 
     exportSheetsToExcel({
-      Summary: summaryRows,
-      DailyTrend: dailyRows,
-      Channels: channelRows,
-      Statuses: statusRows,
-      TopDays: topDaysRows,
-      Insights: insightRows,
-      Definitions: definitionRows,
+      [tr('Summary', 'Resumen')]: summaryRows,
+      [tr('DailyTrend', 'TendenciaDiaria')]: dailyRows,
+      [tr('Channels', 'Canales')]: channelRows,
+      [tr('Statuses', 'Estados')]: statusRows,
+      [tr('TopDays', 'MejoresDias')]: topDaysRows,
+      [tr('Insights', 'Insights')]: insightRows,
+      [tr('Definitions', 'Definiciones')]: definitionRows,
     }, `analytics-report-${dateFrom}_to_${dateTo}.xlsx`);
-  }, [report, dateFrom, dateTo, formatChannelLabel, formatStatusLabel, calculateRelativeChange]);
+  }, [report, dateFrom, dateTo, formatChannelLabel, formatStatusLabel, calculateRelativeChange, tr]);
 
   const trendData = useMemo(() => {
     const points = report?.dailyTrend || [];
     return {
-      labels: points.map((point) => format(parseISO(point.date), 'dd MMM')),
+      labels: points.map((point) => format(parseISO(point.date), 'dd MMM', { locale: dateLocale })),
       datasets: [
         {
-          label: 'Revenue',
+          label: tr('Revenue', 'Ingresos'),
           data: points.map((point) => Number(point.revenue || 0)),
           yAxisID: 'yRevenue',
           borderColor: '#16A34A',
@@ -301,7 +331,7 @@ export default function AnalyticsView() {
           borderWidth: 2.5,
         },
         {
-          label: 'Occupancy %',
+          label: tr('Occupancy %', 'Ocupacion %'),
           data: points.map((point) => Number(point.occupancyPercentage || 0)),
           yAxisID: 'yPercent',
           borderColor: '#F59E0B',
@@ -313,7 +343,7 @@ export default function AnalyticsView() {
         },
       ],
     };
-  }, [report?.dailyTrend]);
+  }, [report?.dailyTrend, tr, dateLocale]);
 
   const trendOptions = useMemo(() => ({
     responsive: true,
@@ -330,9 +360,9 @@ export default function AnalyticsView() {
         callbacks: {
           label: (context) => {
             if (context.dataset.yAxisID === 'yRevenue') {
-              return `Revenue: ${formatCurrency(context.parsed.y, 0)}`;
+              return `${tr('Revenue:', 'Ingresos:')} ${formatCurrency(context.parsed.y, 0)}`;
             }
-            return `Occupancy: ${context.parsed.y.toFixed(1)}%`;
+            return `${tr('Occupancy:', 'Ocupacion:')} ${formatPercent(context.parsed.y, 1)}`;
           },
         },
       },
@@ -361,7 +391,7 @@ export default function AnalyticsView() {
         },
       },
     },
-  }), [formatCurrency]);
+  }), [formatCurrency, formatPercent, tr]);
 
   const channelData = useMemo(() => {
     const channels = report?.channelPerformance || [];
@@ -369,14 +399,14 @@ export default function AnalyticsView() {
       labels: channels.map((channel) => formatChannelLabel(channel.channel)),
       datasets: [
         {
-          label: 'Revenue Share %',
+          label: tr('Revenue Share %', 'Cuota de ingresos %'),
           data: channels.map((channel) => Number(channel.revenueSharePercentage || 0)),
           backgroundColor: ['#2563EB', '#F59E0B', '#10B981', '#9333EA', '#64748B', '#EA580C'],
           borderRadius: 6,
         },
       ],
     };
-  }, [report?.channelPerformance, formatChannelLabel]);
+  }, [report?.channelPerformance, formatChannelLabel, tr]);
 
   const channelOptions = useMemo(() => ({
     indexAxis: 'y',
@@ -388,7 +418,7 @@ export default function AnalyticsView() {
       },
       tooltip: {
         callbacks: {
-          label: (context) => `Share: ${Number(context.parsed.x || 0).toFixed(1)}%`,
+          label: (context) => `${tr('Share:', 'Cuota:')} ${formatPercent(context.parsed.x, 1)}`,
         },
       },
     },
@@ -400,7 +430,7 @@ export default function AnalyticsView() {
         },
       },
     },
-  }), []);
+  }), [formatPercent, tr]);
 
   const statusData = useMemo(() => {
     const statuses = report?.reservationStatusBreakdown || [];
@@ -459,57 +489,57 @@ export default function AnalyticsView() {
     }
 
     try {
-      return `${format(parseISO(from), 'dd MMM yyyy')} - ${format(parseISO(to), 'dd MMM yyyy')}`;
+      return `${format(parseISO(from), 'dd MMM yyyy', { locale: dateLocale })} - ${format(parseISO(to), 'dd MMM yyyy', { locale: dateLocale })}`;
     } catch {
       return `${from} - ${to}`;
     }
-  }, [report?.fromDate, report?.toDate, dateFrom, dateTo]);
+  }, [report?.fromDate, report?.toDate, dateFrom, dateTo, dateLocale]);
 
   const previousPeriodLabel = useMemo(() => {
     if (report?.comparisonFromDate && report?.comparisonToDate) {
-      return `${format(parseISO(report.comparisonFromDate), 'dd MMM yyyy')} - ${format(parseISO(report.comparisonToDate), 'dd MMM yyyy')}`;
+      return `${format(parseISO(report.comparisonFromDate), 'dd MMM yyyy', { locale: dateLocale })} - ${format(parseISO(report.comparisonToDate), 'dd MMM yyyy', { locale: dateLocale })}`;
     }
 
     const currentStart = report?.fromDate || dateFrom;
     const days = Number(report?.daysInPeriod || selectedRangeDays || 0);
     if (!currentStart || days <= 0) {
-      return 'Comparison unavailable';
+      return tr('Comparison unavailable', 'Comparacion no disponible');
     }
 
     try {
       const currentStartDate = parseISO(currentStart);
       const previousTo = subDays(currentStartDate, 1);
       const previousFrom = subDays(previousTo, days - 1);
-      return `${format(previousFrom, 'dd MMM yyyy')} - ${format(previousTo, 'dd MMM yyyy')}`;
+      return `${format(previousFrom, 'dd MMM yyyy', { locale: dateLocale })} - ${format(previousTo, 'dd MMM yyyy', { locale: dateLocale })}`;
     } catch {
-      return 'Comparison unavailable';
+      return tr('Comparison unavailable', 'Comparacion no disponible');
     }
-  }, [report?.comparisonFromDate, report?.comparisonToDate, report?.fromDate, report?.daysInPeriod, dateFrom, selectedRangeDays]);
+  }, [report?.comparisonFromDate, report?.comparisonToDate, report?.fromDate, report?.daysInPeriod, dateFrom, selectedRangeDays, dateLocale, tr]);
 
   const selectedLengthLabel = useMemo(
-    () => `${Number(report?.daysInPeriod || selectedRangeDays || 0)} days`,
-    [report?.daysInPeriod, selectedRangeDays]
+    () => `${Number(report?.daysInPeriod || selectedRangeDays || 0)} ${tr('days', 'dias')}`,
+    [report?.daysInPeriod, selectedRangeDays, tr]
   );
 
   const kpiCards = useMemo(() => ([
     {
-      title: 'Total Revenue',
+      title: tr('Total Revenue', 'Ingresos totales'),
       value: formatCurrency(summary.totalRevenue, 0),
       secondary: hasComparisonData
-        ? `Comparison: ${formatCurrency(previousSummary.totalRevenue, 0)}`
-        : 'Comparison unavailable',
-      delta: hasComparisonData ? formatDelta(deltas.revenueChangePercentage) : 'n/a',
+        ? `${tr('Comparison:', 'Comparacion:')} ${formatCurrency(previousSummary.totalRevenue, 0)}`
+        : tr('Comparison unavailable', 'Comparacion no disponible'),
+      delta: hasComparisonData ? formatDelta(deltas.revenueChangePercentage) : tr('n/a', 'n/d'),
       deltaClassName: hasComparisonData ? deltaClass(deltas.revenueChangePercentage) : 'neutral',
       icon: Euro,
       tone: 'revenue',
     },
     {
-      title: 'Occupancy',
+      title: tr('Occupancy', 'Ocupacion'),
       value: formatPercent(summary.occupancyPercentage),
       secondary: hasComparisonData
-        ? `Comparison: ${formatPercent(previousSummary.occupancyPercentage)}`
-        : `${formatNumber(summary.occupiedNights)} of ${formatNumber(summary.availableNights)} nights`,
-      delta: hasComparisonData ? formatDelta(occupancyChangePercentage) : 'n/a',
+        ? `${tr('Comparison:', 'Comparacion:')} ${formatPercent(previousSummary.occupancyPercentage)}`
+        : `${formatNumber(summary.occupiedNights)} ${tr('of', 'de')} ${formatNumber(summary.availableNights)} ${tr('nights', 'noches')}`,
+      delta: hasComparisonData ? formatDelta(occupancyChangePercentage) : tr('n/a', 'n/d'),
       deltaClassName: hasComparisonData ? deltaClass(occupancyChangePercentage) : 'neutral',
       icon: Percent,
       tone: 'occupancy',
@@ -518,9 +548,9 @@ export default function AnalyticsView() {
       title: 'ADR',
       value: formatCurrency(summary.averageDailyRate, 2),
       secondary: hasComparisonData
-        ? `Comparison: ${formatCurrency(previousSummary.averageDailyRate, 2)}`
-        : 'Average daily rate on occupied nights',
-      delta: hasComparisonData ? formatDelta(deltas.averageDailyRateChangePercentage) : 'n/a',
+        ? `${tr('Comparison:', 'Comparacion:')} ${formatCurrency(previousSummary.averageDailyRate, 2)}`
+        : tr('Average daily rate on occupied nights', 'Tarifa diaria promedio en noches ocupadas'),
+      delta: hasComparisonData ? formatDelta(deltas.averageDailyRateChangePercentage) : tr('n/a', 'n/d'),
       deltaClassName: hasComparisonData ? deltaClass(deltas.averageDailyRateChangePercentage) : 'neutral',
       icon: TrendingUp,
       tone: 'adr',
@@ -529,20 +559,20 @@ export default function AnalyticsView() {
       title: 'RevPAR',
       value: formatCurrency(summary.revenuePerAvailableNight, 2),
       secondary: hasComparisonData
-        ? `Comparison: ${formatCurrency(previousSummary.revenuePerAvailableNight, 2)}`
-        : 'Revenue per available room night',
-      delta: hasComparisonData ? formatDelta(deltas.revParChangePercentage) : 'n/a',
+        ? `${tr('Comparison:', 'Comparacion:')} ${formatCurrency(previousSummary.revenuePerAvailableNight, 2)}`
+        : tr('Revenue per available room night', 'Ingreso por noche disponible'),
+      delta: hasComparisonData ? formatDelta(deltas.revParChangePercentage) : tr('n/a', 'n/d'),
       deltaClassName: hasComparisonData ? deltaClass(deltas.revParChangePercentage) : 'neutral',
       icon: Activity,
       tone: 'revpar',
     },
     {
-      title: 'Cancellation Rate',
+      title: tr('Cancellation Rate', 'Tasa de cancelacion'),
       value: formatPercent(summary.cancellationRate),
       secondary: hasComparisonData
-        ? `Comparison: ${formatPercent(previousSummary.cancellationRate)}`
-        : `${formatNumber(summary.cancelledReservations)} cancelled bookings`,
-      delta: hasComparisonData ? formatDelta(cancellationChangePercentage, '%', true) : 'n/a',
+        ? `${tr('Comparison:', 'Comparacion:')} ${formatPercent(previousSummary.cancellationRate)}`
+        : `${formatNumber(summary.cancelledReservations)} ${tr('cancelled bookings', 'reservas canceladas')}`,
+      delta: hasComparisonData ? formatDelta(cancellationChangePercentage, '%', true) : tr('n/a', 'n/d'),
       deltaClassName: hasComparisonData
         ? deltaClass(-(Number(cancellationChangePercentage || 0)))
         : 'neutral',
@@ -561,6 +591,7 @@ export default function AnalyticsView() {
     hasComparisonData,
     occupancyChangePercentage,
     cancellationChangePercentage,
+    tr,
   ]);
 
   const hasChartData = (report?.dailyTrend || []).length > 0;
@@ -576,14 +607,14 @@ export default function AnalyticsView() {
         from = parseISO(dateFrom);
         to = parseISO(dateTo);
       } catch {
-        setError('Invalid date format.');
+        setError(tr('Invalid date format.', 'Formato de fecha invalido.'));
         setLoading(false);
         setReport(null);
         return;
       }
 
       if (isAfter(from, to)) {
-        setError('From date must be before or equal to To date.');
+        setError(tr('From date must be before or equal to To date.', 'La fecha Desde debe ser anterior o igual a la fecha Hasta.'));
         setLoading(false);
         setReport(null);
         return;
@@ -596,20 +627,20 @@ export default function AnalyticsView() {
         const analyticsReport = await fetchAnalyticsReport(dateFrom, dateTo, true);
         setReport(analyticsReport);
       } catch (requestError) {
-        setError(requestError?.message || 'Failed to fetch analytics report.');
+        setError(requestError?.message || tr('Failed to fetch analytics report.', 'No se pudo obtener el informe de analitica.'));
       } finally {
         setLoading(false);
       }
     }
 
     loadReport();
-  }, [dateFrom, dateTo]);
+  }, [dateFrom, dateTo, tr]);
 
   if (loading) {
     return (
       <div className="loading-spinner">
         <div className="spinner"></div>
-        <p className="mt-2">Building analytics dashboard...</p>
+        <p className="mt-2">{tr('Building analytics dashboard...', 'Construyendo panel de analitica...')}</p>
       </div>
     );
   }
@@ -618,7 +649,7 @@ export default function AnalyticsView() {
     return (
       <div className="card">
         <div className="error-message">
-          <strong>Analytics Report Error:</strong> {error}
+          <strong>{tr('Analytics Report Error:', 'Error del informe de analitica:')}</strong> {error}
         </div>
       </div>
     );
@@ -628,7 +659,7 @@ export default function AnalyticsView() {
     return (
       <div className="card">
         <div className="empty-state">
-          <p>No analytics report available for the selected period.</p>
+          <p>{tr('No analytics report available for the selected period.', 'No hay informe de analitica disponible para el periodo seleccionado.')}</p>
         </div>
       </div>
     );
@@ -641,17 +672,17 @@ export default function AnalyticsView() {
           <div className="analytics-hero-copy">
             <h2 className="analytics-hero-title">
               <BarChart3 size={28} />
-              Analytics Hub
+              {tr('Analytics Hub', 'Centro de analitica')}
             </h2>
             <p className="analytics-hero-subtitle">
-              Revenue and operations in one view, automatically compared with the immediately preceding period of equal length.
+              {tr('Revenue and operations in one view, automatically compared with the immediately preceding period of equal length.', 'Ingresos y operaciones en una sola vista, comparados automaticamente con el periodo inmediatamente anterior de igual duracion.')}
             </p>
           </div>
 
           <div className="analytics-hero-actions">
             <button className="btn btn-accent" onClick={handleExportAnalytics}>
               <Download size={16} />
-              Export Analytics Report
+              {tr('Export Analytics Report', 'Exportar informe de analitica')}
             </button>
           </div>
         </div>
@@ -660,7 +691,7 @@ export default function AnalyticsView() {
           <div className="analytics-control-left">
             <div className="analytics-date-cluster">
               <div>
-                <label className="form-label">From</label>
+                <label className="form-label">{tr('From', 'Desde')}</label>
                 <input
                   type="date"
                   className="form-input analytics-date-input"
@@ -672,7 +703,7 @@ export default function AnalyticsView() {
                 />
               </div>
               <div>
-                <label className="form-label">To</label>
+                <label className="form-label">{tr('To', 'Hasta')}</label>
                 <input
                   type="date"
                   className="form-input analytics-date-input"
@@ -686,7 +717,7 @@ export default function AnalyticsView() {
             </div>
 
             <div className="analytics-presets">
-              <span className="analytics-presets-label">Quick Range</span>
+              <span className="analytics-presets-label">{tr('Quick Range', 'Rango rapido')}</span>
               <div className="analytics-presets-buttons">
                 {quickRanges.map((preset) => (
                   <button
@@ -702,15 +733,15 @@ export default function AnalyticsView() {
           </div>
 
           <div className="analytics-period-inline">
-            <span className="analytics-strip-label">Selected Period</span>
+            <span className="analytics-strip-label">{tr('Selected Period', 'Periodo seleccionado')}</span>
             <strong>{periodLabel || `${dateFrom} - ${dateTo}`}</strong>
             <small className="analytics-strip-subtle">{selectedLengthLabel}</small>
-            <small className="analytics-strip-subtle">Compared with {previousPeriodLabel}</small>
+            <small className="analytics-strip-subtle">{tr('Compared with', 'Comparado con')} {previousPeriodLabel}</small>
 
             <small className="analytics-presets-hint">
-              Statistics are compared with the preceding period of equal length.
+              {tr('Statistics are compared with the preceding period of equal length.', 'Las estadisticas se comparan con el periodo anterior de igual duracion.')}
               <br />
-              Eg. selecting June 1st to 10th will compare statistics to May 22nd to 31st.
+              {tr('Eg. selecting June 1st to 10th will compare statistics to May 22nd to 31st.', 'Ej. si seleccionas del 1 al 10 de junio, se comparara con el 22 al 31 de mayo.')}
             </small>
           </div>
         </div>
@@ -729,7 +760,7 @@ export default function AnalyticsView() {
               {hasComparisonData ? (
                 <span className={`analytics-delta ${card.deltaClassName}`}>{card.delta}</span>
               ) : (
-                <span className="analytics-delta neutral">Comparison unavailable</span>
+                <span className="analytics-delta neutral">{tr('Comparison unavailable', 'Comparacion no disponible')}</span>
               )}
             </div>
           </article>
@@ -739,15 +770,15 @@ export default function AnalyticsView() {
       <section className="analytics-main-grid">
         <article className="card analytics-panel">
           <div className="analytics-panel-head">
-            <h3>Revenue & Occupancy Trajectory</h3>
-            <span>Daily pattern across the selected period</span>
+            <h3>{tr('Revenue & Occupancy Trajectory', 'Trayectoria de ingresos y ocupacion')}</h3>
+            <span>{tr('Daily pattern across the selected period', 'Patron diario durante el periodo seleccionado')}</span>
           </div>
           <div className="analytics-chart-area">
             {hasChartData ? (
               <Line data={trendData} options={trendOptions} />
             ) : (
               <div className="empty-state compact-empty">
-                <p>No daily trend data available for this period.</p>
+                <p>{tr('No daily trend data available for this period.', 'No hay datos de tendencia diaria para este periodo.')}</p>
               </div>
             )}
           </div>
@@ -755,15 +786,15 @@ export default function AnalyticsView() {
 
         <article className="card analytics-panel">
           <div className="analytics-panel-head">
-            <h3>Channel Revenue Concentration</h3>
-            <span>Share of total period revenue by acquisition source</span>
+            <h3>{tr('Channel Revenue Concentration', 'Concentracion de ingresos por canal')}</h3>
+            <span>{tr('Share of total period revenue by acquisition source', 'Cuota del ingreso total por fuente de adquisicion')}</span>
           </div>
           <div className="analytics-chart-area analytics-chart-area-sm">
             {hasChannelData ? (
               <Bar data={channelData} options={channelOptions} />
             ) : (
               <div className="empty-state compact-empty">
-                <p>No channel mix data available for this period.</p>
+                <p>{tr('No channel mix data available for this period.', 'No hay datos de mezcla de canales para este periodo.')}</p>
               </div>
             )}
           </div>
@@ -773,10 +804,10 @@ export default function AnalyticsView() {
               <table className="analytics-mini-table">
                 <thead>
                   <tr>
-                    <th>Channel</th>
-                    <th>Revenue</th>
-                    <th>Share</th>
-                    <th>ABV</th>
+                    <th>{tr('Channel', 'Canal')}</th>
+                    <th>{tr('Revenue', 'Ingresos')}</th>
+                    <th>{tr('Share', 'Cuota')}</th>
+                    <th>{tr('ABV', 'VPR')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -798,8 +829,8 @@ export default function AnalyticsView() {
       <section className="analytics-secondary-grid">
         <article className="card analytics-panel">
           <div className="analytics-panel-head">
-            <h3>Strategic Insights</h3>
-            <span>Auto-generated summary for revenue management and operations</span>
+            <h3>{tr('Strategic Insights', 'Insights estrategicos')}</h3>
+            <span>{tr('Auto-generated summary for revenue management and operations', 'Resumen autogenerado para revenue management y operaciones')}</span>
           </div>
           {(report.insights || []).length > 0 ? (
             <ul className="analytics-insight-list">
@@ -809,31 +840,31 @@ export default function AnalyticsView() {
             </ul>
           ) : (
             <div className="empty-state compact-empty">
-              <p>No strategic insights available for this period.</p>
+              <p>{tr('No strategic insights available for this period.', 'No hay insights estrategicos para este periodo.')}</p>
             </div>
           )}
         </article>
 
         <article className="card analytics-panel">
           <div className="analytics-panel-head">
-            <h3>Top Revenue Days</h3>
-            <span>Best performing days with contextual annotation</span>
+            <h3>{tr('Top Revenue Days', 'Dias de mayor ingreso')}</h3>
+            <span>{tr('Best performing days with contextual annotation', 'Dias con mejor rendimiento y anotacion contextual')}</span>
           </div>
           {(report.topRevenueDays || []).length > 0 ? (
             <div className="analytics-mini-table-wrap">
               <table className="analytics-mini-table">
                 <thead>
                   <tr>
-                    <th>Date</th>
-                    <th>Revenue</th>
-                    <th>Occupancy</th>
-                    <th>Note</th>
+                    <th>{tr('Date', 'Fecha')}</th>
+                    <th>{tr('Revenue', 'Ingresos')}</th>
+                    <th>{tr('Occupancy', 'Ocupacion')}</th>
+                    <th>{tr('Note', 'Nota')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(report.topRevenueDays || []).map((day) => (
                     <tr key={day.date}>
-                      <td>{format(parseISO(day.date), 'dd MMM yyyy')}</td>
+                      <td>{format(parseISO(day.date), 'dd MMM yyyy', { locale: dateLocale })}</td>
                       <td>{formatCurrency(day.revenue, 0)}</td>
                       <td>{formatPercent(day.occupancyPercentage)}</td>
                       <td>{day.note}</td>
@@ -844,7 +875,7 @@ export default function AnalyticsView() {
             </div>
           ) : (
             <div className="empty-state compact-empty">
-              <p>No highlighted days available for this period.</p>
+              <p>{tr('No highlighted days available for this period.', 'No hay dias destacados para este periodo.')}</p>
             </div>
           )}
         </article>
@@ -853,8 +884,8 @@ export default function AnalyticsView() {
       <section className="analytics-secondary-grid">
         <article className="card analytics-panel">
           <div className="analytics-panel-head">
-            <h3>Reservation Status Mix</h3>
-            <span>Distribution of reservations starting in this period</span>
+            <h3>{tr('Reservation Status Mix', 'Mezcla de estados de reserva')}</h3>
+            <span>{tr('Distribution of reservations starting in this period', 'Distribucion de reservas que inician en este periodo')}</span>
           </div>
           <div className="analytics-status-grid">
             <div className="analytics-donut-area">
@@ -862,7 +893,7 @@ export default function AnalyticsView() {
                 <Doughnut data={statusData} options={statusOptions} />
               ) : (
                 <div className="empty-state compact-empty">
-                  <p>No status distribution data available.</p>
+                  <p>{tr('No status distribution data available.', 'No hay datos de distribucion por estado.')}</p>
                 </div>
               )}
             </div>
@@ -881,8 +912,8 @@ export default function AnalyticsView() {
 
         <article className="card analytics-panel">
           <div className="analytics-panel-head">
-            <h3>Metric Guide</h3>
-            <span>Definitions used in this dashboard</span>
+            <h3>{tr('Metric Guide', 'Guia de metricas')}</h3>
+            <span>{tr('Definitions used in this dashboard', 'Definiciones usadas en este panel')}</span>
           </div>
           {metricDefinitions.length > 0 ? (
             <dl className="analytics-definition-list">
@@ -895,7 +926,7 @@ export default function AnalyticsView() {
             </dl>
           ) : (
             <div className="empty-state compact-empty">
-              <p>No metric definitions available.</p>
+              <p>{tr('No metric definitions available.', 'No hay definiciones de metricas disponibles.')}</p>
             </div>
           )}
         </article>

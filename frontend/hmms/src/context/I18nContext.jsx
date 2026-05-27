@@ -1,4 +1,5 @@
 import { createContext, useContext, useMemo, useState } from 'react';
+import { enUS, es } from 'date-fns/locale';
 import { translations } from '../i18n/translations';
 
 const LANGUAGE_STORAGE_KEY = 'hmms_language';
@@ -10,6 +11,8 @@ export function I18nProvider({ children }) {
 
   const value = useMemo(() => {
     const dictionary = translations[language] || translations.en;
+    const locale = language === 'es' ? 'es-ES' : 'en-US';
+    const dateLocale = language === 'es' ? es : enUS;
 
     const t = (key, fallback = '') => {
       const parts = key.split('.');
@@ -22,6 +25,12 @@ export function I18nProvider({ children }) {
       return current ?? fallback;
     };
 
+    const tr = (englishText, spanishText = '') => (
+      language === 'es'
+        ? (spanishText || englishText)
+        : englishText
+    );
+
     const changeLanguage = (nextLanguage) => {
       setLanguage(nextLanguage);
       localStorage.setItem(LANGUAGE_STORAGE_KEY, nextLanguage);
@@ -30,7 +39,10 @@ export function I18nProvider({ children }) {
     return {
       language,
       setLanguage: changeLanguage,
+      locale,
+      dateLocale,
       t,
+      tr,
     };
   }, [language]);
 

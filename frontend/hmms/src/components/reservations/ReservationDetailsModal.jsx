@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { differenceInDays, format, parseISO } from 'date-fns';
 import { AlertCircle, CalendarDays, Check, Copy, Euro, Hotel, Mail, MessageCircle, Phone, Users, Send } from 'lucide-react';
-import { STATUS_META, getTransitionWarning } from '../../api/reservationStatus';
+import { STATUS_META, getStatusLabel, getTransitionWarning } from '../../api/reservationStatus';
+import { useI18n } from '../../context/I18nContext';
 import { copyTextToClipboard } from '../../utils/clipboard';
 
 function parseNumeric(value) {
@@ -9,15 +10,15 @@ function parseNumeric(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function formatCurrency(value) {
+function formatCurrency(value, locale = 'en-US', currency = 'EUR') {
   const numeric = parseNumeric(value);
   if (numeric === null) {
     return '-';
   }
 
-  return new Intl.NumberFormat('nl-NL', {
+  return new Intl.NumberFormat(locale, {
     style: 'currency',
-    currency: 'EUR',
+    currency,
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(numeric);
@@ -31,13 +32,13 @@ function formatDecimal(value) {
   return value.toFixed(2);
 }
 
-function safeFormatDate(value, formatPattern = 'dd/MM/yyyy') {
+function safeFormatDate(value, formatPattern = 'dd/MM/yyyy', dateLocale) {
   if (!value) {
     return '-';
   }
 
   try {
-    return format(parseISO(value), formatPattern);
+    return format(parseISO(value), formatPattern, dateLocale ? { locale: dateLocale } : undefined);
   } catch {
     return String(value);
   }
@@ -99,6 +100,7 @@ export function ReservationDetailsModal({
   modalError,
   setModalError,
 }) {
+  const { tr, locale, dateLocale } = useI18n();
   const [priceInputSource, setPriceInputSource] = useState('total');
   const [copiedField, setCopiedField] = useState(null);
 
@@ -108,7 +110,7 @@ export function ReservationDetailsModal({
   );
 
   const status = reservation.status?.toLowerCase();
-  const statusTransitionWarning = getTransitionWarning(status, editForm.status);
+  const statusTransitionWarning = getTransitionWarning(status, editForm.status, tr);
 
   const reservationNightCount = getNightCount(reservation.checkIn, reservation.checkOut);
   const editNightCount = getNightCount(editForm.checkIn, editForm.checkOut);
@@ -208,7 +210,7 @@ export function ReservationDetailsModal({
   const handleCopyContact = async (field, value) => {
     const copied = await copyTextToClipboard(value);
     if (!copied) {
-      setModalError('Unable to copy to clipboard. Please copy manually.');
+      setModalError(tr('Unable to copy to clipboard. Please copy manually.', 'No se pudo copiar al portapapeles. Copia manualmente.'));
       return;
     }
 
@@ -238,7 +240,7 @@ export function ReservationDetailsModal({
                     <a
                       className="contact-action-btn action-primary"
                       href={mailtoLink}
-                      aria-label="Send email"
+                      aria-label={tr('Send email', 'Enviar correo')}
                     >
                       <Send size={13} />
                     </a>
@@ -246,7 +248,7 @@ export function ReservationDetailsModal({
                       type="button"
                       className="contact-action-btn action-copy"
                       onClick={() => handleCopyContact('email', reservation.email)}
-                      aria-label="Copy email address"
+                      aria-label={tr('Copy email address', 'Copiar correo electronico')}
                     >
                       {copiedField === 'email' ? <Check size={13} /> : <Copy size={13} />}
                     </button>
@@ -267,7 +269,7 @@ export function ReservationDetailsModal({
                         href={whatsappLink}
                         target="_blank"
                         rel="noreferrer noopener"
-                        aria-label="Open WhatsApp chat"
+                        aria-label={tr('Open WhatsApp chat', 'Abrir chat de WhatsApp')}
                       >
                         <MessageCircle size={13} />
                       </a>
@@ -276,7 +278,7 @@ export function ReservationDetailsModal({
                       type="button"
                       className="contact-action-btn action-copy"
                       onClick={() => handleCopyContact('phone', reservation.phone)}
-                      aria-label="Copy phone number"
+                      aria-label={tr('Copy phone number', 'Copiar numero de telefono')}
                     >
                       {copiedField === 'phone' ? <Check size={13} /> : <Copy size={13} />}
                     </button>
@@ -286,7 +288,7 @@ export function ReservationDetailsModal({
             </div>
 
             <div className="mt-1" style={{ fontSize: '0.85rem', color: 'var(--dark-gray)' }}>
-              from {safeFormatDate(reservation.checkIn, 'MMMM d yyyy')}, to {safeFormatDate(reservation.checkOut, 'MMMM d yyyy')}
+              {tr('from', 'desde')} {safeFormatDate(reservation.checkIn, 'MMMM d yyyy', dateLocale)}, {tr('to', 'hasta')} {safeFormatDate(reservation.checkOut, 'MMMM d yyyy', dateLocale)}
             </div>
           </div>
           <button className="modal-close" onClick={onClose} disabled={saving}>x</button>
@@ -329,11 +331,11 @@ export function ReservationDetailsModal({
           <div className="reservation-modal-pane">
             {!isEditing ? (
               <div style={{ display: 'grid', gap: '0.75rem' }}>
-                <InfoRow icon={Hotel} label="Suite" value={reservation.suiteName} />
+                <InfoRow icon={Hotel} label={tr('Suite', 'Suite')} value={reservation.suiteName} />
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                  <InfoRow icon={CalendarDays} label="Check-in" value={safeFormatDate(reservation.checkIn)} />
-                  <InfoRow icon={CalendarDays} label="Check-out" value={safeFormatDate(reservation.checkOut)} />
+                  <InfoRow icon={CalendarDays} label={tr('Check-in', 'Check-in')} value={safeFormatDate(reservation.checkIn, 'dd/MM/yyyy', dateLocale)} />
+                  <InfoRow icon={CalendarDays} label={tr('Check-out', 'Check-out')} value={safeFormatDate(reservation.checkOut, 'dd/MM/yyyy', dateLocale)} />
                 </div>
 
                 <div
@@ -343,29 +345,29 @@ export function ReservationDetailsModal({
                     gap: '0.75rem',
                   }}
                 >
-                  <InfoRow icon={Users} label="Guests" value={String(reservation.numGuests)} />
+                  <InfoRow icon={Users} label={tr('Guests', 'Huespedes')} value={String(reservation.numGuests)} />
                   <InfoRow
                     icon={Euro}
-                    label="Price per Night"
+                    label={tr('Price per Night', 'Precio por noche')}
                     value={
                       reservationPricePerNight === null
                         ? '-'
-                        : `${formatCurrency(reservationPricePerNight)} (${reservationNightCount} night${reservationNightCount === 1 ? '' : 's'})`
+                        : `${formatCurrency(reservationPricePerNight, locale)} (${reservationNightCount} ${reservationNightCount === 1 ? tr('night', 'noche') : tr('nights', 'noches')})`
                     }
                   />
-                  <InfoRow icon={Euro} label="Total Price" value={formatCurrency(reservation.priceTotal)} />
+                  <InfoRow icon={Euro} label={tr('Total Price', 'Precio total')} value={formatCurrency(reservation.priceTotal, locale)} />
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                  <InfoRow label="Channel" value={reservation.channel || '-'} capitalize />
-                  <InfoRow label="Status" value={STATUS_META[status]?.label || status || '-'} />
+                  <InfoRow label={tr('Channel', 'Canal')} value={reservation.channel || '-'} capitalize />
+                  <InfoRow label={tr('Status', 'Estado')} value={getStatusLabel(status, tr) || '-'} />
                 </div>
 
                 <InfoRow
-                  label={`Guest Notes of ${reservation.guestDisplayName || reservation.guestName || `Guest #${reservation.guestId}`}`}
+                  label={`${tr('Guest Notes of', 'Notas del huesped de')} ${reservation.guestDisplayName || reservation.guestName || `${tr('Guest', 'Huesped')} #${reservation.guestId}`}`}
                   value={reservation.guestNotes || '-'}
                 />
-                <InfoRow label="Reservation Notes" value={reservation.notes || '-'} />
+                <InfoRow label={tr('Reservation Notes', 'Notas de reserva')} value={reservation.notes || '-'} />
               </div>
             ) : (
               <div style={{ display: 'grid', gap: '0.75rem' }}>
@@ -378,7 +380,7 @@ export function ReservationDetailsModal({
                 )}
 
                 <div className="form-group">
-                  <label className="form-label">Suite</label>
+                  <label className="form-label">{tr('Suite', 'Suite')}</label>
                   <select
                     className="form-select"
                     value={editForm.suiteId}
@@ -396,7 +398,7 @@ export function ReservationDetailsModal({
                   <div className="form-group">
                     <label className="form-label">
                       <CalendarDays size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
-                      Check-in
+                      {tr('Check-in', 'Check-in')}
                     </label>
                     <input
                       type="date"
@@ -408,7 +410,7 @@ export function ReservationDetailsModal({
                   <div className="form-group">
                     <label className="form-label">
                       <CalendarDays size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
-                      Check-out
+                      {tr('Check-out', 'Check-out')}
                     </label>
                     <input
                       type="date"
@@ -429,7 +431,7 @@ export function ReservationDetailsModal({
                   <div className="form-group" style={{ minWidth: 0 }}>
                     <label className="form-label">
                       <Users size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
-                      Guests
+                      {tr('Guests', 'Huespedes')}
                     </label>
                     <input
                       type="number"
@@ -440,14 +442,14 @@ export function ReservationDetailsModal({
                       onChange={(e) => handleFieldChange('numGuests', e.target.value)}
                     />
                     {selectedSuite?.capacity && (
-                      <small style={{ color: 'var(--dark-gray)' }}>Max capacity: {selectedSuite.capacity}</small>
+                      <small style={{ color: 'var(--dark-gray)' }}>{tr('Max capacity:', 'Capacidad maxima:')} {selectedSuite.capacity}</small>
                     )}
                   </div>
 
                   <div className="form-group">
                     <label className="form-label">
                       <Euro size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
-                      Price per Night
+                      {tr('Price per Night', 'Precio por noche')}
                     </label>
                     <input
                       type="number"
@@ -462,7 +464,7 @@ export function ReservationDetailsModal({
                   <div className="form-group">
                     <label className="form-label">
                       <Euro size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
-                      Total Price (EUR)
+                      {tr('Total Price (EUR)', 'Precio total (EUR)')}
                     </label>
                     <input
                       type="number"
@@ -477,33 +479,33 @@ export function ReservationDetailsModal({
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                   <div className="form-group">
-                    <label className="form-label">Channel</label>
+                    <label className="form-label">{tr('Channel', 'Canal')}</label>
                     <select
                       className="form-select"
                       value={editForm.channel}
                       onChange={(e) => handleFieldChange('channel', e.target.value)}
                     >
-                      <option value="direct">Direct</option>
+                      <option value="direct">{tr('Direct', 'Directo')}</option>
                       <option value="booking.com">Booking.com</option>
                       <option value="airbnb">Airbnb</option>
                       <option value="expedia">Expedia</option>
-                      <option value="other">Other</option>
+                      <option value="other">{tr('Other', 'Otro')}</option>
                     </select>
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">Status</label>
+                    <label className="form-label">{tr('Status', 'Estado')}</label>
                     <select
                       className="form-select"
                       value={editForm.status}
                       onChange={(e) => handleFieldChange('status', e.target.value)}
                     >
-                      <option value="pending">Pending</option>
-                      <option value="confirmed">Confirmed</option>
-                      <option value="checked_in">Checked In</option>
-                      <option value="checked_out">Checked Out</option>
-                      <option value="no_show">No Show</option>
-                      <option value="cancelled">Cancelled</option>
+                      <option value="pending">{getStatusLabel('pending', tr)}</option>
+                      <option value="confirmed">{getStatusLabel('confirmed', tr)}</option>
+                      <option value="checked_in">{getStatusLabel('checked_in', tr)}</option>
+                      <option value="checked_out">{getStatusLabel('checked_out', tr)}</option>
+                      <option value="no_show">{getStatusLabel('no_show', tr)}</option>
+                      <option value="cancelled">{getStatusLabel('cancelled', tr)}</option>
                     </select>
                     {statusTransitionWarning && (
                       <div
@@ -525,26 +527,26 @@ export function ReservationDetailsModal({
 
                 <div className="form-group">
                   <label className="form-label">
-                    Guest Notes of {reservation.guestDisplayName || reservation.guestName || `Guest #${reservation.guestId}`}
+                    {tr('Guest Notes of', 'Notas del huesped de')} {reservation.guestDisplayName || reservation.guestName || `${tr('Guest', 'Huesped')} #${reservation.guestId}`}
                   </label>
                   <textarea
                     className="form-textarea"
                     value={editForm.guestNotes || ''}
                     onChange={(e) => handleFieldChange('guestNotes', e.target.value)}
-                    placeholder="Guest profile notes (preferences, allergies, communication reminders)."
+                    placeholder={tr('Guest profile notes (preferences, allergies, communication reminders).', 'Notas del perfil del huesped (preferencias, alergias, recordatorios de comunicacion).')}
                   />
                   <small style={{ color: 'var(--dark-gray)' }}>
-                    Saved on the guest profile and visible on all reservations for this guest.
+                    {tr('Saved on the guest profile and visible on all reservations for this guest.', 'Se guarda en el perfil del huesped y se muestra en todas las reservas de este huesped.')}
                   </small>
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">Reservation Notes</label>
+                  <label className="form-label">{tr('Reservation Notes', 'Notas de reserva')}</label>
                   <textarea
                     className="form-textarea"
                     value={editForm.notes}
                     onChange={(e) => handleFieldChange('notes', e.target.value)}
-                    placeholder="Stay-specific notes for this reservation only."
+                    placeholder={tr('Stay-specific notes for this reservation only.', 'Notas especificas para esta estancia solamente.')}
                   />
                 </div>
               </div>
@@ -561,7 +563,7 @@ export function ReservationDetailsModal({
                 onClick={onRequestCancelReservation}
                 disabled={saving}
               >
-                Cancel reservation
+                {tr('Cancel reservation', 'Cancelar reserva')}
               </button>
             )}
           </div>
@@ -569,15 +571,15 @@ export function ReservationDetailsModal({
           <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto' }}>
             {!isEditing ? (
               <button className="btn btn-primary" onClick={() => setIsEditing(true)}>
-                Edit reservation
+                {tr('Edit reservation', 'Editar reserva')}
               </button>
             ) : (
               <>
                 <button className="btn btn-outline" onClick={() => setIsEditing(false)} disabled={saving}>
-                  Back (discard changes)
+                  {tr('Back (discard changes)', 'Volver (descartar cambios)')}
                 </button>
                 <button className="btn btn-primary" onClick={onSave} disabled={saving || !isEditValid}>
-                  {saving ? 'Saving...' : 'Save Changes'}
+                  {saving ? tr('Saving...', 'Guardando...') : tr('Save Changes', 'Guardar cambios')}
                 </button>
               </>
             )}
@@ -617,26 +619,28 @@ function InfoRow({ label, value, capitalize = false, icon: Icon }) {
 }
 
 export function ConfirmCancelReservationModal({ reservation, saving, onClose, onConfirm }) {
+  const { tr } = useI18n();
+
   return (
     <div className="modal-overlay" onClick={saving ? undefined : onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h3 className="modal-title">Confirm cancellation</h3>
+          <h3 className="modal-title">{tr('Confirm cancellation', 'Confirmar cancelacion')}</h3>
           <button className="modal-close" onClick={onClose} disabled={saving}>x</button>
         </div>
 
         <div className="modal-body">
           <p>
-            Cancel reservation <strong>#{reservation.reservationId}</strong> for <strong>{reservation.guestName}</strong>?
+            {tr('Cancel reservation', 'Cancelar reserva')} <strong>#{reservation.reservationId}</strong> {tr('for', 'de')} <strong>{reservation.guestName}</strong>?
           </p>
         </div>
 
         <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
           <button className="btn btn-outline" onClick={onClose} disabled={saving}>
-            Keep reservation
+            {tr('Keep reservation', 'Mantener reserva')}
           </button>
           <button className="btn btn-danger" onClick={onConfirm} disabled={saving}>
-            {saving ? 'Cancelling...' : 'Yes, cancel'}
+            {saving ? tr('Cancelling...', 'Cancelando...') : tr('Yes, cancel', 'Si, cancelar')}
           </button>
         </div>
       </div>
