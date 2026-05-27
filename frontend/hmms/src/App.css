@@ -417,6 +417,19 @@ body {
   table-layout: fixed;
 }
 
+.guest-table {
+  table-layout: fixed;
+}
+
+.guest-table th:nth-child(1) { width: 4.4rem; }
+.guest-table th:nth-child(2) { width: 12rem; }
+.guest-table th:nth-child(3) { width: 14.5rem; }
+.guest-table th:nth-child(4) { width: 13.2rem; }
+.guest-table th:nth-child(5) { width: 8.4rem; }
+.guest-table th:nth-child(6) { width: 7.2rem; }
+.guest-table th:nth-child(7) { width: 7.2rem; }
+.guest-table th:nth-child(8) { width: 6.4rem; }
+
 .reservation-table .col-id { width: 4.7rem; }
 .reservation-table .col-guest { width: 11.4rem; }
 .reservation-table .col-suite { width: 11.8rem; }
@@ -607,6 +620,7 @@ body {
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
+  min-width: 0;
 }
 
 .contact-data-group {
@@ -614,12 +628,15 @@ body {
   flex-direction: column;
   gap: 0.3rem;
   min-width: 0;
+  width: 100%;
 }
 
 .contact-value {
   color: var(--primary);
   font-weight: 600;
-  word-break: break-word;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .contact-actions-inline {
@@ -667,6 +684,19 @@ body {
   border-color: rgba(44, 62, 80, 0.25);
   background: rgba(44, 62, 80, 0.08);
   color: var(--primary);
+}
+
+.guest-contact-actions {
+  gap: 0.25rem;
+}
+
+.contact-action-btn.compact {
+  width: 1.55rem;
+  min-width: 1.55rem;
+  height: 1.55rem;
+  padding: 0;
+  justify-content: center;
+  border-radius: 6px;
 }
 
 .status-filter-option {
@@ -1711,6 +1741,10 @@ body {
   }
 
   .reservation-table {
+    table-layout: auto;
+  }
+
+  .guest-table {
     table-layout: auto;
   }
 

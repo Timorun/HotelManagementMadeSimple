@@ -213,6 +213,9 @@ export function ReservationDetailsModal({
     }
 
     setCopiedField(field);
+    window.setTimeout(() => {
+      setCopiedField((current) => (current === field ? null : current));
+    }, 1400);
   };
 
   return (
@@ -237,8 +240,7 @@ export function ReservationDetailsModal({
                       href={mailtoLink}
                       aria-label="Send email"
                     >
-                      <Send size={12} />
-                      Send
+                      <Send size={13} />
                     </a>
                     <button
                       type="button"
@@ -246,8 +248,7 @@ export function ReservationDetailsModal({
                       onClick={() => handleCopyContact('email', reservation.email)}
                       aria-label="Copy email address"
                     >
-                      {copiedField === 'email' ? <Check size={12} /> : <Copy size={12} />}
-                      {copiedField === 'email' ? 'Copied' : 'Copy'}
+                      {copiedField === 'email' ? <Check size={13} /> : <Copy size={13} />}
                     </button>
                   </span>
                 </div>
@@ -268,8 +269,7 @@ export function ReservationDetailsModal({
                         rel="noreferrer noopener"
                         aria-label="Open WhatsApp chat"
                       >
-                        <MessageCircle size={12} />
-                        WhatsApp
+                        <MessageCircle size={13} />
                       </a>
                     ) : null}
                     <button
@@ -278,8 +278,7 @@ export function ReservationDetailsModal({
                       onClick={() => handleCopyContact('phone', reservation.phone)}
                       aria-label="Copy phone number"
                     >
-                      {copiedField === 'phone' ? <Check size={12} /> : <Copy size={12} />}
-                      {copiedField === 'phone' ? 'Copied' : 'Copy'}
+                      {copiedField === 'phone' ? <Check size={13} /> : <Copy size={13} />}
                     </button>
                   </span>
                 </div>

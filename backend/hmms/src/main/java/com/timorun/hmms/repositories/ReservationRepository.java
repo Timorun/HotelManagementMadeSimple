@@ -39,12 +39,21 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
     // Find all reservations with specific status
     List<Reservation> findByStatus(ReservationStatus status);
 
-    boolean existsBySuiteSuiteIdAndGuestGuestIdAndCheckInAndCheckOutAndStatusNot(
-            Long suiteId,
-            Long guestId,
-            LocalDate checkIn,
-            LocalDate checkOut,
-            ReservationStatus status
+    @Query("""
+            SELECT CASE WHEN COUNT(r) > 0 THEN TRUE ELSE FALSE END
+            FROM Reservation r
+            WHERE r.suite.suiteId = :suiteId
+              AND r.guest.guestId = :guestId
+              AND r.checkIn = :checkIn
+              AND r.checkOut = :checkOut
+              AND r.status <> :status
+            """)
+    boolean existsDuplicateReservation(
+            @Param("suiteId") Long suiteId,
+            @Param("guestId") Long guestId,
+            @Param("checkIn") LocalDate checkIn,
+            @Param("checkOut") LocalDate checkOut,
+            @Param("status") ReservationStatus status
     );
 }
 

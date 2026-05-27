@@ -259,7 +259,7 @@ public class ReservationService {
 
     private void validateDuplicateReservation(Long suiteId, Long guestId, LocalDate checkIn, LocalDate checkOut) {
         boolean duplicateExists = reservationRepository
-                .existsBySuiteSuiteIdAndGuestGuestIdAndCheckInAndCheckOutAndStatusNot(
+                .existsDuplicateReservation(
                         suiteId,
                         guestId,
                         checkIn,

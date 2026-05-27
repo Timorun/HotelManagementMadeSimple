@@ -145,7 +145,6 @@ public class GuestService {
         guest.setEmail(null);
         guest.setPhone(null);
         guest.setNotes(null);
-        guest.setNationality(null);
         guest.setAnonymizedAt(LocalDateTime.now());
         
         Guest updated = guestRepository.save(guest);
