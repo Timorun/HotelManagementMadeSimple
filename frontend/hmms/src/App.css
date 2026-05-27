@@ -173,6 +173,12 @@ body {
   width: 100%;
 }
 
+.app-content-calendar {
+  max-width: none;
+  padding-left: clamp(1rem, 2.2vw, 2.5rem);
+  padding-right: clamp(1rem, 2.2vw, 2.5rem);
+}
+
 /* Card Styles */
 .card {
   background: var(--white);
@@ -1688,6 +1694,10 @@ body {
   
   .app-content {
     padding: 0 1rem;
+  }
+
+  .app-content-calendar {
+    padding: 0 0.75rem;
   }
   
   .grid-2,

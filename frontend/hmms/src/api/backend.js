@@ -2,6 +2,7 @@
 const BASE_URL = 'http://localhost:8080/api';
 const ENABLE_STUB_FALLBACK = false;
 const unauthorizedListeners = new Set();
+const inFlightGetRequests = new Map();
 
 const STUB_DATA = {
   guests: [
@@ -217,8 +218,19 @@ async function request(url, options = {}, errorMessage = 'Request failed') {
   return res.json();
 }
 
-async function getJson(url, errorMessage) {
-  return request(url, { method: 'GET' }, errorMessage);
+function getJson(url, errorMessage) {
+  if (inFlightGetRequests.has(url)) {
+    return inFlightGetRequests.get(url);
+  }
+
+  // Reuse the same pending GET promise for concurrent callers of the same endpoint.
+  const pendingRequest = request(url, { method: 'GET' }, errorMessage)
+    .finally(() => {
+      inFlightGetRequests.delete(url);
+    });
+
+  inFlightGetRequests.set(url, pendingRequest);
+  return pendingRequest;
 }
 
 export async function login(usernameOrEmail, password) {

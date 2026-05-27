@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchGuests, createGuest, updateGuest, fetchNationalities, anonymizeGuest } from '../api/backend';
 import { Users, Plus, Edit, Search, Globe, UserX, Download, Copy, Check, MessageCircle, Send } from 'lucide-react';
 import { exportRowsToExcel } from '../utils/excelExport';
@@ -25,6 +25,7 @@ function buildWhatsAppLink(phone) {
 
 export default function GuestManagement() {
   const { t, tr } = useI18n();
+  const hasLoadedInitialData = useRef(false);
   const [guests, setGuests] = useState([]);
   const [nationalities, setNationalities] = useState([]);
   const [filteredGuests, setFilteredGuests] = useState([]);
@@ -51,7 +52,28 @@ export default function GuestManagement() {
     marketingConsent: false,
   });
 
+  function loadData() {
+    setLoading(true);
+    Promise.all([
+      fetchGuests(),
+      fetchNationalities(),
+    ])
+      .then(([guestsData, nationalitiesData]) => {
+        setGuests(guestsData);
+        setFilteredGuests(guestsData);
+        setNationalities(nationalitiesData);
+      })
+      .catch((err) => setError(err?.message || String(err)))
+      .finally(() => setLoading(false));
+  }
+
   useEffect(() => {
+    // Avoid duplicate initial fetches during React StrictMode development effect replay.
+    if (hasLoadedInitialData.current) {
+      return;
+    }
+
+    hasLoadedInitialData.current = true;
     loadData();
   }, []);
 
@@ -172,21 +194,6 @@ export default function GuestManagement() {
       setNationalityFilter('all');
     }
   }, [availableNationalityOptions, nationalityFilter]);
-
-  const loadData = () => {
-    setLoading(true);
-    Promise.all([
-      fetchGuests(),
-      fetchNationalities(),
-    ])
-      .then(([guestsData, nationalitiesData]) => {
-        setGuests(guestsData);
-        setFilteredGuests(guestsData);
-        setNationalities(nationalitiesData);
-      })
-      .catch((err) => setError(err?.message || String(err)))
-      .finally(() => setLoading(false));
-  };
 
   const openNewGuestModal = () => {
     setEditingGuest(null);

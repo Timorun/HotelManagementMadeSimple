@@ -87,20 +87,8 @@ export default function CalendarView() {
     (res) => statusFilters[res.status?.toLowerCase()] ?? true,
   );
 
-  // Calculate statistics (only for active suites)
+  // Active suites displayed in the timeline
   const activeSuites = suites.filter(s => s.active);
-  const totalDays = daysInMonth.length;
-  const totalSuiteDays = totalDays * activeSuites.length;
-  const activeReservations = filteredReservations.filter(res => res.status?.toLowerCase() !== 'cancelled');
-  const occupiedDays = activeReservations.reduce((sum, res) => {
-    const checkIn = parseISO(res.checkIn);
-    const checkOut = parseISO(res.checkOut);
-    const start = checkIn < monthStart ? monthStart : checkIn;
-    const end = checkOut > monthEnd ? monthEnd : checkOut;
-    if (end <= start) return sum;
-    return sum + Math.max(0, differenceInDays(end, start));
-  }, 0);
-  const occupancyRate = totalSuiteDays > 0 ? (occupiedDays / totalSuiteDays) * 100 : 0;
 
   const previousMonth = () => setCurrentDate(subMonths(currentDate, 1));
   const nextMonth = () => setCurrentDate(addMonths(currentDate, 1));
@@ -355,23 +343,23 @@ export default function CalendarView() {
     <div className="calendar-view">
       {/* Header */}
       <div className="card mb-3">
-        <div className="card-header">
+        <div className="card-header" style={{ alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
           <h2>
             <CalendarIcon size={28} />
             {tr('Calendar & Planning', 'Calendario y planificacion')}
           </h2>
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <button onClick={goToToday} className="btn btn-outline btn-sm">
+              <button type="button" onClick={goToToday} className="btn btn-outline btn-sm">
                 {tr('Today', 'Hoy')}
               </button>
-              <button onClick={previousMonth} className="btn btn-primary btn-sm">
+              <button type="button" onClick={previousMonth} className="btn btn-primary btn-sm" aria-label={tr('Previous month', 'Mes anterior')}>
                 <ChevronLeft size={16} />
               </button>
-              <h3 style={{ margin: 0, fontSize: '1.125rem', minWidth: '140px', textAlign: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', minWidth: '170px', textAlign: 'center' }}>
                 {format(currentDate, 'MMMM yyyy', { locale: dateLocale })}
               </h3>
-              <button onClick={nextMonth} className="btn btn-primary btn-sm">
+              <button type="button" onClick={nextMonth} className="btn btn-primary btn-sm" aria-label={tr('Next month', 'Mes siguiente')}>
                 <ChevronRight size={16} />
               </button>
             </div>
@@ -409,52 +397,6 @@ export default function CalendarView() {
           dateLocale={dateLocale}
         />
       )}
-
-      {/* Statistics Panel */}
-      <div className="card mt-3">
-        <div style={{ 
-          display: 'grid', 
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
-          gap: '1.5rem',
-          padding: '1.5rem',
-          paddingTop: '0.5rem',
-          paddingBottom: '0.5rem',
-        }}>
-          <div>
-            <div style={{ fontSize: '0.875rem', color: 'var(--dark-gray)', marginBottom: '0.25rem' }}>
-              {tr('Total Reservations', 'Reservas totales')}
-            </div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--primary)' }}>
-              {filteredReservations.length}
-            </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--dark-gray)', marginTop: '0.125rem' }}>
-              {activeReservations.length} {tr('active', 'activas')}
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: '0.875rem', color: 'var(--dark-gray)', marginBottom: '0.25rem' }}>
-              {tr('Occupancy Rate', 'Tasa de ocupacion')}
-            </div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--accent)' }}>
-              {occupancyRate.toFixed(1)}%
-            </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--dark-gray)', marginTop: '0.125rem' }}>
-              {occupiedDays} {tr('of', 'de')} {totalSuiteDays} {tr('days', 'dias')}
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: '0.875rem', color: 'var(--dark-gray)', marginBottom: '0.25rem' }}>
-              {tr('Active Suites', 'Suites activas')}
-            </div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--success)' }}>
-              {activeSuites.length}
-            </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--dark-gray)', marginTop: '0.125rem' }}>
-              {tr('of', 'de')} {suites.length} {tr('total', 'total')}
-            </div>
-          </div>
-        </div>
-      </div>
 
       {showReservationModal && selectedReservation && (
         <ReservationDetailsModal
@@ -507,13 +449,43 @@ function TimelineView({
 
   const getStableLaneData = (suiteId) => {
     const fullSuiteReservations = getReservationsForSuite(suiteId, allReservations).sort((a, b) => {
-      if (a.checkIn === b.checkIn) return (a.reservationId || 0) - (b.reservationId || 0);
+      if (a.checkIn === b.checkIn) {
+        if (a.checkOut === b.checkOut) {
+          return (a.reservationId || 0) - (b.reservationId || 0);
+        }
+        return a.checkOut.localeCompare(b.checkOut);
+      }
       return a.checkIn.localeCompare(b.checkIn);
     });
 
     const laneByReservationId = {};
-    fullSuiteReservations.forEach((res, idx) => {
-      laneByReservationId[res.reservationId] = idx;
+    const laneEndTimestamps = [];
+
+    fullSuiteReservations.forEach((res) => {
+      const reservationId = res.reservationId;
+      const startTimestamp = Date.parse(res.checkIn || '');
+      const endTimestamp = Date.parse(res.checkOut || '');
+
+      const hasValidRange = Number.isFinite(startTimestamp) && Number.isFinite(endTimestamp) && endTimestamp >= startTimestamp;
+
+      if (!hasValidRange) {
+        const fallbackLane = laneEndTimestamps.length;
+        laneEndTimestamps.push(Number.POSITIVE_INFINITY);
+        laneByReservationId[reservationId] = fallbackLane;
+        return;
+      }
+
+      const reusableLaneIndex = laneEndTimestamps.findIndex((laneEndTimestamp) => laneEndTimestamp <= startTimestamp);
+
+      if (reusableLaneIndex >= 0) {
+        laneEndTimestamps[reusableLaneIndex] = endTimestamp;
+        laneByReservationId[reservationId] = reusableLaneIndex;
+        return;
+      }
+
+      const newLaneIndex = laneEndTimestamps.length;
+      laneEndTimestamps.push(endTimestamp);
+      laneByReservationId[reservationId] = newLaneIndex;
     });
 
     return { laneByReservationId };
@@ -542,30 +514,59 @@ function TimelineView({
   };
 
   const getStatusColor = (status) => STATUS_META[status?.toLowerCase()]?.color || STATUS_META.pending.color;
+  const isDenseMonth = daysInMonth.length >= 30;
+  const suiteColumnWidth = isDenseMonth ? 184 : 196;
+  const dayColumnWidth = isDenseMonth ? 30 : 34;
+  const timelineMinWidth = Math.max(760, daysInMonth.length * dayColumnWidth);
+  const laneHeight = isDenseMonth ? 26 : 28;
+  const laneInsetTop = isDenseMonth ? 10 : 12;
+  const barHeight = isDenseMonth ? 20 : 22;
+  const baseRowHeight = isDenseMonth ? 72 : 80;
+  const enableVerticalScroll = suites.length > 10;
 
   return (
     <div className="card">
-      <div style={{ overflowX: 'auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+        <div style={{ fontSize: '0.93rem', color: 'var(--primary)', fontWeight: 600 }}>
+          {tr('Reservation timeline by suite', 'Linea de reservas por suite')}
+        </div>
+      </div>
+
+      <div
+        style={{
+          overflowX: 'auto',
+          overflowY: enableVerticalScroll ? 'auto' : 'visible',
+          maxHeight: enableVerticalScroll ? '72vh' : 'none',
+          border: '1px solid var(--light-gray)',
+          borderRadius: '10px'
+        }}
+      >
         {/* Date Header */}
-        <div style={{ display: 'flex', borderBottom: '2px solid var(--gray)' }}>
+        <div style={{ display: 'flex', borderBottom: '2px solid var(--gray)', position: 'sticky', top: 0, zIndex: 40, background: 'var(--white)' }}>
           <div style={{ 
-            minWidth: '180px', 
-            padding: '1rem', 
+            minWidth: `${suiteColumnWidth}px`, 
+            padding: '1rem 1.125rem', 
             fontWeight: 700,
             borderRight: '2px solid var(--gray)',
-            background: 'var(--light-gray)'
+            background: 'var(--light-gray)',
+            fontSize: '0.95rem',
+            position: 'sticky',
+            left: 0,
+            top: 0,
+            zIndex: 70,
           }}>
             {tr('Suite', 'Suite')}
           </div>
-          <div style={{ flex: 1, display: 'flex', minWidth: '800px' }}>
+          <div style={{ flex: 1, display: 'flex', minWidth: `${timelineMinWidth}px` }}>
             {daysInMonth.map((day, idx) => (
               <div
                 key={idx}
                 style={{
                   flex: 1,
-                  padding: '0.5rem 0.25rem',
+                  minWidth: `${dayColumnWidth}px`,
+                  padding: isDenseMonth ? '0.45rem 0.2rem' : '0.6rem 0.35rem',
                   textAlign: 'center',
-                  fontSize: '0.75rem',
+                  fontSize: isDenseMonth ? '0.72rem' : '0.82rem',
                   fontWeight: isToday(day) ? 700 : 400,
                   color: isToday(day) ? 'var(--accent)' : 'var(--dark-gray)',
                   background: isToday(day) ? 'rgba(255, 107, 107, 0.1)' : 
@@ -574,15 +575,15 @@ function TimelineView({
                   borderBottom: '1px solid var(--gray)'
                 }}
               >
-                <div>{format(day, 'EEE', { locale: dateLocale })}</div>
-                <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>{format(day, 'd')}</div>
+                <div style={{ textTransform: 'uppercase', letterSpacing: '0.35px', fontWeight: 600 }}>{format(day, 'EEE', { locale: dateLocale })}</div>
+                <div style={{ fontSize: isDenseMonth ? '0.88rem' : '1rem', fontWeight: 700 }}>{format(day, 'd')}</div>
               </div>
             ))}
           </div>
         </div>
 
         {/* Suite Rows */}
-        {suites.map((suite) => {
+        {suites.map((suite, suiteRowIndex) => {
           const suiteReservations = getReservationsForSuite(suite.suiteId);
           const { laneByReservationId } = getStableLaneData(suite.suiteId);
           const maxVisibleLane = suiteReservations.reduce((maxLane, res) => {
@@ -590,28 +591,32 @@ function TimelineView({
             return Math.max(maxLane, lane);
           }, -1);
           const lanesToRender = maxVisibleLane >= 0 ? maxVisibleLane + 1 : 0;
-          const rowHeight = Math.max(60, lanesToRender * 22 + 16);
+          const rowHeight = Math.max(baseRowHeight, lanesToRender * laneHeight + 24);
+          const rowBaseBackground = suiteRowIndex % 2 === 0 ? 'white' : '#fbfdff';
           
           return (
             <div key={suite.suiteId} style={{ display: 'flex', borderBottom: '1px solid var(--gray)' }}>
               <div style={{ 
-                minWidth: '180px', 
-                padding: '1rem',
+                minWidth: `${suiteColumnWidth}px`, 
+                padding: '1rem 1.125rem',
                 borderRight: '2px solid var(--gray)',
                 background: 'var(--light-gray)',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '0.25rem'
+                gap: '0.35rem',
+                position: 'sticky',
+                left: 0,
+                zIndex: 30,
               }}>
-                <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{suite.suiteName}</div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--dark-gray)' }}>{tr('Capacity:', 'Capacidad:')} {suite.capacity}</div>
+                <div style={{ fontWeight: 700, fontSize: isDenseMonth ? '0.85rem' : '0.93rem' }}>{suite.suiteName}</div>
+                <div style={{ fontSize: isDenseMonth ? '0.72rem' : '0.8rem', color: 'var(--dark-gray)' }}>{tr('Capacity:', 'Capacidad:')} {suite.capacity}</div>
               </div>
               <div style={{ 
                 flex: 1, 
                 position: 'relative', 
                 minHeight: `${rowHeight}px`,
-                minWidth: '800px',
-                background: 'white'
+                minWidth: `${timelineMinWidth}px`,
+                background: rowBaseBackground,
               }}>
                 {/* Day grid lines */}
                 <div style={{ display: 'flex', height: '100%', position: 'absolute', width: '100%' }}>
@@ -621,8 +626,8 @@ function TimelineView({
                       style={{
                         flex: 1,
                         borderRight: '1px solid var(--light-gray)',
-                        background: isToday(day) ? 'rgba(255, 107, 107, 0.05)' : 
-                                   day.getDay() === 0 || day.getDay() === 6 ? '#fafafa' : 'transparent'
+                        background: isToday(day) ? 'rgba(255, 107, 107, 0.07)' : 
+                                   day.getDay() === 0 || day.getDay() === 6 ? 'rgba(236, 240, 241, 0.6)' : 'transparent'
                       }}
                     />
                   ))}
@@ -640,15 +645,17 @@ function TimelineView({
                       key={reservation.reservationId || idx}
                       style={{
                         position: 'absolute',
-                        top: `${laneIndex * 22 + 8}px`,
+                        top: `${laneIndex * laneHeight + laneInsetTop}px`,
                         left: style.left,
                         width: style.width,
-                        height: '18px',
+                        height: `${barHeight}px`,
                         background: color,
-                        borderRadius: '3px',
-                        padding: '0 4px',
-                        fontSize: '0.7rem',
+                        borderRadius: '4px',
+                        padding: isDenseMonth ? '0 6px' : '0 8px',
+                        fontSize: isDenseMonth ? '0.72rem' : '0.78rem',
+                        fontWeight: 600,
                         color: 'white',
+                        border: '1px solid rgba(255, 255, 255, 0.35)',
                         overflow: 'hidden',
                         whiteSpace: 'nowrap',
                         textOverflow: 'ellipsis',
@@ -672,8 +679,8 @@ function TimelineView({
       </div>
 
       {/* Legend */}
-      <div style={{ padding: '1rem', background: 'var(--light-gray)', borderTop: '1px solid var(--gray)' }}>
-        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', fontSize: '0.875rem', alignItems: 'center' }}>
+      <div style={{ padding: '1rem 1.125rem', background: 'var(--light-gray)', borderTop: '1px solid var(--gray)' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', fontSize: '0.9rem', alignItems: 'center' }}>
           {Object.entries(STATUS_META).map(([key, meta]) => (
             <button
               key={key}
@@ -684,13 +691,15 @@ function TimelineView({
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.5rem',
-                background: 'transparent',
-                border: 'none',
+                background: statusFilters[key] ? 'rgba(255,255,255,0.65)' : 'transparent',
+                border: '1px solid var(--gray)',
+                borderRadius: '999px',
+                padding: '0.3rem 0.65rem',
                 cursor: 'pointer',
                 opacity: statusFilters[key] ? 1 : 0.35,
               }}
             >
-              <div style={{ width: '20px', height: '14px', background: meta.color, borderRadius: '3px' }}></div>
+              <div style={{ width: '20px', height: '14px', background: meta.color, borderRadius: '3px', flexShrink: 0 }}></div>
               <span>{getStatusLabel(key, tr)}</span>
             </button>
           ))}

@@ -20,6 +20,16 @@ export default function AppShell({ children }) {
   ]), []);
 
   const activePath = location.pathname;
+  const isCalendarRoute = activePath === '/calendar';
+
+  const handleNewReservationClick = () => {
+    if (activePath === '/reservations') {
+      navigate('/reservations?new=1');
+      return;
+    }
+
+    navigate(`/reservations?new=1&returnTo=${encodeURIComponent(activePath)}`);
+  };
 
   return (
     <>
@@ -41,7 +51,7 @@ export default function AppShell({ children }) {
               ))}
             </select>
 
-            <button className="quick-action-btn" onClick={() => navigate('/reservations?new=1')}>
+            <button className="quick-action-btn" onClick={handleNewReservationClick}>
               <PlusCircle size={16} />
               {t('newReservation')}
             </button>
@@ -66,7 +76,7 @@ export default function AppShell({ children }) {
         </nav>
       </header>
 
-      <main className="app-content">
+      <main className={`app-content${isCalendarRoute ? ' app-content-calendar' : ''}`}>
         {children}
       </main>
     </>

@@ -42,6 +42,7 @@ export default function ReservationManagement() {
   const searchTimerRef = useRef(null);
   const dateApplyTimerRef = useRef(null);
   const statusDropdownRef = useRef(null);
+  const returnToPathRef = useRef(null);
   const [statusFilters, setStatusFilters] = useState(STATUS_FILTER_DEFAULTS);
   const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
   const [channelFilter, setChannelFilter] = useState('all');
@@ -315,7 +316,15 @@ export default function ReservationManagement() {
 
   useEffect(() => {
     if (searchParams.get('new') === '1') {
-      openNewReservationModal();
+      const requestedReturnTo = searchParams.get('returnTo');
+      const isValidReturnTo = Boolean(
+        requestedReturnTo
+        && requestedReturnTo.startsWith('/')
+        && requestedReturnTo !== '/reservations'
+      );
+
+      returnToPathRef.current = isValidReturnTo ? requestedReturnTo : null;
+      openNewReservationModal({ preserveReturnTo: true });
       navigate('/reservations', { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -611,7 +620,13 @@ export default function ReservationManagement() {
     return Object.keys(errors).length === 0;
   }, [formData, selectedSuite, nightsCount, editingReservation, guestMode, tr]);
 
-  const openNewReservationModal = useCallback(() => {
+  const openNewReservationModal = useCallback((options = {}) => {
+    const { preserveReturnTo = false } = options;
+
+    if (!preserveReturnTo) {
+      returnToPathRef.current = null;
+    }
+
     if (searchTimerRef.current) {
       clearTimeout(searchTimerRef.current);
       searchTimerRef.current = null;
@@ -644,6 +659,18 @@ export default function ReservationManagement() {
     setPriceInputSource('total');
     setShowModal(true);
   }, []);
+
+  const closeCreateReservationModal = useCallback(() => {
+    const shouldReturnToOrigin = !editingReservation && Boolean(returnToPathRef.current);
+    const returnToPath = shouldReturnToOrigin ? returnToPathRef.current : null;
+
+    setShowModal(false);
+
+    if (shouldReturnToOrigin && returnToPath) {
+      returnToPathRef.current = null;
+      navigate(returnToPath, { replace: true });
+    }
+  }, [editingReservation, navigate]);
 
   const submitReservation = useCallback(async () => {
     setSubmitting(true);
@@ -758,8 +785,17 @@ export default function ReservationManagement() {
         showToast(reservationSuccessMessage, 'success');
       }
 
+      const shouldReturnToOrigin = !editingReservation && Boolean(returnToPathRef.current);
+      const returnToPath = shouldReturnToOrigin ? returnToPathRef.current : null;
+
       setShowModal(false);
-      loadData();
+
+      if (shouldReturnToOrigin && returnToPath) {
+        returnToPathRef.current = null;
+        navigate(returnToPath, { replace: true });
+      } else {
+        loadData();
+      }
     } catch (err) {
       const errorMsg = err?.message || tr('Failed to save reservation', 'No se pudo guardar la reserva');
       setError(errorMsg);
@@ -770,7 +806,7 @@ export default function ReservationManagement() {
     } finally {
       setSubmitting(false);
     }
-  }, [editingReservation, formData, guestMode, loadData, reservations, showToast, tr]);
+  }, [editingReservation, formData, guestMode, loadData, navigate, reservations, showToast, tr]);
 
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
@@ -905,7 +941,7 @@ export default function ReservationManagement() {
       }
 
       if (showModal) {
-        setShowModal(false);
+        closeCreateReservationModal();
       }
     };
 
@@ -919,6 +955,7 @@ export default function ReservationManagement() {
     showReservationModal,
     showCancelConfirmModal,
     savingReservationDetails,
+    closeCreateReservationModal,
     closeReservationModal,
   ]);
 
@@ -1484,13 +1521,13 @@ export default function ReservationManagement() {
 
       {/* Modal */}
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay" onClick={closeCreateReservationModal}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3 className="modal-title">
                 {editingReservation ? tr('Edit Reservation', 'Editar reserva') : tr('New Reservation', 'Nueva reserva')}
               </h3>
-              <button className="modal-close" onClick={() => setShowModal(false)}>×</button>
+              <button className="modal-close" onClick={closeCreateReservationModal}>×</button>
             </div>
             <form onSubmit={handleSubmit}>
               <div className="modal-body">
@@ -1969,7 +2006,7 @@ export default function ReservationManagement() {
                 </div>
               </div>
               <div className="modal-footer">
-                <button type="button" onClick={() => setShowModal(false)} className="btn btn-outline" disabled={submitting}>
+                <button type="button" onClick={closeCreateReservationModal} className="btn btn-outline" disabled={submitting}>
                   {tr('Cancel', 'Cancelar')}
                 </button>
                 <button type="submit" className="btn btn-accent" disabled={submitting}>
