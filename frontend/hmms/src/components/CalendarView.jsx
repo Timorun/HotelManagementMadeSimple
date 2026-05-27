@@ -41,6 +41,7 @@ export default function CalendarView() {
     checkIn: '',
     checkOut: '',
     numGuests: 1,
+    pricePerNight: '',
     priceTotal: '',
     channel: 'direct',
     notes: '',
@@ -103,6 +104,35 @@ export default function CalendarView() {
   const nextMonth = () => setCurrentDate(addMonths(currentDate, 1));
   const goToToday = () => setCurrentDate(new Date());
 
+  const formatCurrencyValue = (value) => {
+    if (!Number.isFinite(value)) {
+      return '';
+    }
+    return value.toFixed(2);
+  };
+
+  const getPricePerNightValue = (checkIn, checkOut, totalPrice) => {
+    if (!checkIn || !checkOut) {
+      return '';
+    }
+
+    try {
+      const nights = differenceInDays(parseISO(checkOut), parseISO(checkIn));
+      if (nights <= 0) {
+        return '';
+      }
+
+      const parsedTotal = Number.parseFloat(totalPrice || 0);
+      if (!Number.isFinite(parsedTotal)) {
+        return '';
+      }
+
+      return formatCurrencyValue(parsedTotal / nights);
+    } catch {
+      return '';
+    }
+  };
+
   const getEditValidationErrors = () => {
     const errors = [];
     const selectedSuite = activeSuites.find((suite) => suite.suiteId === Number(editForm.suiteId));
@@ -141,6 +171,7 @@ export default function CalendarView() {
       checkIn: reservation.checkIn,
       checkOut: reservation.checkOut,
       numGuests: reservation.numGuests,
+      pricePerNight: getPricePerNightValue(reservation.checkIn, reservation.checkOut, reservation.priceTotal),
       priceTotal: reservation.priceTotal,
       channel: reservation.channel || 'direct',
       notes: reservation.notes || '',
@@ -229,6 +260,7 @@ export default function CalendarView() {
             checkIn: editForm.checkIn,
             checkOut: editForm.checkOut,
             numGuests: parseInt(editForm.numGuests, 10),
+            pricePerNight: editForm.pricePerNight,
             priceTotal: parseFloat(editForm.priceTotal),
             channel: editForm.channel,
             notes: editForm.notes,

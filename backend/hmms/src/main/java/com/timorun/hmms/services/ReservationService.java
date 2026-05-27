@@ -54,6 +54,7 @@ public class ReservationService {
         
         // Check suite availability
         validateSuiteAvailability(request.getSuiteId(), request.getCheckIn(), request.getCheckOut(), null);
+        validateDuplicateReservation(request.getSuiteId(), guest.getGuestId(), request.getCheckIn(), request.getCheckOut());
         
         // Create reservation
         Reservation reservation = new Reservation();
@@ -253,6 +254,21 @@ public class ReservationService {
             Suite suite = suiteRepository.findById(suiteId).orElse(null);
             String suiteName = suite != null ? suite.getSuiteName() : "Suite " + suiteId;
             throw new IllegalArgumentException(suiteName + " is not available for the requested dates");
+        }
+    }
+
+    private void validateDuplicateReservation(Long suiteId, Long guestId, LocalDate checkIn, LocalDate checkOut) {
+        boolean duplicateExists = reservationRepository
+                .existsBySuiteSuiteIdAndGuestGuestIdAndCheckInAndCheckOutAndStatusNot(
+                        suiteId,
+                        guestId,
+                        checkIn,
+                        checkOut,
+                        ReservationStatus.CANCELLED
+                );
+
+        if (duplicateExists) {
+            throw new IllegalArgumentException("A reservation with the same guest, suite, and date range already exists");
         }
     }
 

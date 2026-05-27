@@ -18,4 +18,6 @@ public interface GuestRepository extends JpaRepository<Guest, Long> {
     // IgnoreCase → case-insensitive match.
     // Or → matches if either the first name OR the last name contains the query.
     List<Guest> findByFirstNameContainingIgnoreCaseOrLastNameContainingIgnoreCase(String firstName, String lastName);
+
+    List<Guest> findByFirstNameIgnoreCaseAndLastNameIgnoreCaseAndAnonymizedAtIsNull(String firstName, String lastName);
 }

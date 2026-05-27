@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { fetchReservations, fetchSuites, fetchNationalities, createReservation, updateReservation, cancelReservation, searchGuests, updateReservationStatus, fetchGuest, updateGuest } from '../api/backend';
 import { Calendar, Plus, Search, AlertCircle, CheckCircle, Users, Euro, Download, Eye } from 'lucide-react';
-import { format, differenceInDays, parseISO, isBefore, addDays, startOfMonth, endOfMonth } from 'date-fns';
+import { format, differenceInDays, parseISO, isBefore, addDays, startOfDay, startOfMonth, endOfMonth } from 'date-fns';
 import { STATUS_META, getTransitionWarning } from '../api/reservationStatus';
 import { exportRowsToExcel } from '../utils/excelExport';
 import { useI18n } from '../context/I18nContext';
@@ -60,6 +60,7 @@ export default function ReservationManagement() {
     checkIn: '',
     checkOut: '',
     numGuests: 1,
+    pricePerNight: '',
     priceTotal: '',
     channel: 'direct',
     notes: '',
@@ -122,6 +123,28 @@ export default function ReservationManagement() {
     }
     return value.toFixed(2);
   }, []);
+
+  const getPricePerNightValue = useCallback((checkIn, checkOut, totalPrice) => {
+    if (!checkIn || !checkOut) {
+      return '';
+    }
+
+    try {
+      const nights = differenceInDays(parseISO(checkOut), parseISO(checkIn));
+      if (nights <= 0) {
+        return '';
+      }
+
+      const parsedTotal = Number.parseFloat(totalPrice || 0);
+      if (!Number.isFinite(parsedTotal)) {
+        return '';
+      }
+
+      return formatCurrencyValue(parsedTotal / nights);
+    } catch {
+      return '';
+    }
+  }, [formatCurrencyValue]);
 
   const suggestedPrice = useMemo(() => {
     if (selectedSuite && nightsCount > 0) {
@@ -231,9 +254,28 @@ export default function ReservationManagement() {
   }, [formData.firstName, formData.lastName, formData.guestId, editingReservation]);
 
   const showGuestNotesField = useMemo(
-    () => Boolean(editingReservation || formData.guestId || formData.firstName || formData.lastName || formData.email),
-    [editingReservation, formData.guestId, formData.firstName, formData.lastName, formData.email]
+    () => Boolean(
+      editingReservation
+      || formData.guestId
+      || (!editingReservation && guestMode === 'new')
+      || formData.firstName
+      || formData.lastName
+      || formData.email
+    ),
+    [editingReservation, formData.guestId, formData.firstName, formData.lastName, formData.email, guestMode]
   );
+
+  const isCheckInInPast = useMemo(() => {
+    if (!formData.checkIn) {
+      return false;
+    }
+
+    try {
+      return isBefore(parseISO(formData.checkIn), startOfDay(new Date()));
+    } catch {
+      return false;
+    }
+  }, [formData.checkIn]);
 
   const canApplyDateFilters = useMemo(() => {
     if (!isCompleteDateValue(dateFromDraft) || !isCompleteDateValue(dateToDraft)) {
@@ -632,6 +674,38 @@ export default function ReservationManagement() {
 
         reservationSuccessMessage = 'Reservation updated successfully';
       } else {
+        const normalizedGuestName = `${formData.firstName || ''} ${formData.lastName || ''}`.trim().toLowerCase();
+        const hasDuplicateReservation = reservations.some((reservation) => {
+          if ((reservation.status || '').toLowerCase() === 'cancelled') {
+            return false;
+          }
+
+          const sameSuite = Number(reservation.suiteId) === Number(formData.suiteId);
+          const sameDates = reservation.checkIn === formData.checkIn && reservation.checkOut === formData.checkOut;
+          if (!sameSuite || !sameDates) {
+            return false;
+          }
+
+          if (formData.guestId) {
+            return Number(reservation.guestId) === Number(formData.guestId);
+          }
+
+          if (guestMode === 'new' && normalizedGuestName) {
+            const existingGuestName = String(reservation.guestDisplayName || reservation.guestName || '').trim().toLowerCase();
+            return existingGuestName === normalizedGuestName;
+          }
+
+          return false;
+        });
+
+        if (hasDuplicateReservation) {
+          const duplicateMessage = 'A reservation with the same guest, suite, and date range already exists.';
+          setError(duplicateMessage);
+          showToast(duplicateMessage, 'error');
+          window.alert(duplicateMessage);
+          return;
+        }
+
         const createdReservation = await createReservation({
           suiteId: parseInt(formData.suiteId),
           guestId: formData.guestId ? parseInt(formData.guestId) : undefined,
@@ -690,10 +764,13 @@ export default function ReservationManagement() {
       const errorMsg = err?.message || 'Failed to save reservation';
       setError(errorMsg);
       showToast(errorMsg, 'error');
+      if (String(errorMsg).toLowerCase().includes('already exists')) {
+        window.alert(errorMsg);
+      }
     } finally {
       setSubmitting(false);
     }
-  }, [editingReservation, formData, loadData, showToast]);
+  }, [editingReservation, formData, guestMode, loadData, reservations, showToast]);
 
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
@@ -784,6 +861,7 @@ export default function ReservationManagement() {
       checkIn: reservation.checkIn,
       checkOut: reservation.checkOut,
       numGuests: reservation.numGuests,
+      pricePerNight: getPricePerNightValue(reservation.checkIn, reservation.checkOut, reservation.priceTotal),
       priceTotal: reservation.priceTotal,
       channel: reservation.channel || 'direct',
       notes: reservation.notes || '',
@@ -792,7 +870,7 @@ export default function ReservationManagement() {
     });
     setIsEditingReservationDetails(false);
     setShowReservationModal(true);
-  }, []);
+  }, [getPricePerNightValue]);
 
   const closeReservationModal = useCallback(() => {
     setShowReservationModal(false);
@@ -868,6 +946,7 @@ export default function ReservationManagement() {
             checkIn: reservationEditForm.checkIn,
             checkOut: reservationEditForm.checkOut,
             numGuests: parseInt(reservationEditForm.numGuests, 10),
+            pricePerNight: reservationEditForm.pricePerNight,
             priceTotal: parseFloat(reservationEditForm.priceTotal),
             channel: reservationEditForm.channel,
             notes: reservationEditForm.notes,
@@ -1495,7 +1574,9 @@ export default function ReservationManagement() {
                               }}
                             >
                               <div style={{ fontWeight: 600 }}>{guest.firstName} {guest.lastName}</div>
-                              <div style={{ fontSize: '0.875rem', color: 'var(--dark-gray)' }}>{guest.email}</div>
+                              <div style={{ fontSize: '0.875rem', color: 'var(--dark-gray)' }}>
+                                {guest.email || '-'}
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -1589,7 +1670,10 @@ export default function ReservationManagement() {
 
                 {formData.guestId && !editingReservation && guestMode === 'existing' && (
                   <div className="success-message" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
-                    <span>Selected: {formData.firstName} {formData.lastName} ({formData.email})</span>
+                    <span>
+                      Selected: {formData.firstName} {formData.lastName}{' '}
+                      {formData.email ? `(${formData.email})` : null}
+                    </span>
                     <button type="button" className="btn btn-outline btn-sm" onClick={resetGuestSelection}>
                       Clear Selection
                     </button>
@@ -1635,9 +1719,9 @@ export default function ReservationManagement() {
                         {validationErrors.checkIn}
                       </span>
                     )}
-                    {!validationErrors.checkIn && (
+                    {!validationErrors.checkIn && isCheckInInPast && (
                       <span style={{ color: 'var(--warning)', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
-                        Check-in is in the past. Are you sure ?
+                        Check-in is in the past. Are you sure?
                       </span>
                     )}
                   </div>
@@ -1832,7 +1916,7 @@ export default function ReservationManagement() {
                 )}
 
                 <div className="form-group">
-                  <label className="form-label">Reservation Notes (for this stay only)</label>
+                  <label className="form-label">Reservation Notes</label>
                   <textarea
                     className="form-textarea"
                     value={formData.notes}

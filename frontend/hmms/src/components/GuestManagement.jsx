@@ -1,8 +1,27 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchGuests, createGuest, updateGuest, fetchNationalities, anonymizeGuest } from '../api/backend';
-import { Users, Plus, Edit, Search, Mail, Phone, Globe, UserX, Download } from 'lucide-react';
+import { Users, Plus, Edit, Search, Mail, Phone, Globe, UserX, Download, Copy, Check, MessageCircle, send } from 'lucide-react';
 import { exportRowsToExcel } from '../utils/excelExport';
 import { useI18n } from '../context/I18nContext';
+import { copyTextToClipboard } from '../utils/clipboard';
+
+function normalizeNamePart(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function buildWhatsAppLink(phone) {
+  const cleaned = String(phone || '').replace(/[^\d+]/g, '');
+  if (!cleaned) {
+    return null;
+  }
+
+  const normalized = cleaned.startsWith('+') ? cleaned.slice(1) : cleaned.replace(/^0+/, '');
+  if (!normalized) {
+    return null;
+  }
+
+  return `https://wa.me/${normalized}`;
+}
 
 export default function GuestManagement() {
   const { t } = useI18n();
@@ -20,6 +39,7 @@ export default function GuestManagement() {
   const [nationalityFilter, setNationalityFilter] = useState('all');
   const [sortBy, setSortBy] = useState('name');
   const [sortDirection, setSortDirection] = useState('asc');
+  const [copiedContactKey, setCopiedContactKey] = useState(null);
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -35,11 +55,10 @@ export default function GuestManagement() {
     loadData();
   }, []);
 
-  useEffect(() => {
+  const guestsMatchingPrimaryFilters = useMemo(() => {
     const normalizedSearch = searchTerm.toLowerCase();
-    const selectedNationality = nationalityFilter.toLowerCase();
 
-    const filtered = guests.filter((guest) => {
+    return guests.filter((guest) => {
       const fullName = `${guest.firstName || ''} ${guest.lastName || ''}`.toLowerCase();
       const email = (guest.email || '').toLowerCase();
       const searchMatches = !searchTerm || fullName.includes(normalizedSearch) || email.includes(normalizedSearch);
@@ -52,13 +71,42 @@ export default function GuestManagement() {
         || (marketingFilter === 'yes' && guest.marketingConsent)
         || (marketingFilter === 'no' && !guest.marketingConsent);
 
+      return searchMatches && guestTypeMatches && marketingMatches;
+    });
+  }, [guests, searchTerm, guestTypeFilter, marketingFilter]);
+
+  const availableNationalityOptions = useMemo(() => {
+    const optionMap = new Map();
+
+    guestsMatchingPrimaryFilters.forEach((guest) => {
+      const rawCode = String(guest.nationalityCode || '').trim();
+      const rawName = String(guest.nationalityName || '').trim();
+      const value = (rawCode || rawName).toLowerCase();
+      const label = rawName || rawCode;
+
+      if (!value || !label) {
+        return;
+      }
+
+      if (!optionMap.has(value)) {
+        optionMap.set(value, label);
+      }
+    });
+
+    return Array.from(optionMap.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((left, right) => left.label.localeCompare(right.label, undefined, { sensitivity: 'base' }));
+  }, [guestsMatchingPrimaryFilters]);
+
+  useEffect(() => {
+    const selectedNationality = nationalityFilter.toLowerCase();
+
+    const filtered = guestsMatchingPrimaryFilters.filter((guest) => {
       const guestNationalityCode = String(guest.nationalityCode || '').toLowerCase();
       const guestNationalityName = String(guest.nationalityName || '').toLowerCase();
-      const nationalityMatches = selectedNationality === 'all'
+      return selectedNationality === 'all'
         || guestNationalityCode === selectedNationality
         || guestNationalityName === selectedNationality;
-
-      return searchMatches && guestTypeMatches && marketingMatches && nationalityMatches;
     });
 
     const sorted = [...filtered].sort((left, right) => {
@@ -86,7 +134,17 @@ export default function GuestManagement() {
     });
 
     setFilteredGuests(sorted);
-  }, [searchTerm, guests, guestTypeFilter, marketingFilter, nationalityFilter, sortBy, sortDirection]);
+  }, [guestsMatchingPrimaryFilters, nationalityFilter, sortBy, sortDirection]);
+
+  useEffect(() => {
+    if (nationalityFilter === 'all') {
+      return;
+    }
+
+    if (!availableNationalityOptions.some((option) => option.value === nationalityFilter)) {
+      setNationalityFilter('all');
+    }
+  }, [availableNationalityOptions, nationalityFilter]);
 
   const loadData = () => {
     setLoading(true);
@@ -133,16 +191,48 @@ export default function GuestManagement() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    const normalizedFirst = normalizeNamePart(formData.firstName);
+    const normalizedLast = normalizeNamePart(formData.lastName);
+    const duplicateNameExists = guests.some((guest) => {
+      if (guest.anonymized) {
+        return false;
+      }
+
+      if (editingGuest && Number(guest.guestId) === Number(editingGuest.guestId)) {
+        return false;
+      }
+
+      return normalizeNamePart(guest.firstName) === normalizedFirst
+        && normalizeNamePart(guest.lastName) === normalizedLast;
+    });
+
+    if (duplicateNameExists) {
+      const duplicateMessage = 'A guest with this first and last name already exists.';
+      setError(duplicateMessage);
+      window.alert(duplicateMessage);
+      return;
+    }
+
     try {
       if (editingGuest) {
-        await updateGuest(editingGuest.guestId, formData);
+        const updatedGuest = await updateGuest(editingGuest.guestId, formData);
+        setGuests((prev) => prev.map((guest) => (
+          Number(guest.guestId) === Number(editingGuest.guestId) ? updatedGuest : guest
+        )));
       } else {
-        await createGuest(formData);
+        const createdGuest = await createGuest(formData);
+        setGuests((prev) => [createdGuest, ...prev]);
       }
+
+      setError(null);
       setShowModal(false);
-      loadData();
     } catch (err) {
-      setError(err.message);
+      const errorMessage = err?.message || 'Failed to save guest';
+      setError(errorMessage);
+      if (errorMessage.toLowerCase().includes('already exists')) {
+        window.alert(errorMessage);
+      }
     }
   };
 
@@ -153,9 +243,12 @@ export default function GuestManagement() {
   const confirmAnonymize = async () => {
     if (!anonymizeTarget) return;
     try {
-      await anonymizeGuest(anonymizeTarget.guestId);
+      const anonymizedGuest = await anonymizeGuest(anonymizeTarget.guestId);
+      setGuests((prev) => prev.map((guest) => (
+        Number(guest.guestId) === Number(anonymizeTarget.guestId) ? anonymizedGuest : guest
+      )));
       setAnonymizeTarget(null);
-      loadData();
+      setError(null);
     } catch (err) {
       setError(err.message);
     }
@@ -221,6 +314,19 @@ export default function GuestManagement() {
       ? (sortDirection === 'asc' ? 'ascending' : 'descending')
       : 'none'
   );
+
+  const handleCopyContact = async (value, contactKey) => {
+    const copied = await copyTextToClipboard(value);
+    if (!copied) {
+      setError('Unable to copy to clipboard. Please copy manually.');
+      return;
+    }
+
+    setCopiedContactKey(contactKey);
+    window.setTimeout(() => {
+      setCopiedContactKey((current) => (current === contactKey ? null : current));
+    }, 1400);
+  };
 
   if (loading) {
     return (
@@ -297,14 +403,11 @@ export default function GuestManagement() {
             </select>
             <select className="form-select" value={nationalityFilter} onChange={(e) => setNationalityFilter(e.target.value)}>
               <option value="all">Nationality: {t('filters.all')}</option>
-              {nationalities.map((nat) => {
-                const nationalityValue = String(nat.nationalityCode || nat.name || '').toLowerCase();
-                return (
-                  <option key={nat.nationalityCode || nat.name} value={nationalityValue}>
-                    {nat.name}
-                  </option>
-                );
-              })}
+              {availableNationalityOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -347,63 +450,127 @@ export default function GuestManagement() {
               </tr>
             </thead>
             <tbody>
-              {filteredGuests.map((guest) => (
-                <tr key={guest.guestId}>
-                  <td>#{guest.guestId}</td>
-                  <td style={{ fontWeight: 600 }}>
-                    {guest.anonymized ? `Anonymous guest #${guest.guestId}` : `${guest.firstName} ${guest.lastName}`}
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <Mail size={14} color="var(--dark-gray)" />
-                      {guest.anonymized ? 'Anonymized' : guest.email || '-'}
-                    </div>
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <Phone size={14} color="var(--dark-gray)" />
-                      {guest.anonymized ? 'Anonymized' : guest.phone || '-'}
-                    </div>
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <Globe size={14} color="var(--dark-gray)" />
-                      {guest.nationalityName || '-'}
-                    </div>
-                  </td>
-                  <td>
-                    <span className="status-badge status-confirmed">
-                      {guest.reservationCount || 0}
-                    </span>
-                  </td>
-                  <td>
-                    {guest.marketingConsent ? (
-                      <span className="status-badge status-checked-in">Yes</span>
-                    ) : (
-                      <span className="status-badge status-cancelled">No</span>
-                    )}
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <button
-                        onClick={() => openEditModal(guest)}
-                        className="btn btn-primary btn-sm"
-                        disabled={guest.anonymized}
-                      >
-                        <Edit size={14} />
-                      </button>
-                      <button
-                        onClick={() => handleAnonymize(guest)}
-                        className="btn btn-danger btn-sm"
-                        disabled={guest.anonymized}
-                        title="Anonymize guest"
-                      >
-                        <UserX size={18} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {filteredGuests.map((guest) => {
+                const whatsappLink = buildWhatsAppLink(guest.phone);
+                const emailCopyKey = `guest-email-${guest.guestId}`;
+                const phoneCopyKey = `guest-phone-${guest.guestId}`;
+
+                return (
+                  <tr key={guest.guestId}>
+                    <td>#{guest.guestId}</td>
+                    <td style={{ fontWeight: 600 }}>
+                      {guest.anonymized ? `Anonymous guest #${guest.guestId}` : `${guest.firstName} ${guest.lastName}`}
+                    </td>
+                    <td>
+                      <div className="contact-cell">
+                        <Mail size={14} color="var(--dark-gray)" />
+                        {guest.anonymized ? 'Anonymized' : (
+                          guest.email
+                            ? (
+                              <span className="contact-data-group">
+                                <span className="contact-value">{guest.email}</span>
+                                <span className="contact-actions-inline">
+                                  <a
+                                    className="contact-action-btn action-primary"
+                                    href={`mailto:${guest.email}`}
+                                    aria-label={`Send email to ${guest.firstName} ${guest.lastName}`}
+                                  >
+                                    <Send size={12} />                                    
+                                    Send
+                                  </a>
+                                  <button
+                                    type="button"
+                                    className="contact-action-btn action-copy"
+                                    onClick={() => handleCopyContact(guest.email, emailCopyKey)}
+                                    aria-label={`Copy email for ${guest.firstName} ${guest.lastName}`}
+                                  >
+                                    {copiedContactKey === emailCopyKey ? <Check size={12} /> : <Copy size={12} />}
+                                    {copiedContactKey === emailCopyKey ? 'Copied' : 'Copy'}
+                                  </button>
+                                </span>
+                              </span>
+                            )
+                            : '-'
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      <div className="contact-cell">
+                        <Phone size={14} color="var(--dark-gray)" />
+                        {guest.anonymized ? 'Anonymized' : (
+                          guest.phone
+                            ? (
+                              <span className="contact-data-group">
+                                <span className="contact-value">{guest.phone}</span>
+                                <span className="contact-actions-inline">
+                                  {whatsappLink ? (
+                                    <a
+                                      className="contact-action-btn action-whatsapp"
+                                      href={whatsappLink}
+                                      target="_blank"
+                                      rel="noreferrer noopener"
+                                      aria-label={`Open WhatsApp chat for ${guest.firstName} ${guest.lastName}`}
+                                    >
+                                      <MessageCircle size={12} />
+                                      WhatsApp
+                                    </a>
+                                  ) : null}
+                                  <button
+                                    type="button"
+                                    className="contact-action-btn action-copy"
+                                    onClick={() => handleCopyContact(guest.phone, phoneCopyKey)}
+                                    aria-label={`Copy phone for ${guest.firstName} ${guest.lastName}`}
+                                  >
+                                    {copiedContactKey === phoneCopyKey ? <Check size={12} /> : <Copy size={12} />}
+                                    {copiedContactKey === phoneCopyKey ? 'Copied' : 'Copy'}
+                                  </button>
+                                </span>
+                              </span>
+                            )
+                            : '-'
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <Globe size={14} color="var(--dark-gray)" />
+                        {guest.nationalityName || '-'}
+                      </div>
+                    </td>
+                    <td>
+                      <span className="status-badge status-confirmed">
+                        {guest.reservationCount || 0}
+                      </span>
+                    </td>
+                    <td>
+                      {guest.marketingConsent ? (
+                        <span className="status-badge status-checked-in">Yes</span>
+                      ) : (
+                        <span className="status-badge status-cancelled">No</span>
+                      )}
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                          onClick={() => openEditModal(guest)}
+                          className="btn btn-primary btn-sm"
+                          disabled={guest.anonymized}
+                        >
+                          <Edit size={14} />
+                        </button>
+                        <button
+                          onClick={() => handleAnonymize(guest)}
+                          className="btn btn-danger btn-sm"
+                          disabled={guest.anonymized}
+                          title="Anonymize guest"
+                        >
+                          <UserX size={18} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

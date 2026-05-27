@@ -2,6 +2,7 @@ package com.timorun.hmms.controllers;
 
 import com.timorun.hmms.dto.GuestRequest;
 import com.timorun.hmms.dto.GuestResponse;
+import com.timorun.hmms.dto.ErrorResponse;
 import com.timorun.hmms.services.GuestService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -23,12 +24,12 @@ public class GuestController {
      * POST /api/guests
      */
     @PostMapping
-    public ResponseEntity<GuestResponse> createGuest(@RequestBody GuestRequest request) {
+    public ResponseEntity<?> createGuest(@RequestBody GuestRequest request) {
         try {
             GuestResponse response = guestService.createGuest(request);
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
         }
     }
 
@@ -90,14 +91,14 @@ public class GuestController {
      * PUT /api/guests/{id}
      */
     @PutMapping("/{id}")
-    public ResponseEntity<GuestResponse> updateGuest(
+    public ResponseEntity<?> updateGuest(
             @PathVariable Long id,
             @RequestBody GuestRequest request) {
         try {
             GuestResponse response = guestService.updateGuest(id, request);
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
         }
     }
 

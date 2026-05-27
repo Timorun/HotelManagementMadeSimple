@@ -38,5 +38,13 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
 
     // Find all reservations with specific status
     List<Reservation> findByStatus(ReservationStatus status);
+
+    boolean existsBySuiteSuiteIdAndGuestGuestIdAndCheckInAndCheckOutAndStatusNot(
+            Long suiteId,
+            Long guestId,
+            LocalDate checkIn,
+            LocalDate checkOut,
+            ReservationStatus status
+    );
 }
 

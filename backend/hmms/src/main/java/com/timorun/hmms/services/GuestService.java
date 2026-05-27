@@ -30,10 +30,13 @@ public class GuestService {
      */
     public GuestResponse createGuest(GuestRequest request) {
         validateGuestRequest(request);
+        String normalizedFirstName = request.getFirstName().trim();
+        String normalizedLastName = request.getLastName().trim();
+        validateDuplicateGuestName(normalizedFirstName, normalizedLastName, null);
         
         Guest guest = new Guest();
-        guest.setFirstName(request.getFirstName());
-        guest.setLastName(request.getLastName());
+        guest.setFirstName(normalizedFirstName);
+        guest.setLastName(normalizedLastName);
         guest.setEmail(request.getEmail());
         guest.setPhone(request.getPhone());
         guest.setNotes(request.getNotes());
@@ -103,12 +106,15 @@ public class GuestService {
      */
     public GuestResponse updateGuest(Long guestId, GuestRequest request) {
         validateGuestRequest(request);
+        String normalizedFirstName = request.getFirstName().trim();
+        String normalizedLastName = request.getLastName().trim();
+        validateDuplicateGuestName(normalizedFirstName, normalizedLastName, guestId);
         
         Guest guest = guestRepository.findById(guestId)
                 .orElseThrow(() -> new IllegalArgumentException("Guest not found with ID: " + guestId));
         
-        guest.setFirstName(request.getFirstName());
-        guest.setLastName(request.getLastName());
+        guest.setFirstName(normalizedFirstName);
+        guest.setLastName(normalizedLastName);
         guest.setEmail(request.getEmail());
         guest.setPhone(request.getPhone());
         guest.setNotes(request.getNotes());
@@ -154,6 +160,18 @@ public class GuestService {
         }
         if (request.getLastName() == null || request.getLastName().isBlank()) {
             throw new IllegalArgumentException("Last name is required");
+        }
+    }
+
+    private void validateDuplicateGuestName(String firstName, String lastName, Long excludeGuestId) {
+        List<Guest> duplicates = guestRepository
+                .findByFirstNameIgnoreCaseAndLastNameIgnoreCaseAndAnonymizedAtIsNull(firstName, lastName);
+
+        boolean hasDuplicate = duplicates.stream()
+                .anyMatch((guest) -> excludeGuestId == null || !guest.getGuestId().equals(excludeGuestId));
+
+        if (hasDuplicate) {
+            throw new IllegalArgumentException("A guest with this first and last name already exists");
         }
     }
 
