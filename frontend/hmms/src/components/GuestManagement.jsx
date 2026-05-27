@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchGuests, createGuest, updateGuest, fetchNationalities, anonymizeGuest } from '../api/backend';
-import { Users, Plus, Edit, Search, Mail, Phone, Globe, UserX, Download, Copy, Check, MessageCircle, send } from 'lucide-react';
+import { Users, Plus, Edit, Search, Globe, UserX, Download, Copy, Check, MessageCircle, Send } from 'lucide-react';
 import { exportRowsToExcel } from '../utils/excelExport';
 import { useI18n } from '../context/I18nContext';
 import { copyTextToClipboard } from '../utils/clipboard';
@@ -418,7 +418,7 @@ export default function GuestManagement() {
             <p>{searchTerm ? 'No guests found matching your search' : 'No guests in the system'}</p>
           </div>
         ) : (
-          <table className="data-table">
+          <table className="data-table guest-table">
             <thead>
               <tr>
                 <th>ID</th>
@@ -459,33 +459,37 @@ export default function GuestManagement() {
                   <tr key={guest.guestId}>
                     <td>#{guest.guestId}</td>
                     <td style={{ fontWeight: 600 }}>
-                      {guest.anonymized ? `Anonymous guest #${guest.guestId}` : `${guest.firstName} ${guest.lastName}`}
+                      {guest.anonymized && (
+                        <span style={{ color: 'var(--dark-gray)' }}>Anonymized/Deleted</span>
+                      )}
+                      {!guest.anonymized && (
+                        <span>{guest.firstName} {guest.lastName}</span>
+                      )}
                     </td>
                     <td>
                       <div className="contact-cell">
-                        <Mail size={14} color="var(--dark-gray)" />
                         {guest.anonymized ? 'Anonymized' : (
                           guest.email
                             ? (
                               <span className="contact-data-group">
-                                <span className="contact-value">{guest.email}</span>
-                                <span className="contact-actions-inline">
+                                <span className="contact-value" title={guest.email}>{guest.email}</span>
+                                <span className="contact-actions-inline guest-contact-actions">
                                   <a
-                                    className="contact-action-btn action-primary"
+                                    className="contact-action-btn action-primary compact"
                                     href={`mailto:${guest.email}`}
                                     aria-label={`Send email to ${guest.firstName} ${guest.lastName}`}
+                                    title="Send email"
                                   >
                                     <Send size={12} />                                    
-                                    Send
                                   </a>
                                   <button
                                     type="button"
-                                    className="contact-action-btn action-copy"
+                                    className="contact-action-btn action-copy compact"
                                     onClick={() => handleCopyContact(guest.email, emailCopyKey)}
                                     aria-label={`Copy email for ${guest.firstName} ${guest.lastName}`}
+                                    title={copiedContactKey === emailCopyKey ? 'Copied' : 'Copy email'}
                                   >
-                                    {copiedContactKey === emailCopyKey ? <Check size={12} /> : <Copy size={12} />}
-                                    {copiedContactKey === emailCopyKey ? 'Copied' : 'Copy'}
+                                    {copiedContactKey === emailCopyKey ? <Check size={11} /> : <Copy size={11} />}
                                   </button>
                                 </span>
                               </span>
@@ -496,33 +500,32 @@ export default function GuestManagement() {
                     </td>
                     <td>
                       <div className="contact-cell">
-                        <Phone size={14} color="var(--dark-gray)" />
                         {guest.anonymized ? 'Anonymized' : (
                           guest.phone
                             ? (
                               <span className="contact-data-group">
-                                <span className="contact-value">{guest.phone}</span>
-                                <span className="contact-actions-inline">
+                                <span className="contact-value" title={guest.phone}>{guest.phone}</span>
+                                <span className="contact-actions-inline guest-contact-actions">
                                   {whatsappLink ? (
                                     <a
-                                      className="contact-action-btn action-whatsapp"
+                                      className="contact-action-btn action-whatsapp compact"
                                       href={whatsappLink}
                                       target="_blank"
                                       rel="noreferrer noopener"
                                       aria-label={`Open WhatsApp chat for ${guest.firstName} ${guest.lastName}`}
+                                      title="Open WhatsApp"
                                     >
-                                      <MessageCircle size={12} />
-                                      WhatsApp
+                                      <MessageCircle size={11} />
                                     </a>
                                   ) : null}
                                   <button
                                     type="button"
-                                    className="contact-action-btn action-copy"
+                                    className="contact-action-btn action-copy compact"
                                     onClick={() => handleCopyContact(guest.phone, phoneCopyKey)}
                                     aria-label={`Copy phone for ${guest.firstName} ${guest.lastName}`}
+                                    title={copiedContactKey === phoneCopyKey ? 'Copied' : 'Copy phone'}
                                   >
-                                    {copiedContactKey === phoneCopyKey ? <Check size={12} /> : <Copy size={12} />}
-                                    {copiedContactKey === phoneCopyKey ? 'Copied' : 'Copy'}
+                                    {copiedContactKey === phoneCopyKey ? <Check size={11} /> : <Copy size={11} />}
                                   </button>
                                 </span>
                               </span>
@@ -578,7 +581,6 @@ export default function GuestManagement() {
         <div className="mt-3" style={{ padding: '1rem', background: 'var(--light-gray)', borderRadius: '8px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontWeight: 600 }}>Total Guests: {guests.length}</span>
-            <span>Marketing Opt-in: {guests.filter(g => g.marketingConsent).length}</span>
           </div>
         </div>
       </div>

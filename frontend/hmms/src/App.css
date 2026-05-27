@@ -421,22 +421,22 @@ body {
   table-layout: fixed;
 }
 
-.guest-table th:nth-child(1) { width: 4.4rem; }
-.guest-table th:nth-child(2) { width: 12rem; }
+.guest-table th:nth-child(1) { width: 2.2rem; }
+.guest-table th:nth-child(2) { width: 11.4rem; }
 .guest-table th:nth-child(3) { width: 14.5rem; }
-.guest-table th:nth-child(4) { width: 13.2rem; }
+.guest-table th:nth-child(4) { width: 10.2rem; }
 .guest-table th:nth-child(5) { width: 8.4rem; }
-.guest-table th:nth-child(6) { width: 7.2rem; }
-.guest-table th:nth-child(7) { width: 7.2rem; }
-.guest-table th:nth-child(8) { width: 6.4rem; }
+.guest-table th:nth-child(6) { width: 7.7rem; }
+.guest-table th:nth-child(7) { width: 5.5rem; }
+.guest-table th:nth-child(8) { width: 6.9rem; }
 
-.reservation-table .col-id { width: 4.7rem; }
+.reservation-table .col-id { width: 2.5rem; }
 .reservation-table .col-guest { width: 11.4rem; }
-.reservation-table .col-suite { width: 11.8rem; }
+.reservation-table .col-suite { width: 8.2rem; }
 .reservation-table .col-checkin { width: 7.2rem; }
 .reservation-table .col-checkout { width: 7.2rem; }
 .reservation-table .col-guests { width: 5.2rem; }
-.reservation-table .col-price { width: 10.4rem; }
+.reservation-table .col-price { width: 10rem; }
 .reservation-table .col-channel { width: 7.2rem; }
 .reservation-table .col-status { width: 7.4rem; }
 .reservation-table .col-actions { width: 7.2rem; }
