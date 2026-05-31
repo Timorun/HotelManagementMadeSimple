@@ -1,0 +1,75 @@
+package com.timorun.hmms.controllers;
+
+import com.timorun.hmms.dto.AnalyticsReportResponse;
+import com.timorun.hmms.dto.MonthlyAnalyticsResponse;
+import com.timorun.hmms.services.AnalyticsService;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDate;
+import java.time.YearMonth;
+
+@RestController
+@RequestMapping("/api/analytics")
+public class AnalyticsController {
+    private final AnalyticsService analyticsService;
+
+    public AnalyticsController(AnalyticsService analyticsService) {
+        this.analyticsService = analyticsService;
+    }
+
+    /**
+     * Get monthly analytics for current month.
+     * GET /api/analytics/monthly
+     */
+    @GetMapping("/monthly")
+    public ResponseEntity<MonthlyAnalyticsResponse> getCurrentMonthAnalytics() {
+        YearMonth currentMonth = YearMonth.now();
+        MonthlyAnalyticsResponse analytics = analyticsService.getMonthlyAnalytics(currentMonth);
+        return ResponseEntity.ok(analytics);
+    }
+
+    /**
+     * Get monthly analytics for a specific month.
+     * GET /api/analytics/monthly?month=2026-01
+     */
+    @GetMapping("/monthly/{month}")
+    public ResponseEntity<MonthlyAnalyticsResponse> getMonthlyAnalytics(@PathVariable String month) {
+        try {
+            YearMonth yearMonth = YearMonth.parse(month);
+            MonthlyAnalyticsResponse analytics = analyticsService.getMonthlyAnalytics(yearMonth);
+            return ResponseEntity.ok(analytics);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    /**
+     * Get analytics report for a specific date range.
+     * GET /api/analytics/report?from=2026-01-01&to=2026-01-31&compare=false
+     */
+    @GetMapping("/report")
+    public ResponseEntity<AnalyticsReportResponse> getAnalyticsReport(
+            @RequestParam LocalDate from,
+            @RequestParam LocalDate to,
+            @RequestParam(defaultValue = "false") boolean compare,
+            @RequestParam(required = false) String comparisonMode,
+            @RequestParam(required = false) LocalDate comparisonFrom,
+            @RequestParam(required = false) LocalDate comparisonTo,
+            @RequestParam(required = false) String nationalityCode) {
+        try {
+            AnalyticsReportResponse report = analyticsService.getAnalyticsReport(
+                    from,
+                    to,
+                    compare,
+                    comparisonMode,
+                    comparisonFrom,
+                    comparisonTo,
+                    nationalityCode
+            );
+            return ResponseEntity.ok(report);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+}
