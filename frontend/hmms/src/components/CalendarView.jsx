@@ -1,13 +1,17 @@
-import { useEffect, useState } from 'react';
-import { fetchCalendar, fetchSuites, updateReservation, cancelReservation, updateReservationStatus, fetchGuest, updateGuest } from '../api/backend';
+import { useEffect, useMemo, useState } from 'react';
+import { fetchCalendar, fetchSuites, fetchGuests, updateReservation, cancelReservation, updateReservationStatus, fetchGuest, updateGuest } from '../api/backend';
 import { 
   format, 
   startOfMonth, 
   endOfMonth, 
+  startOfWeek,
+  endOfWeek,
   eachDayOfInterval, 
   isToday, 
   parseISO, 
   differenceInDays,
+  addWeeks,
+  subWeeks,
   addMonths,
   subMonths
 } from 'date-fns';
@@ -25,11 +29,41 @@ const STATUS_FILTER_DEFAULTS = {
   cancelled: false
 };
 
+const VIEW_MODE = {
+  MONTH: 'month',
+  WEEK: 'week',
+};
+
+function getCalendarRange(baseDate, viewMode, locale) {
+  if (viewMode === VIEW_MODE.WEEK) {
+    return {
+      start: startOfWeek(baseDate, { locale }),
+      end: endOfWeek(baseDate, { locale }),
+    };
+  }
+
+  return {
+    start: startOfMonth(baseDate),
+    end: endOfMonth(baseDate),
+  };
+}
+
+function countryCodeToFlag(code) {
+  const normalized = String(code || '').trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(normalized)) {
+    return String.fromCodePoint(127987, 65039);
+  }
+
+  return String.fromCodePoint(...normalized.split('').map((char) => 127397 + char.charCodeAt(0)));
+}
+
 export default function CalendarView() {
   const { tr, dateLocale } = useI18n();
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [viewMode, setViewMode] = useState(VIEW_MODE.MONTH);
   const [reservations, setReservations] = useState([]);
   const [suites, setSuites] = useState([]);
+  const [guests, setGuests] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [selectedReservation, setSelectedReservation] = useState(null);
@@ -52,36 +86,47 @@ export default function CalendarView() {
   });
   const [statusFilters, setStatusFilters] = useState(STATUS_FILTER_DEFAULTS);
 
-  const loadCalendarData = async (targetDate = currentDate) => {
-    const start = startOfMonth(targetDate);
-    const end = endOfMonth(targetDate);
+  const loadCalendarData = async (targetDate = currentDate, targetViewMode = viewMode) => {
+    const { start, end } = getCalendarRange(targetDate, targetViewMode, dateLocale);
 
     setLoading(true);
     try {
-      const [calendarData, suitesData] = await Promise.all([
+      const guestsPromise = fetchGuests().catch((guestErr) => {
+        console.warn('Unable to load guest nationalities for calendar flags:', guestErr);
+        return null;
+      });
+
+      const [calendarData, suitesData, guestsData] = await Promise.all([
         fetchCalendar(format(start, 'yyyy-MM-dd'), format(end, 'yyyy-MM-dd')),
-        fetchSuites()
+        fetchSuites(),
+        guestsPromise,
       ]);
       setReservations(calendarData || []);
       setSuites(suitesData || []);
+      if (Array.isArray(guestsData)) {
+        setGuests(guestsData);
+      }
       setError(null);
     } catch (err) {
       console.error('Error loading calendar data:', err);
       setError(err?.message || tr('Failed to load calendar data.', 'No se pudieron cargar los datos del calendario.'));
       setReservations([]);
       setSuites([]);
+      setGuests([]);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadCalendarData(currentDate);
-  }, [currentDate]);
+    loadCalendarData(currentDate, viewMode);
+  }, [currentDate, viewMode, dateLocale]);
 
-  const monthStart = startOfMonth(currentDate);
-  const monthEnd = endOfMonth(currentDate);
-  const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
+  const { start: viewStart, end: viewEnd } = useMemo(
+    () => getCalendarRange(currentDate, viewMode, dateLocale),
+    [currentDate, viewMode, dateLocale],
+  );
+  const daysInView = eachDayOfInterval({ start: viewStart, end: viewEnd });
 
   const filteredReservations = reservations.filter(
     (res) => statusFilters[res.status?.toLowerCase()] ?? true,
@@ -89,10 +134,37 @@ export default function CalendarView() {
 
   // Active suites displayed in the timeline
   const activeSuites = suites.filter(s => s.active);
+  const guestById = useMemo(() => {
+    const guestsMap = new Map();
+    guests.forEach((guest) => {
+      const guestId = Number(guest.guestId ?? guest.id);
+      if (Number.isFinite(guestId)) {
+        guestsMap.set(guestId, guest);
+      }
+    });
+    return guestsMap;
+  }, [guests]);
 
-  const previousMonth = () => setCurrentDate(subMonths(currentDate, 1));
-  const nextMonth = () => setCurrentDate(addMonths(currentDate, 1));
+  const previousPeriod = () => setCurrentDate((prevDate) => (
+    viewMode === VIEW_MODE.WEEK
+      ? subWeeks(prevDate, 1)
+      : subMonths(prevDate, 1)
+  ));
+  const nextPeriod = () => setCurrentDate((prevDate) => (
+    viewMode === VIEW_MODE.WEEK
+      ? addWeeks(prevDate, 1)
+      : addMonths(prevDate, 1)
+  ));
   const goToToday = () => setCurrentDate(new Date());
+  const currentPeriodLabel = viewMode === VIEW_MODE.WEEK
+    ? `${format(viewStart, 'd MMM', { locale: dateLocale })} - ${format(viewEnd, 'd MMM yyyy', { locale: dateLocale })}`
+    : format(currentDate, 'MMMM yyyy', { locale: dateLocale });
+  const previousPeriodLabel = viewMode === VIEW_MODE.WEEK
+    ? tr('Previous week', 'Semana anterior')
+    : tr('Previous month', 'Mes anterior');
+  const nextPeriodLabel = viewMode === VIEW_MODE.WEEK
+    ? tr('Next week', 'Semana siguiente')
+    : tr('Next month', 'Mes siguiente');
 
   const formatCurrencyValue = (value) => {
     if (!Number.isFinite(value)) {
@@ -353,14 +425,33 @@ export default function CalendarView() {
               <button type="button" onClick={goToToday} className="btn btn-outline btn-sm">
                 {tr('Today', 'Hoy')}
               </button>
-              <button type="button" onClick={previousMonth} className="btn btn-primary btn-sm" aria-label={tr('Previous month', 'Mes anterior')}>
+              <button type="button" onClick={previousPeriod} className="btn btn-primary btn-sm" aria-label={previousPeriodLabel}>
                 <ChevronLeft size={16} />
               </button>
-              <h3 style={{ margin: 0, fontSize: '1.2rem', minWidth: '170px', textAlign: 'center' }}>
-                {format(currentDate, 'MMMM yyyy', { locale: dateLocale })}
+              <h3 style={{ margin: 0, fontSize: '1.2rem', minWidth: '220px', textAlign: 'center' }}>
+                {currentPeriodLabel}
               </h3>
-              <button type="button" onClick={nextMonth} className="btn btn-primary btn-sm" aria-label={tr('Next month', 'Mes siguiente')}>
+              <button type="button" onClick={nextPeriod} className="btn btn-primary btn-sm" aria-label={nextPeriodLabel}>
                 <ChevronRight size={16} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <button
+                type="button"
+                className={`btn btn-sm ${viewMode === VIEW_MODE.MONTH ? 'btn-primary' : 'btn-outline'}`}
+                onClick={() => setViewMode(VIEW_MODE.MONTH)}
+                aria-pressed={viewMode === VIEW_MODE.MONTH}
+              >
+                {tr('Month', 'Mes')}
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${viewMode === VIEW_MODE.WEEK ? 'btn-primary' : 'btn-outline'}`}
+                onClick={() => setViewMode(VIEW_MODE.WEEK)}
+                aria-pressed={viewMode === VIEW_MODE.WEEK}
+              >
+                {tr('Week', 'Semana')}
               </button>
             </div>
           </div>
@@ -387,8 +478,10 @@ export default function CalendarView() {
           suites={activeSuites} 
           reservations={filteredReservations}
           allReservations={reservations}
-          daysInMonth={daysInMonth} 
-          monthStart={monthStart}
+          daysInView={daysInView}
+          viewStart={viewStart}
+          viewMode={viewMode}
+          guestById={guestById}
           onReservationClick={openReservationModal}
           statusFilters={statusFilters}
           onToggleStatusFilter={toggleStatusFilter}
@@ -434,8 +527,10 @@ function TimelineView({
   suites,
   reservations,
   allReservations,
-  daysInMonth,
-  monthStart,
+  daysInView,
+  viewStart,
+  viewMode,
+  guestById,
   onReservationClick,
   statusFilters,
   onToggleStatusFilter,
@@ -498,9 +593,9 @@ function TimelineView({
     // Half-day convention:
     // - reservation starts at midday of check-in day
     // - reservation ends at midday of check-out day
-    const totalDays = daysInMonth.length;
-    const rawStartOffset = differenceInDays(checkIn, monthStart) + 0.5;
-    const rawEndOffset = differenceInDays(checkOut, monthStart) + 0.5;
+    const totalDays = daysInView.length;
+    const rawStartOffset = differenceInDays(checkIn, viewStart) + 0.5;
+    const rawEndOffset = differenceInDays(checkOut, viewStart) + 0.5;
 
     const clampedStart = Math.max(0, rawStartOffset);
     const clampedEnd = Math.min(totalDays, rawEndOffset);
@@ -513,15 +608,40 @@ function TimelineView({
     return { left: `${left}%`, width: `${width}%` };
   };
 
+  const getNationalityCode = (reservation) => {
+    const directCode = reservation.nationalityCode
+      || reservation.guestNationalityCode
+      || reservation.guest?.nationalityCode
+      || reservation.countryCode;
+
+    if (directCode) {
+      return String(directCode);
+    }
+
+    const guestId = Number(reservation.guestId);
+    if (!Number.isFinite(guestId)) {
+      return '';
+    }
+
+    return String(guestById?.get(guestId)?.nationalityCode || '');
+  };
+
+  const getGuestLabel = (reservation) => {
+    const guestName = reservation.guestDisplayName || reservation.guestName || tr('Guest', 'Huesped');
+    const guestFlag = countryCodeToFlag(getNationalityCode(reservation));
+    return `${guestName} ${guestFlag}`.trim();
+  };
+
   const getStatusColor = (status) => STATUS_META[status?.toLowerCase()]?.color || STATUS_META.pending.color;
-  const isDenseMonth = daysInMonth.length >= 30;
-  const suiteColumnWidth = isDenseMonth ? 184 : 196;
-  const dayColumnWidth = isDenseMonth ? 30 : 34;
-  const timelineMinWidth = Math.max(760, daysInMonth.length * dayColumnWidth);
-  const laneHeight = isDenseMonth ? 26 : 28;
-  const laneInsetTop = isDenseMonth ? 10 : 12;
-  const barHeight = isDenseMonth ? 20 : 22;
-  const baseRowHeight = isDenseMonth ? 72 : 80;
+  const isWeekView = viewMode === VIEW_MODE.WEEK;
+  const isDenseMonth = viewMode === VIEW_MODE.MONTH && daysInView.length >= 30;
+  const suiteColumnWidth = isWeekView ? 196 : (isDenseMonth ? 184 : 196);
+  const dayColumnWidth = isWeekView ? 120 : (isDenseMonth ? 30 : 34);
+  const timelineMinWidth = Math.max(isWeekView ? 900 : 760, daysInView.length * dayColumnWidth);
+  const laneHeight = isWeekView ? 28 : (isDenseMonth ? 26 : 28);
+  const laneInsetTop = isWeekView ? 12 : (isDenseMonth ? 10 : 12);
+  const barHeight = isWeekView ? 22 : (isDenseMonth ? 20 : 22);
+  const baseRowHeight = isWeekView ? 80 : (isDenseMonth ? 72 : 80);
   const enableVerticalScroll = suites.length > 10;
 
   return (
@@ -558,7 +678,7 @@ function TimelineView({
             {tr('Suite', 'Suite')}
           </div>
           <div style={{ flex: 1, display: 'flex', minWidth: `${timelineMinWidth}px` }}>
-            {daysInMonth.map((day, idx) => (
+            {daysInView.map((day, idx) => (
               <div
                 key={idx}
                 style={{
@@ -620,7 +740,7 @@ function TimelineView({
               }}>
                 {/* Day grid lines */}
                 <div style={{ display: 'flex', height: '100%', position: 'absolute', width: '100%' }}>
-                  {daysInMonth.map((day, idx) => (
+                  {daysInView.map((day, idx) => (
                     <div
                       key={idx}
                       style={{
@@ -639,6 +759,7 @@ function TimelineView({
                   if (!style) return null;
                   const color = getStatusColor(reservation.status);
                   const laneIndex = laneByReservationId[reservation.reservationId] ?? idx;
+                  const guestLabel = getGuestLabel(reservation);
                   
                   return (
                     <div
@@ -665,10 +786,10 @@ function TimelineView({
                         boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
                         zIndex: 10
                       }}
-                      title={`${reservation.guestName}\n${format(parseISO(reservation.checkIn), 'dd/MM/yyyy', { locale: dateLocale })} → ${format(parseISO(reservation.checkOut), 'dd/MM/yyyy', { locale: dateLocale })}\n${reservation.numGuests} ${reservation.numGuests > 1 ? tr('guests', 'huespedes') : tr('guest', 'huesped')}\n${tr('Status', 'Estado')}: ${getStatusLabel(reservation.status, tr)}`}
+                      title={`${guestLabel}\n${format(parseISO(reservation.checkIn), 'dd/MM/yyyy', { locale: dateLocale })} → ${format(parseISO(reservation.checkOut), 'dd/MM/yyyy', { locale: dateLocale })}\n${reservation.numGuests} ${reservation.numGuests > 1 ? tr('guests', 'huespedes') : tr('guest', 'huesped')}\n${tr('Status', 'Estado')}: ${getStatusLabel(reservation.status, tr)}`}
                       onClick={() => onReservationClick(reservation)}
                     >
-                      {reservation.guestName}
+                      {guestLabel}
                     </div>
                   );
                 })}
