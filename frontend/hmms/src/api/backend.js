@@ -53,9 +53,9 @@ const STUB_DATA = {
     toDate: '2026-03-31',
     daysInPeriod: 31,
     currency: 'EUR',
-    comparisonFromDate: '2026-01-29',
-    comparisonToDate: '2026-02-28',
-    comparisonMode: 'PREVIOUS_EQUAL_DAYS',
+    comparisonFromDate: '2025-03-01',
+    comparisonToDate: '2025-03-31',
+    comparisonMode: 'SAME_DATES_LAST_YEAR',
     summary: {
       totalRevenue: 32850.0,
       occupancyPercentage: 74.5,
@@ -285,9 +285,38 @@ export async function fetchAnalytics(month) {
   return withStubFallback(data, STUB_DATA.analytics);
 }
 
-export async function fetchAnalyticsReport(from, to, compare = false) {
+export async function fetchAnalyticsReport(from, to, options = {}) {
+  const {
+    compare = false,
+    comparisonMode,
+    comparisonFrom,
+    comparisonTo,
+    nationalityCode,
+  } = options;
+
+  const params = new URLSearchParams();
+  params.set('from', from);
+  params.set('to', to);
+  params.set('compare', compare ? 'true' : 'false');
+
+  if (comparisonMode) {
+    params.set('comparisonMode', comparisonMode);
+  }
+
+  if (comparisonFrom) {
+    params.set('comparisonFrom', comparisonFrom);
+  }
+
+  if (comparisonTo) {
+    params.set('comparisonTo', comparisonTo);
+  }
+
+  if (nationalityCode) {
+    params.set('nationalityCode', nationalityCode);
+  }
+
   const data = await getJson(
-    `${BASE_URL}/analytics/report?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&compare=${compare ? 'true' : 'false'}`,
+    `${BASE_URL}/analytics/report?${params.toString()}`,
     'Failed to fetch analytics report',
   );
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { fetchAnalyticsReport } from '../api/backend';
+import { fetchAnalyticsReport, fetchNationalities } from '../api/backend';
 import {
   Activity,
   AlertTriangle,
@@ -27,9 +27,11 @@ import {
   endOfMonth,
   format,
   isAfter,
+  isValid,
   parseISO,
   startOfMonth,
   subDays,
+  subYears,
 } from 'date-fns';
 import { exportSheetsToExcel } from '../utils/excelExport';
 import { useI18n } from '../context/I18nContext';
@@ -48,6 +50,12 @@ ChartJS.register(
 );
 
 const EMPTY_OBJECT = {};
+const COMPARISON_MODE_SAME_DATES_LAST_YEAR = 'SAME_DATES_LAST_YEAR';
+const COMPARISON_MODE_CUSTOM_RANGE = 'CUSTOM_RANGE';
+
+function isCompleteDateValue(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
+}
 
 export default function AnalyticsView() {
   const { tr, locale, dateLocale } = useI18n();
@@ -57,6 +65,11 @@ export default function AnalyticsView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activePreset, setActivePreset] = useState('mtd');
+  const [comparisonMode, setComparisonMode] = useState(COMPARISON_MODE_SAME_DATES_LAST_YEAR);
+  const [comparisonFrom, setComparisonFrom] = useState('');
+  const [comparisonTo, setComparisonTo] = useState('');
+  const [nationalities, setNationalities] = useState([]);
+  const [selectedNationalityCode, setSelectedNationalityCode] = useState('all');
 
   const formatCurrency = useCallback((value, maximumFractionDigits = 0) => (
     new Intl.NumberFormat(locale, {
@@ -162,6 +175,56 @@ export default function AnalyticsView() {
     setActivePreset(rangeKey);
   }, [quickRanges]);
 
+  const defaultComparisonRange = useMemo(() => {
+    const parsedFrom = parseISO(dateFrom);
+    const parsedTo = parseISO(dateTo);
+    if (!isValid(parsedFrom) || !isValid(parsedTo)) {
+      return { from: '', to: '' };
+    }
+
+    return {
+      from: format(subYears(parsedFrom, 1), 'yyyy-MM-dd'),
+      to: format(subYears(parsedTo, 1), 'yyyy-MM-dd'),
+    };
+  }, [dateFrom, dateTo]);
+
+  useEffect(() => {
+    if (comparisonMode !== COMPARISON_MODE_SAME_DATES_LAST_YEAR) {
+      return;
+    }
+
+    setComparisonFrom(defaultComparisonRange.from);
+    setComparisonTo(defaultComparisonRange.to);
+  }, [comparisonMode, defaultComparisonRange.from, defaultComparisonRange.to]);
+
+  const sortedNationalities = useMemo(() => (
+    [...nationalities].sort((left, right) => {
+      const leftLabel = String(left?.name || left?.nationalityCode || '');
+      const rightLabel = String(right?.name || right?.nationalityCode || '');
+      return leftLabel.localeCompare(rightLabel, locale, { sensitivity: 'base' });
+    })
+  ), [nationalities, locale]);
+
+  const selectedNationalityLabel = useMemo(() => {
+    if (selectedNationalityCode === 'all') {
+      return tr('All nationalities', 'Todas las nacionalidades');
+    }
+
+    const selectedNationality = sortedNationalities.find((item) => item.nationalityCode === selectedNationalityCode);
+    return selectedNationality?.name || selectedNationalityCode;
+  }, [selectedNationalityCode, sortedNationalities, tr]);
+
+  const comparisonModeLabel = useMemo(() => {
+    const effectiveMode = report?.comparisonMode || comparisonMode;
+    if (effectiveMode === COMPARISON_MODE_CUSTOM_RANGE) {
+      return tr('Custom range', 'Rango personalizado');
+    }
+    if (effectiveMode === 'PREVIOUS_EQUAL_DAYS') {
+      return tr('Previous period (same length)', 'Periodo anterior (misma duracion)');
+    }
+    return tr('Same dates last year', 'Mismas fechas del ano pasado');
+  }, [report?.comparisonMode, comparisonMode, tr]);
+
   const deltaClass = useCallback((value) => {
     if (value === null || value === undefined || value === '') return 'neutral';
 
@@ -241,6 +304,7 @@ export default function AnalyticsView() {
       { metric: tr('Comparison Mode', 'Modo de comparacion'), value: exportIncludesComparison ? (report.comparisonMode || '') : tr('DISABLED', 'DESACTIVADO') },
       { metric: tr('Days In Period', 'Dias en el periodo'), value: report.daysInPeriod },
       { metric: tr('Currency', 'Moneda'), value: report.currency || 'EUR' },
+      { metric: tr('Nationality Filter', 'Filtro de nacionalidad'), value: selectedNationalityLabel },
       { metric: tr('Total Revenue', 'Ingresos totales'), value: Number(summary.totalRevenue || 0) },
       { metric: tr('Previous Revenue', 'Ingresos del periodo anterior'), value: exportIncludesComparison ? Number(previous.totalRevenue || 0) : '' },
       { metric: tr('Revenue Change %', 'Cambio de ingresos %'), value: exportIncludesComparison ? Number(deltas.revenueChangePercentage || 0) : '' },
@@ -312,7 +376,7 @@ export default function AnalyticsView() {
       [tr('Insights', 'Insights')]: insightRows,
       [tr('Definitions', 'Definiciones')]: definitionRows,
     }, `analytics-report-${dateFrom}_to_${dateTo}.xlsx`);
-  }, [report, dateFrom, dateTo, formatChannelLabel, formatStatusLabel, calculateRelativeChange, tr]);
+  }, [report, dateFrom, dateTo, selectedNationalityLabel, formatChannelLabel, formatStatusLabel, calculateRelativeChange, tr]);
 
   const trendData = useMemo(() => {
     const points = report?.dailyTrend || [];
@@ -496,8 +560,32 @@ export default function AnalyticsView() {
   }, [report?.fromDate, report?.toDate, dateFrom, dateTo, dateLocale]);
 
   const previousPeriodLabel = useMemo(() => {
+    const formatRangeLabel = (from, to) => {
+      const parsedFrom = parseISO(from);
+      const parsedTo = parseISO(to);
+      if (!isValid(parsedFrom) || !isValid(parsedTo)) {
+        return `${from} - ${to}`;
+      }
+
+      return `${format(parsedFrom, 'dd MMM yyyy', { locale: dateLocale })} - ${format(parsedTo, 'dd MMM yyyy', { locale: dateLocale })}`;
+    };
+
     if (report?.comparisonFromDate && report?.comparisonToDate) {
-      return `${format(parseISO(report.comparisonFromDate), 'dd MMM yyyy', { locale: dateLocale })} - ${format(parseISO(report.comparisonToDate), 'dd MMM yyyy', { locale: dateLocale })}`;
+      return formatRangeLabel(report.comparisonFromDate, report.comparisonToDate);
+    }
+
+    if (comparisonMode === COMPARISON_MODE_CUSTOM_RANGE) {
+      if (!comparisonFrom || !comparisonTo) {
+        return tr('Comparison unavailable', 'Comparacion no disponible');
+      }
+      return formatRangeLabel(comparisonFrom, comparisonTo);
+    }
+
+    if (comparisonMode === COMPARISON_MODE_SAME_DATES_LAST_YEAR) {
+      if (!defaultComparisonRange.from || !defaultComparisonRange.to) {
+        return tr('Comparison unavailable', 'Comparacion no disponible');
+      }
+      return formatRangeLabel(defaultComparisonRange.from, defaultComparisonRange.to);
     }
 
     const currentStart = report?.fromDate || dateFrom;
@@ -514,7 +602,21 @@ export default function AnalyticsView() {
     } catch {
       return tr('Comparison unavailable', 'Comparacion no disponible');
     }
-  }, [report?.comparisonFromDate, report?.comparisonToDate, report?.fromDate, report?.daysInPeriod, dateFrom, selectedRangeDays, dateLocale, tr]);
+  }, [
+    report?.comparisonFromDate,
+    report?.comparisonToDate,
+    report?.fromDate,
+    report?.daysInPeriod,
+    comparisonMode,
+    comparisonFrom,
+    comparisonTo,
+    defaultComparisonRange.from,
+    defaultComparisonRange.to,
+    dateFrom,
+    selectedRangeDays,
+    dateLocale,
+    tr,
+  ]);
 
   const selectedLengthLabel = useMemo(
     () => `${Number(report?.daysInPeriod || selectedRangeDays || 0)} ${tr('days', 'dias')}`,
@@ -599,44 +701,112 @@ export default function AnalyticsView() {
   const hasStatusData = (report?.reservationStatusBreakdown || []).length > 0;
 
   useEffect(() => {
-    async function loadReport() {
-      let from;
-      let to;
+    let isMounted = true;
 
-      try {
-        from = parseISO(dateFrom);
-        to = parseISO(dateTo);
-      } catch {
+    fetchNationalities()
+      .then((items) => {
+        if (!isMounted) return;
+        setNationalities(Array.isArray(items) ? items : []);
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setNationalities([]);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function loadReport() {
+      if (!isCompleteDateValue(dateFrom) || !isCompleteDateValue(dateTo)) {
+        setLoading(false);
+        setError(null);
+        return;
+      }
+
+      if (
+        comparisonMode === COMPARISON_MODE_CUSTOM_RANGE
+        && (!isCompleteDateValue(comparisonFrom) || !isCompleteDateValue(comparisonTo))
+      ) {
+        setLoading(false);
+        setError(null);
+        return;
+      }
+
+      const from = parseISO(dateFrom);
+      const to = parseISO(dateTo);
+
+      if (!isValid(from) || !isValid(to)) {
         setError(tr('Invalid date format.', 'Formato de fecha invalido.'));
         setLoading(false);
-        setReport(null);
         return;
       }
 
       if (isAfter(from, to)) {
         setError(tr('From date must be before or equal to To date.', 'La fecha Desde debe ser anterior o igual a la fecha Hasta.'));
         setLoading(false);
-        setReport(null);
         return;
+      }
+
+      const analyticsOptions = {
+        compare: true,
+        comparisonMode,
+        nationalityCode: selectedNationalityCode !== 'all' ? selectedNationalityCode : null,
+      };
+
+      if (comparisonMode === COMPARISON_MODE_CUSTOM_RANGE) {
+        const customFrom = parseISO(comparisonFrom);
+        const customTo = parseISO(comparisonTo);
+
+        if (!isValid(customFrom) || !isValid(customTo)) {
+          setError(tr('Invalid comparison date format.', 'Formato de fecha de comparacion invalido.'));
+          setLoading(false);
+          return;
+        }
+
+        if (isAfter(customFrom, customTo)) {
+          setError(tr('Comparison From date must be before or equal to Comparison To date.', 'La fecha Desde de comparacion debe ser anterior o igual a la fecha Hasta.'));
+          setLoading(false);
+          return;
+        }
+
+        analyticsOptions.comparisonFrom = comparisonFrom;
+        analyticsOptions.comparisonTo = comparisonTo;
       }
 
       setLoading(true);
       setError(null);
 
       try {
-        const analyticsReport = await fetchAnalyticsReport(dateFrom, dateTo, true);
+        const analyticsReport = await fetchAnalyticsReport(dateFrom, dateTo, analyticsOptions);
+        if (isCancelled) {
+          return;
+        }
         setReport(analyticsReport);
       } catch (requestError) {
+        if (isCancelled) {
+          return;
+        }
         setError(requestError?.message || tr('Failed to fetch analytics report.', 'No se pudo obtener el informe de analitica.'));
       } finally {
-        setLoading(false);
+        if (!isCancelled) {
+          setLoading(false);
+        }
       }
     }
 
     loadReport();
-  }, [dateFrom, dateTo, tr]);
 
-  if (loading) {
+    return () => {
+      isCancelled = true;
+    };
+  }, [dateFrom, dateTo, comparisonMode, comparisonFrom, comparisonTo, selectedNationalityCode, tr]);
+
+  if (loading && !report) {
     return (
       <div className="loading-spinner">
         <div className="spinner"></div>
@@ -645,7 +815,7 @@ export default function AnalyticsView() {
     );
   }
 
-  if (error) {
+  if (error && !report) {
     return (
       <div className="card">
         <div className="error-message">
@@ -675,11 +845,14 @@ export default function AnalyticsView() {
               {tr('Analytics Hub', 'Centro de analitica')}
             </h2>
             <p className="analytics-hero-subtitle">
-              {tr('Revenue and operations in one view, automatically compared with the immediately preceding period of equal length.', 'Ingresos y operaciones en una sola vista, comparados automaticamente con el periodo inmediatamente anterior de igual duracion.')}
+              {tr('Revenue and operations in one view, with a selectable comparison baseline and nationality slicing.', 'Ingresos y operaciones en una sola vista, con una base de comparacion seleccionable y filtro por nacionalidad.')}
             </p>
           </div>
 
           <div className="analytics-hero-actions">
+            {loading && report ? (
+              <small className="text-muted">{tr('Updating analytics...', 'Actualizando analitica...')}</small>
+            ) : null}
             <button className="btn btn-accent" onClick={handleExportAnalytics}>
               <Download size={16} />
               {tr('Export Analytics Report', 'Exportar informe de analitica')}
@@ -730,22 +903,100 @@ export default function AnalyticsView() {
                 ))}
               </div>
             </div>
+
+            <div className="analytics-presets">
+              <span className="analytics-presets-label">{tr('Comparison & Filters', 'Comparacion y filtros')}</span>
+              <div className="analytics-date-cluster">
+                <div>
+                  <label className="form-label">{tr('Comparison Mode', 'Modo de comparacion')}</label>
+                  <select
+                    className="form-select analytics-date-input"
+                    value={comparisonMode}
+                    onChange={(event) => {
+                      const nextMode = event.target.value;
+                      setComparisonMode(nextMode);
+
+                      if (
+                        nextMode === COMPARISON_MODE_CUSTOM_RANGE
+                        && (!comparisonFrom || !comparisonTo)
+                      ) {
+                        setComparisonFrom(defaultComparisonRange.from);
+                        setComparisonTo(defaultComparisonRange.to);
+                      }
+                    }}
+                  >
+                    <option value={COMPARISON_MODE_SAME_DATES_LAST_YEAR}>{tr('Same dates last year', 'Mismas fechas del ano pasado')}</option>
+                    <option value={COMPARISON_MODE_CUSTOM_RANGE}>{tr('Custom date range', 'Rango de fechas personalizado')}</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="form-label">{tr('Nationality', 'Nacionalidad')}</label>
+                  <select
+                    className="form-select analytics-date-input"
+                    value={selectedNationalityCode}
+                    onChange={(event) => setSelectedNationalityCode(event.target.value)}
+                  >
+                    <option value="all">{tr('All nationalities', 'Todas las nacionalidades')}</option>
+                    {sortedNationalities.map((nat) => (
+                      <option key={nat.nationalityCode} value={nat.nationalityCode}>
+                        {nat.name || nat.nationalityCode}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {comparisonMode === COMPARISON_MODE_CUSTOM_RANGE && (
+                <div className="analytics-date-cluster">
+                  <div>
+                    <label className="form-label">{tr('Comparison From', 'Comparacion desde')}</label>
+                    <input
+                      type="date"
+                      className="form-input analytics-date-input"
+                      value={comparisonFrom}
+                      onChange={(event) => setComparisonFrom(event.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="form-label">{tr('Comparison To', 'Comparacion hasta')}</label>
+                    <input
+                      type="date"
+                      className="form-input analytics-date-input"
+                      value={comparisonTo}
+                      onChange={(event) => setComparisonTo(event.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="analytics-period-inline">
             <span className="analytics-strip-label">{tr('Selected Period', 'Periodo seleccionado')}</span>
             <strong>{periodLabel || `${dateFrom} - ${dateTo}`}</strong>
             <small className="analytics-strip-subtle">{selectedLengthLabel}</small>
+            <small className="analytics-strip-subtle">{tr('Comparison mode:', 'Modo de comparacion:')} {comparisonModeLabel}</small>
             <small className="analytics-strip-subtle">{tr('Compared with', 'Comparado con')} {previousPeriodLabel}</small>
+            <small className="analytics-strip-subtle">{tr('Nationality filter:', 'Filtro de nacionalidad:')} {selectedNationalityLabel}</small>
 
             <small className="analytics-presets-hint">
-              {tr('Statistics are compared with the preceding period of equal length.', 'Las estadisticas se comparan con el periodo anterior de igual duracion.')}
+              {tr('Statistics are compared with the selected baseline. Default baseline uses the same dates from last year.', 'Las estadisticas se comparan con la base seleccionada. Por defecto se usan las mismas fechas del ano pasado.')}
               <br />
-              {tr('Eg. selecting June 1st to 10th will compare statistics to May 22nd to 31st.', 'Ej. si seleccionas del 1 al 10 de junio, se comparara con el 22 al 31 de mayo.')}
+              {tr('Switch to custom range to choose exact comparison dates.', 'Cambia a rango personalizado para elegir fechas de comparacion exactas.')}
             </small>
           </div>
         </div>
       </section>
+
+      {error && report ? (
+        <section className="card">
+          <div className="error-message">
+            <strong>{tr('Analytics Report Error:', 'Error del informe de analitica:')}</strong> {error}
+          </div>
+        </section>
+      ) : null}
 
       <section className="analytics-kpi-grid">
         {kpiCards.map((card) => (

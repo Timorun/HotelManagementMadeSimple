@@ -18,6 +18,7 @@ import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -34,6 +35,9 @@ public class AnalyticsService {
     );
     private static final int MAX_DAYS_IN_REPORT = 730;
     private static final int TOP_REVENUE_DAY_COUNT = 3;
+    private static final String COMPARISON_MODE_SAME_DATES_LAST_YEAR = "SAME_DATES_LAST_YEAR";
+    private static final String COMPARISON_MODE_PREVIOUS_EQUAL_DAYS = "PREVIOUS_EQUAL_DAYS";
+    private static final String COMPARISON_MODE_CUSTOM_RANGE = "CUSTOM_RANGE";
 
     public AnalyticsService(ReservationRepository reservationRepository, SuiteRepository suiteRepository) {
         this.reservationRepository = reservationRepository;
@@ -46,12 +50,12 @@ public class AnalyticsService {
     public MonthlyAnalyticsResponse getMonthlyAnalytics(YearMonth month) {
         LocalDate startDate = month.atDay(1);
         LocalDate endDate = month.atEndOfMonth();
-        AnalyticsReportResponse.SummaryMetrics currentSummary = computePeriod(startDate, endDate, false).summary;
+        AnalyticsReportResponse.SummaryMetrics currentSummary = computePeriod(startDate, endDate, false, null).summary;
 
         YearMonth previousMonth = month.minusMonths(1);
         LocalDate prevStartDate = previousMonth.atDay(1);
         LocalDate prevEndDate = previousMonth.atEndOfMonth();
-        AnalyticsReportResponse.SummaryMetrics previousSummary = computePeriod(prevStartDate, prevEndDate, false).summary;
+        AnalyticsReportResponse.SummaryMetrics previousSummary = computePeriod(prevStartDate, prevEndDate, false, null).summary;
 
         return MonthlyAnalyticsResponse.builder()
                 .month(month)
@@ -81,16 +85,31 @@ public class AnalyticsService {
      * Comparison can be enabled to include baseline periods and delta metrics.
      */
     public AnalyticsReportResponse getAnalyticsReport(LocalDate from, LocalDate to, boolean includeComparison) {
+        return getAnalyticsReport(from, to, includeComparison, null, null, null, null);
+    }
+
+    /**
+     * Get advanced analytics report with optional comparison controls and nationality filtering.
+     */
+    public AnalyticsReportResponse getAnalyticsReport(
+            LocalDate from,
+            LocalDate to,
+            boolean includeComparison,
+            String comparisonMode,
+            LocalDate comparisonFrom,
+            LocalDate comparisonTo,
+            String nationalityCode) {
         validateDateRange(from, to);
+        String normalizedNationalityCode = normalizeNationalityCode(nationalityCode);
 
         int daysInPeriod = inclusiveDays(from, to);
         ComparisonPeriod comparisonPeriod = includeComparison
-                ? resolveComparisonPeriod(from, to, daysInPeriod)
+                ? resolveComparisonPeriod(from, to, daysInPeriod, comparisonMode, comparisonFrom, comparisonTo)
                 : null;
 
-        PeriodComputation currentPeriod = computePeriod(from, to, true);
+        PeriodComputation currentPeriod = computePeriod(from, to, true, normalizedNationalityCode);
         PeriodComputation previousPeriod = includeComparison
-                ? computePeriod(comparisonPeriod.fromDate, comparisonPeriod.toDate, false)
+                ? computePeriod(comparisonPeriod.fromDate, comparisonPeriod.toDate, false, normalizedNationalityCode)
                 : null;
 
         AnalyticsReportResponse.DeltaMetrics deltas = includeComparison
@@ -116,19 +135,41 @@ public class AnalyticsService {
                 .build();
     }
 
-    private ComparisonPeriod resolveComparisonPeriod(LocalDate from, LocalDate to, int daysInPeriod) {
-        LocalDate previousTo = from.minusDays(1);
-        LocalDate previousFrom = previousTo.minusDays(daysInPeriod - 1L);
-        return new ComparisonPeriod(previousFrom, previousTo, "PREVIOUS_EQUAL_DAYS");
+    private ComparisonPeriod resolveComparisonPeriod(
+            LocalDate from,
+            LocalDate to,
+            int daysInPeriod,
+            String comparisonMode,
+            LocalDate comparisonFrom,
+            LocalDate comparisonTo) {
+        String resolvedMode = normalizeComparisonMode(comparisonMode);
+
+        if (COMPARISON_MODE_CUSTOM_RANGE.equals(resolvedMode)) {
+            if (comparisonFrom == null || comparisonTo == null) {
+                throw new IllegalArgumentException("comparisonFrom and comparisonTo are required for CUSTOM_RANGE mode");
+            }
+            validateDateRange(comparisonFrom, comparisonTo);
+            return new ComparisonPeriod(comparisonFrom, comparisonTo, COMPARISON_MODE_CUSTOM_RANGE);
+        }
+
+        if (COMPARISON_MODE_PREVIOUS_EQUAL_DAYS.equals(resolvedMode)) {
+            LocalDate previousTo = from.minusDays(1);
+            LocalDate previousFrom = previousTo.minusDays(daysInPeriod - 1L);
+            return new ComparisonPeriod(previousFrom, previousTo, COMPARISON_MODE_PREVIOUS_EQUAL_DAYS);
+        }
+
+        LocalDate previousYearFrom = from.minusYears(1);
+        LocalDate previousYearTo = to.minusYears(1);
+        validateDateRange(previousYearFrom, previousYearTo);
+        return new ComparisonPeriod(previousYearFrom, previousYearTo, COMPARISON_MODE_SAME_DATES_LAST_YEAR);
     }
 
-    private PeriodComputation computePeriod(LocalDate from, LocalDate to, boolean includeDetailedData) {
+    private PeriodComputation computePeriod(LocalDate from, LocalDate to, boolean includeDetailedData, String nationalityCode) {
         int activeSuiteCount = getActiveSuiteCount();
         int daysInPeriod = inclusiveDays(from, to);
         int availableNights = activeSuiteCount * daysInPeriod;
 
-        List<Reservation> overlappingReservations = reservationRepository
-                .findByCheckInBeforeAndCheckOutAfter(to.plusDays(1), from);
+        List<Reservation> overlappingReservations = findOverlappingReservations(from, to, nationalityCode);
         List<Reservation> stayReservations = overlappingReservations.stream()
                 .filter(this::isStayReservation)
                 .collect(Collectors.toList());
@@ -144,7 +185,7 @@ public class AnalyticsService {
                 .setScale(2, RoundingMode.HALF_UP);
         int occupiedNights = slices.stream().mapToInt(slice -> slice.nightsInPeriod).sum();
 
-        List<Reservation> reservationsStartingInPeriod = reservationRepository.findByCheckInBetween(from, to);
+        List<Reservation> reservationsStartingInPeriod = findReservationsStartingInPeriod(from, to, nationalityCode);
         int startingReservationCount = reservationsStartingInPeriod.size();
         int cancelledReservations = countByStatus(reservationsStartingInPeriod, ReservationStatus.CANCELLED);
 
@@ -442,6 +483,53 @@ public class AnalyticsService {
         return (int) suiteRepository.findAll().stream()
                 .filter(suite -> Boolean.TRUE.equals(suite.getActive()))
                 .count();
+    }
+
+    private List<Reservation> findOverlappingReservations(LocalDate from, LocalDate to, String nationalityCode) {
+        if (nationalityCode == null) {
+            return reservationRepository.findByCheckInBeforeAndCheckOutAfter(to.plusDays(1), from);
+        }
+
+        return reservationRepository.findByCheckInBeforeAndCheckOutAfterAndGuestNationalityNationalityCodeIgnoreCase(
+                to.plusDays(1),
+                from,
+                nationalityCode
+        );
+    }
+
+    private List<Reservation> findReservationsStartingInPeriod(LocalDate from, LocalDate to, String nationalityCode) {
+        if (nationalityCode == null) {
+            return reservationRepository.findByCheckInBetween(from, to);
+        }
+
+        return reservationRepository.findByCheckInBetweenAndGuestNationalityNationalityCodeIgnoreCase(
+                from,
+                to,
+                nationalityCode
+        );
+    }
+
+    private String normalizeComparisonMode(String comparisonMode) {
+        if (comparisonMode == null || comparisonMode.isBlank()) {
+            return COMPARISON_MODE_SAME_DATES_LAST_YEAR;
+        }
+
+        String normalized = comparisonMode.trim().toUpperCase(Locale.ROOT);
+        if (COMPARISON_MODE_SAME_DATES_LAST_YEAR.equals(normalized)
+                || COMPARISON_MODE_PREVIOUS_EQUAL_DAYS.equals(normalized)
+                || COMPARISON_MODE_CUSTOM_RANGE.equals(normalized)) {
+            return normalized;
+        }
+
+        throw new IllegalArgumentException("Invalid comparisonMode: " + comparisonMode);
+    }
+
+    private String normalizeNationalityCode(String nationalityCode) {
+        if (nationalityCode == null || nationalityCode.isBlank()) {
+            return null;
+        }
+
+        return nationalityCode.trim().toUpperCase(Locale.ROOT);
     }
 
     private void validateDateRange(LocalDate from, LocalDate to) {

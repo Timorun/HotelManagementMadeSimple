@@ -24,6 +24,35 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
     // Find reservations that overlap with a specific date range
     List<Reservation> findByCheckInBeforeAndCheckOutAfter(LocalDate checkOut, LocalDate checkIn);
 
+    // Find reservations that overlap with a specific date range for a nationality
+    @Query("""
+            SELECT r
+            FROM Reservation r
+            WHERE r.checkIn < :checkOut
+              AND r.checkOut > :checkIn
+              AND r.guest.nationality IS NOT NULL
+              AND UPPER(r.guest.nationality.nationalityCode) = UPPER(:nationalityCode)
+            """)
+    List<Reservation> findByCheckInBeforeAndCheckOutAfterAndGuestNationalityNationalityCodeIgnoreCase(
+            @Param("checkOut") LocalDate checkOut,
+            @Param("checkIn") LocalDate checkIn,
+            @Param("nationalityCode") String nationalityCode
+    );
+
+    // Find reservations starting in a period for a nationality
+    @Query("""
+            SELECT r
+            FROM Reservation r
+            WHERE r.checkIn BETWEEN :start AND :end
+              AND r.guest.nationality IS NOT NULL
+              AND UPPER(r.guest.nationality.nationalityCode) = UPPER(:nationalityCode)
+            """)
+    List<Reservation> findByCheckInBetweenAndGuestNationalityNationalityCodeIgnoreCase(
+            @Param("start") LocalDate start,
+            @Param("end") LocalDate end,
+            @Param("nationalityCode") String nationalityCode
+    );
+
     // Find reservations for today (check-in today)
     @Query("SELECT r FROM Reservation r WHERE r.checkIn = :today AND r.status = com.timorun.hmms.entities.ReservationStatus.CONFIRMED")
     List<Reservation> findArrivalsToday(@Param("today") LocalDate today);

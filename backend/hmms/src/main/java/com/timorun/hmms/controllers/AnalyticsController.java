@@ -52,9 +52,21 @@ public class AnalyticsController {
     public ResponseEntity<AnalyticsReportResponse> getAnalyticsReport(
             @RequestParam LocalDate from,
             @RequestParam LocalDate to,
-            @RequestParam(defaultValue = "false") boolean compare) {
+            @RequestParam(defaultValue = "false") boolean compare,
+            @RequestParam(required = false) String comparisonMode,
+            @RequestParam(required = false) LocalDate comparisonFrom,
+            @RequestParam(required = false) LocalDate comparisonTo,
+            @RequestParam(required = false) String nationalityCode) {
         try {
-            AnalyticsReportResponse report = analyticsService.getAnalyticsReport(from, to, compare);
+            AnalyticsReportResponse report = analyticsService.getAnalyticsReport(
+                    from,
+                    to,
+                    compare,
+                    comparisonMode,
+                    comparisonFrom,
+                    comparisonTo,
+                    nationalityCode
+            );
             return ResponseEntity.ok(report);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
