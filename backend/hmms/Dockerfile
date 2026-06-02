@@ -1,13 +1,27 @@
 # Stage 1: Build the application
-FROM maven:3.9.6-eclipse-temurin-21 AS build
-WORKDIR /app
-COPY pom.xml .
-COPY src ./src
-RUN mvn clean package -DskipTests
+FROM eclipse-temurin:21-jdk-jammy AS build
+WORKDIR /hmms
 
-# Stage 2: Run the application
+# Copy build files
+COPY mvnw .
+COPY .mvn .mvn
+COPY pom.xml .
+
+# Grant execute permission and download dependencies
+RUN chmod +x mvnw && ./mvnw dependency:go-offline
+
+# Copy source code and build package
+COPY src src
+RUN ./mvnw -DskipTests package
+
+# Stage 2: Create the runtime image
 FROM eclipse-temurin:21-jre-jammy
 WORKDIR /app
-COPY --from=build /app/target/*.jar app.jar
+
+# Copy the built jar from stage 1
+COPY --from=build /hmms/target/hmms-0.0.1-SNAPSHOT.jar app.jar
+
+# Configure execution
+ENV PORT=8080
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["sh", "-c", "java -Dserver.port=${PORT} -jar app.jar"]
