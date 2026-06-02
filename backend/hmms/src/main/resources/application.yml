@@ -1,28 +1,30 @@
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/hotel
-    username: hotel_user    #This user is for the hotel database, not the hmms auth user
-    password: hotel_pass    # TODO Make sure to change this password in production and consider using environment variables or a secrets manager to store sensitive information
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/hotel}
+    username: ${SPRING_DATASOURCE_USERNAME:hotel_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:welkom}
 
   jpa:
     hibernate:
       ddl-auto: validate
-    show-sql: true
+    show-sql: ${SPRING_JPA_SHOW_SQL:true}
 
   flyway:
     enabled: true
-    locations: classpath:db/migration,classpath:db/dev-migration
+    locations: ${SPRING_FLYWAY_LOCATIONS:classpath:db/migration}
 
 hmms:
+  cors:
+    allowed-origins: ${HMMS_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
   auth:
-    token-ttl-seconds: 43200
-    max-active-sessions: 500
-    session-cleanup-interval-ms: 300000
-    cookie-name: HMMS_AUTH
-    cookie-secure: false
-    cookie-same-site: Lax
-    # TODO Make sure to remove/changes this in production
+    token-ttl-seconds: ${HMMS_AUTH_TOKEN_TTL_SECONDS:43200}
+    max-active-sessions: ${HMMS_AUTH_MAX_ACTIVE_SESSIONS:500}
+    session-cleanup-interval-ms: ${HMMS_AUTH_SESSION_CLEANUP_INTERVAL_MS:300000}
+    cookie-name: ${HMMS_AUTH_COOKIE_NAME:HMMS_AUTH}
+    cookie-secure: ${HMMS_AUTH_COOKIE_SECURE:false}
+    cookie-same-site: ${HMMS_AUTH_COOKIE_SAME_SITE:Lax}
     bootstrap-admin:
-      username: admin
-      email: admin@carmensuites.local
-      password: ChangeMeNow!123
+      enabled: ${HMMS_BOOTSTRAP_ADMIN_ENABLED:true}
+      username: ${HMMS_BOOTSTRAP_ADMIN_USERNAME:admin}
+      email: ${HMMS_BOOTSTRAP_ADMIN_EMAIL:admin@carmensuites.local}
+      password: ${HMMS_BOOTSTRAP_ADMIN_PASSWORD:ChangeMeNow!123}

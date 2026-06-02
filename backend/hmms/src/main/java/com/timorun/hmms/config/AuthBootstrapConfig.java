@@ -11,16 +11,21 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 @Configuration
 public class AuthBootstrapConfig {
 
-    // TODO delete this when going to production and add the user to db manually
+    // Enable only for initial setup; disable later via HMMS_BOOTSTRAP_ADMIN_ENABLED.
     @Bean
     CommandLineRunner ensureAdminUser(
             AppUserRepository appUserRepository,
             PasswordEncoder passwordEncoder,
+            @Value("${hmms.auth.bootstrap-admin.enabled:true}") boolean bootstrapAdminEnabled,
             @Value("${hmms.auth.bootstrap-admin.username}") String username,
             @Value("${hmms.auth.bootstrap-admin.email}") String email,
             @Value("${hmms.auth.bootstrap-admin.password}") String password
     ) {
         return args -> {
+            if (!bootstrapAdminEnabled) {
+                return;
+            }
+
             if (appUserRepository.count() == 0) {
                 AppUser admin = new AppUser();
                 admin.setUsername(username);

@@ -1,5 +1,8 @@
 // API utility for backend requests
-const BASE_URL = 'http://localhost:8080/api';
+const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
+const BASE_URL = configuredBaseUrl.endsWith('/')
+  ? configuredBaseUrl.slice(0, -1)
+  : configuredBaseUrl;
 const ENABLE_STUB_FALLBACK = false;
 const unauthorizedListeners = new Set();
 const inFlightGetRequests = new Map();
