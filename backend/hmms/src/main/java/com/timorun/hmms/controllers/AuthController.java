@@ -40,7 +40,7 @@ public class AuthController {
             LoginResponse response = authService.login(request);
             return ResponseEntity.ok()
                     .header(HttpHeaders.SET_COOKIE, buildAuthCookie(response.getToken(), response.getExpiresInSeconds()))
-                    .body(maskToken(response));
+                    .body(response);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
         }
@@ -122,16 +122,6 @@ public class AuthController {
                 .maxAge(0)
                 .build()
                 .toString();
-    }
-
-    private LoginResponse maskToken(LoginResponse response) {
-        return LoginResponse.builder()
-                .token(null)
-                .userId(response.getUserId())
-                .username(response.getUsername())
-                .email(response.getEmail())
-                .expiresInSeconds(response.getExpiresInSeconds())
-                .build();
     }
 
     private AuthUserResponse toResponse(TokenSession session) {
