@@ -21,7 +21,6 @@ WORKDIR /app
 # Copy the built jar from stage 1
 COPY --from=build /hmms/target/hmms-0.0.1-SNAPSHOT.jar app.jar
 
-# Configure execution
+# Configure execution with JVM memory guards for low-cost cloud hosting
 ENV PORT=8080
-EXPOSE 8080
-ENTRYPOINT ["sh", "-c", "java -Dserver.port=${PORT} -jar app.jar"]
+ENTRYPOINT ["sh", "-c", "java -XX:MaxRAMPercentage=70.0 -XX:+UseSerialGC -Dserver.port=${PORT} -jar app.jar"]
