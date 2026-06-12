@@ -1,26 +1,30 @@
-# Stage 1: Build the application
-FROM eclipse-temurin:21-jre-alpine AS build
-WORKDIR /hmms
+# syntax=docker/dockerfile:1
 
-# Copy build files
-COPY mvnw .
-COPY .mvn .mvn
-COPY pom.xml .
-
-# Grant execute permission and download dependencies
-RUN chmod +x mvnw && ./mvnw dependency:go-offline
-
-# Copy source code and build package
-COPY src src
-RUN ./mvnw -DskipTests package
-
-# Stage 2: Create the runtime image
-FROM eclipse-temurin:21-jre-jammy
+# ===== Stage 1: Build =====
+FROM maven:3.9.6-eclipse-temurin-21 AS build
 WORKDIR /app
 
-# Copy the built jar from stage 1
-COPY --from=build /hmms/target/hmms-0.0.1-SNAPSHOT.jar app.jar
+# Copy only files needed for dependency resolution first (better layer caching)
+COPY pom.xml .
+RUN mvn -q -DskipTests dependency:go-offline
 
-# Configure execution with JVM memory guards for low-cost cloud hosting
-ENV PORT=8080
-ENTRYPOINT ["sh", "-c", "java -XX:MaxRAMPercentage=70 -XX:InitialRAMPercentage=25 -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError -Dserver.port=${PORT} -jar app.jar"]
+# Then copy source and build
+COPY src ./src
+RUN mvn -q -DskipTests clean package
+
+# ===== Stage 2: Runtime =====
+FROM eclipse-temurin:21-jre-jammy
+
+# Create non-root user
+RUN useradd -ms /bin/bash appuser
+USER appuser
+
+WORKDIR /app
+COPY --from=build /app/target/*.jar app.jar
+
+EXPOSE 8080
+
+# JVM tuned for small containers / low RAM plans
+ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70 -XX:InitialRAMPercentage=25 -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError -Djava.security.egd=file:/dev/./urandom"
+
+ENTRYPOINT ["java", "-jar", "app.jar"]
