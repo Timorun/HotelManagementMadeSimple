@@ -1,5 +1,5 @@
 # Stage 1: Build the application
-FROM eclipse-temurin:21-jdk-jammy AS build
+FROM eclipse-temurin:21-jre-alpine AS build
 WORKDIR /hmms
 
 # Copy build files
