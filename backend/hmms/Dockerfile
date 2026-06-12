@@ -23,4 +23,4 @@ COPY --from=build /hmms/target/hmms-0.0.1-SNAPSHOT.jar app.jar
 
 # Configure execution with JVM memory guards for low-cost cloud hosting
 ENV PORT=8080
-ENTRYPOINT ["sh", "-c", "java -XX:MaxRAMPercentage=70.0 -XX:+UseSerialGC -Dserver.port=${PORT} -jar app.jar"]
+ENTRYPOINT ["sh", "-c", "java -XX:MaxRAMPercentage=70 -XX:InitialRAMPercentage=25 -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError -Dserver.port=${PORT} -jar app.jar"]
