@@ -240,6 +240,8 @@ export function ReservationDetailsModal({
                     <a
                       className="contact-action-btn action-primary"
                       href={mailtoLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       aria-label={tr('Send email', 'Enviar correo')}
                     >
                       <Send size={13} />
