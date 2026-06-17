@@ -143,7 +143,6 @@ frontend/hmms/
 │   ├── api/
 │   │   └── backend.js          # API integration layer
 │   ├── components/
-│   │   ├── Dashboard.jsx       # Main dashboard with KPIs
 │   │   ├── CalendarView.jsx    # Monthly calendar view
 │   │   ├── ReservationManagement.jsx  # Reservations CRUD
 │   │   ├── GuestManagement.jsx # Guest database management
