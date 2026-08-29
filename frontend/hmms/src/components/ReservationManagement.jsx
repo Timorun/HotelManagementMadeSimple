@@ -1614,7 +1614,9 @@ export default function ReservationManagement() {
                         <Search style={{ position: 'absolute', right: '0.75rem', top: '0.75rem', color: 'var(--gray)' }} size={20} />
                       </div>
                       <span style={{ fontSize: '0.85rem', color: 'var(--dark-gray)', marginTop: '0.35rem', display: 'block' }}>
-                        {tr('Enter at least 2 characters.', 'Introduce al menos 2 caracteres.')}
+                        {searchTerm.trim().length < 2 && (
+                          <>{tr('Enter at least 2 characters.', 'Introduce al menos 2 caracteres.')}</>
+                        )}
                       </span>
                       {validationErrors.guestSelection && (
                         <span style={{ color: 'var(--danger)', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>

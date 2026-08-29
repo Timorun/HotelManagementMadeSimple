@@ -4,8 +4,16 @@ const BASE_URL = configuredBaseUrl.endsWith('/')
   ? configuredBaseUrl.slice(0, -1)
   : configuredBaseUrl;
 const ENABLE_STUB_FALLBACK = false;
+const TOKEN_STORAGE_KEY = 'HMMS_AUTH_TOKEN';
 const unauthorizedListeners = new Set();
 const inFlightGetRequests = new Map();
+let authToken = null;
+
+try {
+  authToken = sessionStorage.getItem(TOKEN_STORAGE_KEY) || null;
+} catch {
+  authToken = null;
+}
 
 const STUB_DATA = {
   guests: [
@@ -177,6 +185,13 @@ function withoutComparisonData(report) {
 }
 
 function notifyUnauthorized() {
+  authToken = null;
+  try {
+    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+  } catch {
+    // Ignore storage failures (e.g., privacy mode restrictions).
+  }
+
   unauthorizedListeners.forEach((listener) => {
     try {
       listener();
@@ -192,8 +207,11 @@ export function subscribeToUnauthorized(listener) {
 }
 
 function buildHeaders(extraHeaders = {}) {
+  const authHeaders = authToken ? { Authorization: `Bearer ${authToken}` } : {};
+
   return {
     'Content-Type': 'application/json',
+    ...authHeaders,
     ...extraHeaders,
   };
 }
@@ -237,7 +255,7 @@ function getJson(url, errorMessage) {
 }
 
 export async function login(usernameOrEmail, password) {
-  return request(
+  const response = await request(
     `${BASE_URL}/auth/login`,
     {
       method: 'POST',
@@ -245,10 +263,28 @@ export async function login(usernameOrEmail, password) {
     },
     'Invalid username/email or password',
   );
+
+  if (response?.token) {
+    authToken = response.token;
+    try {
+      sessionStorage.setItem(TOKEN_STORAGE_KEY, response.token);
+    } catch {
+      // Ignore storage failures and keep in-memory token fallback.
+    }
+  }
+
+  return response;
 }
 
 export async function logout() {
-  return request(`${BASE_URL}/auth/logout`, { method: 'POST' }, 'Logout failed');
+  const response = await request(`${BASE_URL}/auth/logout`, { method: 'POST' }, 'Logout failed');
+  authToken = null;
+  try {
+    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+  } catch {
+    // Ignore storage failures (e.g., privacy mode restrictions).
+  }
+  return response;
 }
 
 export async function fetchCurrentUser() {

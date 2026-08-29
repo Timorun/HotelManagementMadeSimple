@@ -57,7 +57,7 @@ export default function AppShell({ children }) {
             </button>
 
             <button className="btn btn-outline" onClick={logout}>
-              {t('logout')} ({user?.username})
+              {t('logout')}
             </button>
           </div>
         </div>

@@ -266,6 +266,20 @@ body {
   color: var(--white);
 }
 
+/* Specific styling for the logout button in the header */
+.header-actions .btn-outline {
+    border: 2px solid #334155; /* A crisp, darker slate gray */
+    color: #334155;            /* Matches the border */
+    background: transparent;
+    transition: all 0.2s ease-in-out;
+}
+  
+/* Elegant fill-in effect when hovered */
+.header-actions .btn-outline:hover {
+   background: #334155;
+   color: #ffffff;
+}
+
 .btn-sm {
   padding: 0.5rem 1rem;
   font-size: 0.875rem;
