@@ -1,12 +1,13 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { fetchReservations, fetchSuites, fetchNationalities, createReservation, updateReservation, cancelReservation, searchGuests, updateReservationStatus, fetchGuest, updateGuest } from '../api/backend';
-import { Calendar, Plus, Search, AlertCircle, CheckCircle, Users, Euro, Download, Eye } from 'lucide-react';
+import { Calendar, Plus, Search, AlertCircle, CheckCircle, Users, Euro, Download, Eye, SlidersHorizontal, ChevronDown, ChevronRight } from 'lucide-react';
 import { format, differenceInDays, parseISO, isBefore, addDays, startOfDay, startOfMonth, endOfMonth } from 'date-fns';
 import { STATUS_META, getStatusLabel, getTransitionWarning } from '../api/reservationStatus';
 import { exportRowsToExcel } from '../utils/excelExport';
 import { CHANNEL_OPTIONS, formatChannel } from '../utils/channels';
 import PhoneInput from './common/PhoneInput';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { useI18n } from '../context/I18nContext';
 import { isIsoDate, useSessionState } from '../hooks/useSessionState';
 import { ConfirmCancelReservationModal, ReservationDetailsModal } from './reservations/ReservationDetailsModal';
@@ -29,6 +30,8 @@ export default function ReservationManagement() {
   const [nationalities, setNationalities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [hasLoaded, setHasLoaded] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const isMobile = useIsMobile();
   const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [editingReservation, setEditingReservation] = useState(null);
@@ -1300,9 +1303,16 @@ export default function ReservationManagement() {
           </div>
         )}
 
-        <div className="form-group reservation-filters-panel">
+        <div className={`form-group reservation-filters-panel collapsible-filters ${filtersOpen ? 'open' : ''}`}>
           <div className="list-filters-head">
             <div>
+              {/* Phones: filters are folded away behind this toggle */}
+              <button type="button" className="filters-toggle" onClick={() => setFiltersOpen((open) => !open)} aria-expanded={filtersOpen}>
+                <SlidersHorizontal size={16} />
+                {tr('Filters', 'Filtros')}
+                {activeReservationFilterCount > 0 && <span className="nav-badge">{activeReservationFilterCount}</span>}
+                <ChevronDown size={16} className="filters-toggle-chevron" />
+              </button>
               <h3 className="list-filters-title">{tr('Filter Reservations', 'Filtrar reservas')}</h3>
               <p className="list-filters-subtitle">{tr('Narrow the list quickly by status, dates, channel, and guest name.', 'Reduce la lista rapidamente por estado, fechas, canal y nombre del huesped.')}</p>
             </div>
@@ -1415,6 +1425,36 @@ export default function ReservationManagement() {
               <div className="empty-state-icon">📅</div>
               <p>{tr('No reservations found for this date range', 'No se encontraron reservas para este rango de fechas')}</p>
             </div>
+          ) : isMobile ? (
+            <ul className="mobile-card-list">
+              {filteredReservations.map((res) => {
+                const nights = Math.max(0, differenceInDays(parseISO(res.checkOut), parseISO(res.checkIn)));
+                return (
+                  <li key={res.reservationId}>
+                    <button type="button" className="mobile-card" onClick={() => openReservationModal(res)}>
+                      <div className="mobile-card-top">
+                        <span className="mobile-card-title">
+                          {res.guestAnonymized ? tr('Anonymized/Deleted', 'Anonimizado/Eliminado') : (res.guestDisplayName || res.guestName)}
+                        </span>
+                        <span className="status-pill" style={{ background: STATUS_META[res.status]?.color || '#BDC3C7' }}>
+                          {getStatusLabel(res.status, tr) || res.status}
+                        </span>
+                      </div>
+                      <div className="mobile-card-line">
+                        {res.suiteName} · {format(parseISO(res.checkIn), 'd MMM', { locale: dateLocale })} → {format(parseISO(res.checkOut), 'd MMM yyyy', { locale: dateLocale })} · {nights} {nights === 1 ? tr('night', 'noche') : tr('nights', 'noches')}
+                      </div>
+                      <div className="mobile-card-line muted">
+                        <span><Users size={13} /> {res.numGuests}</span>
+                        <span>{new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR' }).format(Number.parseFloat(res.priceTotal || 0))}</span>
+                        <span>{formatChannel(res.channel, tr)}</span>
+                        <span className="mobile-card-ref">#{res.reservationId}</span>
+                      </div>
+                      <ChevronRight size={18} className="mobile-card-chevron" />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
           ) : (
             <table className="data-table reservation-table">
               <thead>
