@@ -16,6 +16,9 @@ export const translations = {
       reservations: 'Reservations',
       guests: 'Guests',
       analytics: 'Analytics',
+      requests: 'Requests',
+      communications: 'Communications',
+      settings: 'Settings',
     },
     filters: {
       all: 'All',
@@ -45,6 +48,9 @@ export const translations = {
       reservations: 'Reservas',
       guests: 'Huéspedes',
       analytics: 'Analíticas',
+      requests: 'Solicitudes',
+      communications: 'Comunicaciones',
+      settings: 'Ajustes',
     },
     filters: {
       all: 'Todos',

@@ -27,6 +27,7 @@ public class ReservationResponse {
     private String email;
     private String phone;
     private String guestNotes;
+    private Boolean guestMarketingConsent;
     private LocalDate checkIn;
     private LocalDate checkOut;
     private Integer numGuests;

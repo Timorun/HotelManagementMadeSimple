@@ -43,10 +43,20 @@ public class GuestService {
      * whether the guest is created on its own or inline while creating a reservation.
      */
     public Guest createGuestEntity(GuestRequest request) {
+        return createGuestEntity(request, true);
+    }
+
+    /**
+     * @param checkDuplicateName false to allow a guest with the same name as an existing one
+     *                           (used for public booking requests, where we can't ask the guest)
+     */
+    public Guest createGuestEntity(GuestRequest request, boolean checkDuplicateName) {
         validateGuestRequest(request);
         String normalizedFirstName = NameUtils.normalize(request.getFirstName());
         String normalizedLastName = NameUtils.normalize(request.getLastName());
-        validateDuplicateGuestName(normalizedFirstName, normalizedLastName, null);
+        if (checkDuplicateName) {
+            validateDuplicateGuestName(normalizedFirstName, normalizedLastName, null);
+        }
         
         Guest guest = new Guest();
         guest.setFirstName(normalizedFirstName);
@@ -55,6 +65,7 @@ public class GuestService {
         guest.setPhone(phoneNormalizer.normalize(request.getPhone()));
         guest.setNotes(request.getNotes());
         guest.setMarketingConsent(request.getMarketingConsent() != null ? request.getMarketingConsent() : false);
+        guest.setPreferredLanguage(normalizeLanguage(request.getPreferredLanguage()));
         guest.setCreatedAt(LocalDateTime.now());
         
         if (request.getNationalityCode() != null && !request.getNationalityCode().isBlank()) {
@@ -161,7 +172,15 @@ public class GuestService {
         guest.setEmail(NameUtils.normalizeEmail(request.getEmail()));
         guest.setPhone(phoneNormalizer.normalize(request.getPhone()));
         guest.setNotes(request.getNotes());
-        guest.setMarketingConsent(request.getMarketingConsent() != null ? request.getMarketingConsent() : guest.getMarketingConsent());
+        Boolean previousConsent = guest.getMarketingConsent();
+        guest.setMarketingConsent(request.getMarketingConsent() != null ? request.getMarketingConsent() : previousConsent);
+        if (Boolean.TRUE.equals(guest.getMarketingConsent()) && !Boolean.TRUE.equals(previousConsent)) {
+            // Consent given again (e.g. confirmed in person): clear the earlier opt-out
+            guest.setMarketingOptOutAt(null);
+        }
+        if (request.getPreferredLanguage() != null) {
+            guest.setPreferredLanguage(normalizeLanguage(request.getPreferredLanguage()));
+        }
         
         if (request.getNationalityCode() != null && !request.getNationalityCode().isBlank()) {
             Nationality nationality = nationalityRepository.findById(request.getNationalityCode())
@@ -188,13 +207,57 @@ public class GuestService {
         guest.setEmail(null);
         guest.setPhone(null);
         guest.setNotes(null);
+        guest.setMarketingConsent(false);
+        guest.setPreferredLanguage(null);
         guest.setAnonymizedAt(LocalDateTime.now());
         
         Guest updated = guestRepository.save(guest);
         return toResponse(updated);
     }
 
+    /**
+     * Guest opted out of marketing through their preferences link.
+     */
+    public Guest optOutOfMarketing(Long guestId) {
+        Guest guest = guestRepository.findById(guestId)
+                .orElseThrow(() -> new IllegalArgumentException("Guest not found with ID: " + guestId));
+        guest.setMarketingConsent(false);
+        if (guest.getMarketingOptOutAt() == null) {
+            guest.setMarketingOptOutAt(LocalDateTime.now());
+        }
+        return guestRepository.save(guest);
+    }
+
+    /**
+     * Guest asked for their personal data to be deleted. The owner confirms by anonymizing.
+     */
+    public Guest requestDeletion(Long guestId) {
+        Guest guest = guestRepository.findById(guestId)
+                .orElseThrow(() -> new IllegalArgumentException("Guest not found with ID: " + guestId));
+        guest.setMarketingConsent(false);
+        if (guest.getMarketingOptOutAt() == null) {
+            guest.setMarketingOptOutAt(LocalDateTime.now());
+        }
+        if (guest.getDeletionRequestedAt() == null) {
+            guest.setDeletionRequestedAt(LocalDateTime.now());
+        }
+        return guestRepository.save(guest);
+    }
+
+    public Guest getGuestEntity(Long guestId) {
+        return guestRepository.findById(guestId)
+                .orElseThrow(() -> new IllegalArgumentException("Guest not found with ID: " + guestId));
+    }
+
     // ===== PRIVATE HELPER METHODS =====
+
+    private static String normalizeLanguage(String language) {
+        if (language == null || language.isBlank()) {
+            return null;
+        }
+        String normalized = language.trim().toLowerCase();
+        return normalized.startsWith("es") ? "es" : "en";
+    }
 
     private void validateGuestRequest(GuestRequest request) {
         if (request.getFirstName() == null || request.getFirstName().isBlank()) {
@@ -220,7 +283,7 @@ public class GuestService {
                 });
     }
 
-    private GuestResponse toResponse(Guest guest) {
+    public GuestResponse toResponse(Guest guest) {
         boolean anonymized = guest.getAnonymizedAt() != null;
         return GuestResponse.builder()
                 .guestId(guest.getGuestId())
@@ -236,6 +299,9 @@ public class GuestService {
                 .anonymizedAt(guest.getAnonymizedAt())
                 .anonymized(anonymized)
                 .reservationCount(guest.getReservations() != null ? guest.getReservations().size() : 0)
+                .preferredLanguage(guest.getPreferredLanguage())
+                .marketingOptOutAt(guest.getMarketingOptOutAt())
+                .deletionRequestedAt(guest.getDeletionRequestedAt())
                 .build();
     }
 }

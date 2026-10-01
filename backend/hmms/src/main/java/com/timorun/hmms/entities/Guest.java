@@ -34,6 +34,13 @@ public class Guest {
     private LocalDateTime createdAt;
     private LocalDateTime anonymizedAt;
 
+    // "en" or "es"; used for emails to the guest
+    private String preferredLanguage;
+    // Set when the guest opts out of marketing through their preferences link
+    private LocalDateTime marketingOptOutAt;
+    // Set when the guest asks for their data to be deleted; the owner then anonymizes
+    private LocalDateTime deletionRequestedAt;
+
     @OneToMany(mappedBy = "guest") // "guest" refers to the field name in the Reservation class
     @JsonIgnore // Prevent circular references during serialization
     private List<Reservation> reservations;

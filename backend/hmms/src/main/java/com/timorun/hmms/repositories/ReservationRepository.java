@@ -100,6 +100,8 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
     // Find all reservations with specific status
     List<Reservation> findByStatus(ReservationStatus status);
 
+    long countByStatus(ReservationStatus status);
+
     @Query("""
             SELECT CASE WHEN COUNT(r) > 0 THEN TRUE ELSE FALSE END
             FROM Reservation r

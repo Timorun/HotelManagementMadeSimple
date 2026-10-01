@@ -4,6 +4,7 @@ import { Users, Plus, Edit, Search, Globe, UserX, Download, Copy, Check, Message
 import { exportRowsToExcel } from '../utils/excelExport';
 import { useI18n } from '../context/I18nContext';
 import { formatPhoneDisplay, toWhatsAppLink } from '../utils/phone';
+import { confirmContactWithoutConsent } from '../utils/communications';
 import PhoneInput from './common/PhoneInput';
 import { copyTextToClipboard } from '../utils/clipboard';
 
@@ -487,6 +488,14 @@ export default function GuestManagement() {
                       {!guest.anonymized && (
                         <span>{guest.firstName} {guest.lastName}</span>
                       )}
+                      {!guest.anonymized && guest.deletionRequestedAt && (
+                        <span
+                          className="consent-badge opted-out guest-flag"
+                          title={tr('The guest asked for their data to be deleted. Use the anonymize button to do so.', 'El huesped ha pedido eliminar sus datos. Usa el boton de anonimizar.')}
+                        >
+                          {tr('Deletion requested', 'Pide eliminar datos')}
+                        </span>
+                      )}
                     </td>
                     <td>
                       <div className="contact-cell">
@@ -499,6 +508,9 @@ export default function GuestManagement() {
                                   <a
                                     className="contact-action-btn action-primary compact"
                                     href={`mailto:${guest.email}`}
+                                    onClick={(e) => {
+                                      if (!confirmContactWithoutConsent(guest, `${guest.firstName} ${guest.lastName}`, tr)) e.preventDefault();
+                                    }}
                                     aria-label={`${tr('Send email to', 'Enviar correo a')} ${guest.firstName} ${guest.lastName}`}
                                     title={tr('Send email', 'Enviar correo')}
                                   >
@@ -534,6 +546,9 @@ export default function GuestManagement() {
                                       href={whatsappLink}
                                       target="_blank"
                                       rel="noreferrer noopener"
+                                      onClick={(e) => {
+                                        if (!confirmContactWithoutConsent(guest, `${guest.firstName} ${guest.lastName}`, tr)) e.preventDefault();
+                                      }}
                                       aria-label={`${tr('Open WhatsApp chat for', 'Abrir chat de WhatsApp para')} ${guest.firstName} ${guest.lastName}`}
                                       title={tr('Open WhatsApp', 'Abrir WhatsApp')}
                                     >
@@ -543,7 +558,11 @@ export default function GuestManagement() {
                                   <button
                                     type="button"
                                     className="contact-action-btn action-copy compact"
-                                    onClick={() => handleCopyContact(guest.phone, phoneCopyKey)}
+                                    onClick={() => {
+                                      if (confirmContactWithoutConsent(guest, `${guest.firstName} ${guest.lastName}`, tr)) {
+                                        handleCopyContact(guest.phone, phoneCopyKey);
+                                      }
+                                    }}
                                     aria-label={`${tr('Copy phone for', 'Copiar telefono de')} ${guest.firstName} ${guest.lastName}`}
                                     title={copiedContactKey === phoneCopyKey ? tr('Copied', 'Copiado') : tr('Copy phone', 'Copiar telefono')}
                                   >
@@ -570,6 +589,10 @@ export default function GuestManagement() {
                     <td>
                       {guest.marketingConsent ? (
                         <span className="status-badge status-checked-in">{tr('Yes', 'Si')}</span>
+                      ) : guest.marketingOptOutAt ? (
+                        <span className="status-badge status-cancelled" title={tr('Unsubscribed through their preferences link', 'Se dio de baja con su enlace de preferencias')}>
+                          {tr('Opted out', 'Baja')}
+                        </span>
                       ) : (
                         <span className="status-badge status-cancelled">{tr('No', 'No')}</span>
                       )}

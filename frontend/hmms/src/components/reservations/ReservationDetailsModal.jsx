@@ -6,6 +6,7 @@ import { useI18n } from '../../context/I18nContext';
 import { copyTextToClipboard } from '../../utils/clipboard';
 import { CHANNEL_OPTIONS, formatChannel } from '../../utils/channels';
 import { formatPhoneDisplay, toWhatsAppLink } from '../../utils/phone';
+import { confirmContactWithoutConsent } from '../../utils/communications';
 
 function parseNumeric(value) {
   const parsed = Number(value);
@@ -106,6 +107,12 @@ export function ReservationDetailsModal({
 
   const mailtoLink = reservation.email ? `mailto:${reservation.email}` : null;
   const whatsappLink = toWhatsAppLink(reservation.phone);
+  // Warn before contacting a guest without marketing consent (stay-related messages are fine).
+  const confirmGuestContact = () => confirmContactWithoutConsent(
+    { marketingConsent: reservation.guestMarketingConsent },
+    reservation.guestDisplayName || reservation.guestName,
+    tr,
+  );
 
   useEffect(() => {
     setPriceInputSource('total');
@@ -256,6 +263,9 @@ export function ReservationDetailsModal({
                         href={whatsappLink}
                         target="_blank"
                         rel="noreferrer noopener"
+                        onClick={(e) => {
+                          if (!confirmGuestContact()) e.preventDefault();
+                        }}
                         aria-label={tr('Open WhatsApp chat', 'Abrir chat de WhatsApp')}
                       >
                         <MessageCircle size={13} />
@@ -264,7 +274,7 @@ export function ReservationDetailsModal({
                     <button
                       type="button"
                       className="contact-action-btn action-copy"
-                      onClick={() => handleCopyContact('phone', reservation.phone)}
+                      onClick={() => confirmGuestContact() && handleCopyContact('phone', reservation.phone)}
                       aria-label={tr('Copy phone number', 'Copiar numero de telefono')}
                     >
                       {copiedField === 'phone' ? <Check size={13} /> : <Copy size={13} />}

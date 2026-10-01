@@ -3,20 +3,34 @@ package com.timorun.hmms.controllers;
 import com.timorun.hmms.dto.GuestRequest;
 import com.timorun.hmms.dto.GuestResponse;
 import com.timorun.hmms.dto.ErrorResponse;
+import com.timorun.hmms.services.GuestPreferencesService;
 import com.timorun.hmms.services.GuestService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/guests")
 public class GuestController {
     private final GuestService guestService;
+    private final GuestPreferencesService preferencesService;
 
-    public GuestController(GuestService guestService) {
+    public GuestController(GuestService guestService, GuestPreferencesService preferencesService) {
         this.guestService = guestService;
+        this.preferencesService = preferencesService;
+    }
+
+    /**
+     * Personal link where the guest can opt out of marketing or request data deletion.
+     * GET /api/guests/{id}/preferences-link
+     */
+    @GetMapping("/{id}/preferences-link")
+    public Map<String, String> preferencesLink(@PathVariable Long id) {
+        guestService.getGuest(id);
+        return Map.of("url", preferencesService.preferencesLink(id));
     }
 
     /**

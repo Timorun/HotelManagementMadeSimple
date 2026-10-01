@@ -291,6 +291,7 @@ public class ReservationService {
             .email(guestAnonymized ? null : reservation.getGuest().getEmail())
             .phone(guestAnonymized ? null : reservation.getGuest().getPhone())
             .guestNotes(guestAnonymized ? null : reservation.getGuest().getNotes())
+            .guestMarketingConsent(Boolean.TRUE.equals(reservation.getGuest().getMarketingConsent()))
                 .checkIn(reservation.getCheckIn())
                 .checkOut(reservation.getCheckOut())
                 .numGuests(reservation.getNumGuests())

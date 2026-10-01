@@ -1,6 +1,8 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ClipboardCheck, CalendarDays, Hotel, Users, BarChart3, PlusCircle } from 'lucide-react';
+import { ClipboardCheck, CalendarDays, Hotel, Users, BarChart3, PlusCircle, Inbox, Megaphone, Settings } from 'lucide-react';
+import { fetchBookingRequestCount } from '../../api/backend';
+import { BOOKING_REQUESTS_CHANGED_EVENT } from '../../utils/events';
 import { useI18n } from '../../context/I18nContext';
 import { useAuth } from '../../context/AuthContext';
 import { SUPPORTED_LANGUAGES } from '../../i18n/translations';
@@ -17,7 +19,27 @@ export default function AppShell({ children }) {
     { id: 'reservations', path: '/reservations', icon: Hotel },
     { id: 'guests', path: '/guests', icon: Users },
     { id: 'analytics', path: '/analytics', icon: BarChart3 },
+    { id: 'requests', path: '/requests', icon: Inbox },
+    { id: 'communications', path: '/communications', icon: Megaphone },
+    { id: 'settings', path: '/settings', icon: Settings },
   ]), []);
+  const [pendingRequests, setPendingRequests] = useState(0);
+
+  // Badge on the Requests tab; refreshed periodically and after a request is handled.
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => fetchBookingRequestCount()
+      .then((count) => !cancelled && setPendingRequests(count))
+      .catch(() => {});
+    refresh();
+    const interval = setInterval(refresh, 2 * 60 * 1000);
+    window.addEventListener(BOOKING_REQUESTS_CHANGED_EVENT, refresh);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      window.removeEventListener(BOOKING_REQUESTS_CHANGED_EVENT, refresh);
+    };
+  }, []);
 
   const activePath = location.pathname;
   const isCalendarRoute = activePath === '/calendar';
@@ -71,6 +93,9 @@ export default function AppShell({ children }) {
             >
               <tab.icon size={18} />
               {t(`tabs.${tab.id}`)}
+              {tab.id === 'requests' && pendingRequests > 0 && (
+                <span className="nav-badge" aria-label={`${pendingRequests} pending`}>{pendingRequests}</span>
+              )}
             </button>
           ))}
         </nav>
