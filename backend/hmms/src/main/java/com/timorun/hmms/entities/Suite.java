@@ -6,7 +6,9 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 @Entity
 @Table(name = "suites")
@@ -23,6 +25,20 @@ public class Suite {
     
     @Column(columnDefinition = "BOOLEAN DEFAULT true")
     private Boolean active;
+
+    // Booking.com "export calendar" URL for this suite; imported every few minutes
+    private String bookingIcalUrl;
+    // Secret token in our own iCal feed URL (given to booking.com to block dates booked here)
+    private String icalExportToken;
+    private LocalDateTime icalLastSyncAt;
+    private String icalLastSyncError;
+
+    @PrePersist
+    void ensureExportToken() {
+        if (icalExportToken == null) {
+            icalExportToken = UUID.randomUUID().toString().replace("-", "");
+        }
+    }
     
     @OneToMany(mappedBy = "suite")
     @JsonIgnore

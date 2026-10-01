@@ -302,6 +302,9 @@ public class ReservationService {
                 .statusLabel(reservation.getStatus().getLabel())
                 .statusColor(reservation.getStatus().getColor())
                 .createdAt(reservation.getCreatedAt())
+                .externalRef(reservation.getExternalRef())
+                .importedFromCalendar(reservation.getExternalUid() != null)
+                .syncConflict(reservation.isSyncConflict())
                 .build();
     }
 }

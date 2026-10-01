@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface ReservationRepository extends JpaRepository<Reservation, Long> {
@@ -101,6 +102,34 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
     List<Reservation> findByStatus(ReservationStatus status);
 
     long countByStatus(ReservationStatus status);
+
+    Optional<Reservation> findByExternalUid(String externalUid);
+
+    Optional<Reservation> findFirstByExternalRef(String externalRef);
+
+    // Calendar-imported stays of a suite that haven't ended yet
+    @Query("""
+            SELECT r FROM Reservation r
+            WHERE r.suite.suiteId = :suiteId
+              AND r.externalUid IS NOT NULL
+              AND r.checkOut > :today
+            """)
+    List<Reservation> findUpcomingImported(@Param("suiteId") Long suiteId, @Param("today") LocalDate today);
+
+    // Stays to publish in a suite's own iCal feed: not cancelled, not ended, not imported from booking.com
+    @Query("""
+            SELECT r FROM Reservation r
+            WHERE r.suite.suiteId = :suiteId
+              AND r.externalUid IS NULL
+              AND r.checkOut > :from
+              AND r.status NOT IN (com.timorun.hmms.entities.ReservationStatus.CANCELLED,
+                                   com.timorun.hmms.entities.ReservationStatus.NO_SHOW)
+            ORDER BY r.checkIn
+            """)
+    List<Reservation> findForIcalExport(@Param("suiteId") Long suiteId, @Param("from") LocalDate from);
+
+    // Reservations flagged as overlapping after a calendar import
+    List<Reservation> findBySyncConflictTrueAndCheckOutAfter(LocalDate date);
 
     @Query("""
             SELECT CASE WHEN COUNT(r) > 0 THEN TRUE ELSE FALSE END

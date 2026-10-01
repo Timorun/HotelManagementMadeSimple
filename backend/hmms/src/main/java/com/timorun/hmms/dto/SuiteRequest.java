@@ -14,4 +14,5 @@ public class SuiteRequest {
     private String suiteName;
     private Integer capacity;
     private Boolean active;
+    private String bookingIcalUrl; // null keeps the current value on update; "" clears it
 }

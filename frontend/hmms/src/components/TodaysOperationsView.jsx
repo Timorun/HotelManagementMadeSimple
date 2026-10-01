@@ -7,6 +7,7 @@ import {
   fetchOperationsDashboard,
   fetchReservations,
   fetchSuites,
+  fetchSyncConflicts,
   updateGuest,
   updateReservation,
   updateReservationStatus,
@@ -95,6 +96,7 @@ export default function TodaysOperationsView() {
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [error, setError] = useState(null);
   const [updatingIds, setUpdatingIds] = useState(() => new Set());
+  const [syncConflicts, setSyncConflicts] = useState([]);
   const [toast, setToast] = useState(null);
   const toastTimerRef = useRef(null);
 
@@ -212,6 +214,8 @@ export default function TodaysOperationsView() {
       setReservations(reservationsData || []);
       setGuests(guestsData || []);
       setLastUpdated(new Date());
+      // Double bookings found by the booking.com calendar sync (non-blocking)
+      fetchSyncConflicts().then((conflicts) => setSyncConflicts(conflicts || [])).catch(() => {});
       setError(null);
     } catch (err) {
       setError(err?.message || String(err));
@@ -559,6 +563,26 @@ export default function TodaysOperationsView() {
           </button>
         </div>
       </section>
+
+      {syncConflicts.length > 0 && (
+        <section className="card sync-conflicts mb-3" role="alert">
+          <strong>
+            {tr(
+              'Possible double booking: these booking.com stays overlap another reservation in the same suite.',
+              'Posible doble reserva: estas estancias de booking.com coinciden con otra reserva en la misma suite.',
+            )}
+          </strong>
+          <ul>
+            {syncConflicts.map((conflict) => (
+              <li key={conflict.reservationId}>
+                <button type="button" className="link-button" onClick={() => openReservationModal(conflict)}>
+                  {conflict.suiteName}: {format(parseISO(conflict.checkIn), 'd MMM', { locale: dateLocale })} – {format(parseISO(conflict.checkOut), 'd MMM yyyy', { locale: dateLocale })} (#{conflict.reservationId})
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="card operations-quick-view mb-3">
         <div className="card-header quick-view-header">

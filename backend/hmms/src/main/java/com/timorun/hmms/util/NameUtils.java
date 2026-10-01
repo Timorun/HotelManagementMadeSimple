@@ -40,6 +40,23 @@ public final class NameUtils {
         return Arrays.stream(fold(normalized).split(" ")).toList();
     }
 
+    /**
+     * Splits a full name into first name and last name(s): the first word is the first name,
+     * the rest the last names ("María García López" -> "María", "García López").
+     * A single word gets "-" as last name, since a last name is required.
+     */
+    public static String[] splitFullName(String fullName) {
+        String normalized = normalize(fullName);
+        if (normalized == null) {
+            return new String[]{null, null};
+        }
+        int space = normalized.indexOf(' ');
+        if (space < 0) {
+            return new String[]{normalized, "-"};
+        }
+        return new String[]{normalized.substring(0, space), normalized.substring(space + 1)};
+    }
+
     /** Trims an email and returns null when blank. */
     public static String normalizeEmail(String email) {
         if (email == null || email.isBlank()) {

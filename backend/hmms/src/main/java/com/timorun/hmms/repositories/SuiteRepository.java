@@ -4,10 +4,13 @@ import com.timorun.hmms.entities.Suite;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
+import java.util.Optional;
+
 @Repository
 public interface SuiteRepository extends JpaRepository<Suite, Long> {
 
-    // Basic CRUD is already included!
-    // You can add custom finders like this:
-//    List<Suite> findByCapacityGreaterThanEqual(Integer capacity);
+    Optional<Suite> findByIcalExportToken(String icalExportToken);
+
+    List<Suite> findByBookingIcalUrlIsNotNull();
 }

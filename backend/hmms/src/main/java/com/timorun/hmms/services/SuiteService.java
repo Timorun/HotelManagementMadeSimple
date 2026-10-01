@@ -5,6 +5,8 @@ import com.timorun.hmms.dto.SuiteResponse;
 import com.timorun.hmms.entities.Suite;
 import com.timorun.hmms.repositories.SuiteRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -27,6 +29,7 @@ public class SuiteService {
         suite.setSuiteName(request.getSuiteName());
         suite.setCapacity(request.getCapacity());
         suite.setActive(request.getActive() != null ? request.getActive() : true);
+        suite.setBookingIcalUrl(normalizeIcalUrl(request.getBookingIcalUrl()));
         
         Suite saved = suiteRepository.save(suite);
         return toResponse(saved);
@@ -74,6 +77,10 @@ public class SuiteService {
         suite.setSuiteName(request.getSuiteName());
         suite.setCapacity(request.getCapacity());
         suite.setActive(request.getActive() != null ? request.getActive() : suite.getActive());
+        if (request.getBookingIcalUrl() != null) {
+            suite.setBookingIcalUrl(normalizeIcalUrl(request.getBookingIcalUrl()));
+            suite.setIcalLastSyncError(null);
+        }
         
         Suite updated = suiteRepository.save(suite);
         return toResponse(updated);
@@ -122,12 +129,41 @@ public class SuiteService {
         }
     }
 
+    private static String normalizeIcalUrl(String url) {
+        if (url == null || url.isBlank()) {
+            return null;
+        }
+        String trimmed = url.trim();
+        if (trimmed.startsWith("webcal://")) {
+            trimmed = "https://" + trimmed.substring("webcal://".length());
+        }
+        if (!trimmed.startsWith("https://") && !trimmed.startsWith("http://")) {
+            throw new IllegalArgumentException("The calendar URL must start with https://");
+        }
+        return trimmed;
+    }
+
     private SuiteResponse toResponse(Suite suite) {
         return SuiteResponse.builder()
                 .suiteId(suite.getSuiteId())
                 .suiteName(suite.getSuiteName())
                 .capacity(suite.getCapacity())
                 .active(suite.getActive())
+                .bookingIcalUrl(suite.getBookingIcalUrl())
+                .icalExportUrl(icalExportUrl(suite))
+                .icalLastSyncAt(suite.getIcalLastSyncAt())
+                .icalLastSyncError(suite.getIcalLastSyncError())
                 .build();
+    }
+
+    // Absolute URL of the suite's feed, based on the current request (honours X-Forwarded-* behind a proxy)
+    private static String icalExportUrl(Suite suite) {
+        if (suite.getIcalExportToken() == null || RequestContextHolder.getRequestAttributes() == null) {
+            return null;
+        }
+        return ServletUriComponentsBuilder.fromCurrentContextPath()
+                .path("/api/public/ical/{token}.ics")
+                .buildAndExpand(suite.getIcalExportToken())
+                .toUriString();
     }
 }

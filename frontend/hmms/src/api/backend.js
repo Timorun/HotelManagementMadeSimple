@@ -549,3 +549,18 @@ export async function optOutOfMarketing(token) {
 export async function requestDataDeletion(token) {
   return request(`${BASE_URL}/public/preferences/${encodeURIComponent(token)}/delete-request`, { method: 'POST' }, 'Failed to send request');
 }
+
+// ===== Booking.com sync =====
+
+export async function syncBookingCalendars(suiteId) {
+  const url = suiteId ? `${BASE_URL}/booking-sync/ical/${suiteId}` : `${BASE_URL}/booking-sync/ical`;
+  return request(url, { method: 'POST' }, 'Calendar sync failed');
+}
+
+export async function fetchSyncConflicts() {
+  return request(`${BASE_URL}/booking-sync/conflicts`, { method: 'GET' }, 'Failed to load conflicts');
+}
+
+export async function importBookingExport(rows, dryRun) {
+  return request(`${BASE_URL}/booking-sync/import`, { method: 'POST', body: JSON.stringify({ rows, dryRun }) }, 'Import failed');
+}

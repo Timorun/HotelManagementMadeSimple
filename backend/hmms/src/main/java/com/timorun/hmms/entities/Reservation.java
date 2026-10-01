@@ -37,6 +37,13 @@ public class Reservation {
     @Column(nullable = false)
     private ReservationStatus status = ReservationStatus.PENDING;
     private LocalDateTime createdAt;
+
+    // UID of the booking.com iCal event this reservation was imported from
+    private String externalUid;
+    // Booking.com reservation number (from the reservations export)
+    private String externalRef;
+    // Imported stay overlaps another reservation in the same suite
+    private boolean syncConflict;
     
     // Audit fields
     @Column(name = "updated_at")

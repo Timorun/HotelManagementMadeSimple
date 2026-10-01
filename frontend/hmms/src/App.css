@@ -2720,3 +2720,107 @@ pre {
   margin-left: 0.5rem;
   vertical-align: middle;
 }
+
+/* Booking.com sync (settings) */
+.settings-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.settings-steps {
+  margin: 0 0 1rem 1.2rem;
+  color: var(--dark-gray);
+  font-size: 0.875rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.calendar-sync-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.calendar-sync-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.6fr) minmax(0, 1.4fr) minmax(0, 1.4fr);
+  gap: 1rem;
+  align-items: end;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--light-gray);
+}
+
+.calendar-sync-name {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  align-self: center;
+  color: var(--primary);
+}
+
+.calendar-sync-input {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.calendar-sync-input .form-input {
+  min-width: 0;
+  flex: 1;
+  font-size: 0.85rem;
+}
+
+.booking-import-file {
+  cursor: pointer;
+  margin: 0.5rem 0;
+}
+
+.booking-import-mapping {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 640px;
+}
+
+.booking-import-map-row {
+  display: grid;
+  grid-template-columns: 1fr 220px;
+  gap: 0.75rem;
+  align-items: center;
+  font-size: 0.9rem;
+}
+
+.booking-import-preview tr.import-skip td {
+  color: var(--dark-gray);
+}
+
+.sync-conflicts {
+  border-left: 4px solid var(--danger);
+}
+
+.sync-conflicts ul {
+  margin: 0.5rem 0 0 1.2rem;
+}
+
+@media (max-width: 900px) {
+  .calendar-sync-row {
+    grid-template-columns: 1fr;
+  }
+
+  .booking-import-map-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.link-button {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--info);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}

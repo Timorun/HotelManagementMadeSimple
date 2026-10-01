@@ -357,6 +357,9 @@ export function ReservationDetailsModal({
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                   <InfoRow label={tr('Channel', 'Canal')} value={reservation.channel ? formatChannel(reservation.channel, tr) : '-'} />
+                  {reservation.externalRef && (
+                    <InfoRow label={tr('Booking.com reservation no.', 'N.º de reserva de booking.com')} value={reservation.externalRef} />
+                  )}
                   <InfoRow label={tr('Status', 'Estado')} value={getStatusLabel(status, tr) || '-'} />
                 </div>
 
@@ -364,6 +367,11 @@ export function ReservationDetailsModal({
                   label={`${tr('Guest Notes of', 'Notas del huesped de')} ${reservation.guestDisplayName || reservation.guestName || `${tr('Guest', 'Huesped')} #${reservation.guestId}`}`}
                   value={reservation.guestNotes || '-'}
                 />
+                {reservation.syncConflict && (
+                  <div className="error-message">
+                    {tr('This booking.com stay overlaps another reservation in the same suite. Move or cancel one of them.', 'Esta estancia de booking.com coincide con otra reserva en la misma suite. Mueve o cancela una de ellas.')}
+                  </div>
+                )}
                 <InfoRow label={tr('Reservation Notes', 'Notas de reserva')} value={reservation.notes || '-'} />
               </div>
             ) : (

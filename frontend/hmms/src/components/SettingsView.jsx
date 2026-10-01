@@ -3,13 +3,15 @@ import { Copy, ExternalLink, Home, Plus, Save, Settings } from 'lucide-react';
 import { createSuite, fetchSettings, fetchSuites, updateSuite } from '../api/backend';
 import { useI18n } from '../context/I18nContext';
 import { copyTextToClipboard } from '../utils/clipboard';
+import BookingImportPanel from './settings/BookingImportPanel';
+import CalendarSyncPanel from './settings/CalendarSyncPanel';
 
 const EMPTY_SUITE = { suiteName: '', capacity: 2, active: true };
 
 /**
  * Hotel settings: suites (rooms) and read-only configuration such as mail and public links.
  */
-export default function SettingsView({ children }) {
+export default function SettingsView() {
   const { tr } = useI18n();
   const [settings, setSettings] = useState(null);
   const [suites, setSuites] = useState([]);
@@ -130,7 +132,8 @@ export default function SettingsView({ children }) {
         <p className="field-hint">{tr('Inactive suites are hidden from the calendar and the public booking page.', 'Las suites inactivas no aparecen en el calendario ni en la pagina publica de reservas.')}</p>
       </section>
 
-      {children}
+      <CalendarSyncPanel suites={suites} onChanged={load} onNotice={setNotice} onError={setError} />
+      <BookingImportPanel suites={suites} />
 
       {settings && (
         <section className="card mb-3">
