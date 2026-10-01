@@ -229,7 +229,10 @@ async function request(url, options = {}, errorMessage = 'Request failed') {
     }
 
     const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.error || errorMessage);
+    const error = new Error(errorData.error || errorMessage);
+    error.status = res.status;
+    error.data = errorData;
+    throw error;
   }
 
   if (res.status === 204) {

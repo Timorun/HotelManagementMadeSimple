@@ -738,6 +738,8 @@ export default function ReservationManagement() {
           email: formData.email,
           phone: formData.phone,
           nationalityCode: formData.nationalityCode,
+          // New guests get their profile notes saved in the same request.
+          guestNotes: formData.guestId ? undefined : formData.guestNotes,
           notes: formData.notes,
         });
 
@@ -748,6 +750,7 @@ export default function ReservationManagement() {
         reservationSuccessMessage = tr('Reservation created successfully', 'Reserva creada correctamente');
       }
 
+      // Existing guests: save edited profile notes separately. New inline guests already have them.
       const guestIdFromForm = formData.guestId ? parseInt(formData.guestId) : NaN;
       const guestIdFromEdit = editingReservation?.guestId ? parseInt(editingReservation.guestId) : NaN;
       const guestIdToUpdate = Number.isNaN(guestIdFromForm) ? guestIdFromEdit : guestIdFromForm;
@@ -790,6 +793,31 @@ export default function ReservationManagement() {
       }
     } catch (err) {
       const errorMsg = err?.message || tr('Failed to save reservation', 'No se pudo guardar la reserva');
+
+      // The email or name matches a guest that already exists: offer to use that guest.
+      if (err?.status === 409 && err?.data?.existingGuestId) {
+        const useExisting = window.confirm(`${errorMsg}\n\n${tr(
+          `Use the existing guest "${err.data.existingGuestName}" for this reservation?`,
+          `¿Usar el huesped existente "${err.data.existingGuestName}" para esta reserva?`,
+        )}`);
+        if (useExisting) {
+          try {
+            const existingGuest = await fetchGuest(err.data.existingGuestId);
+            setGuestMode('existing');
+            handleSelectGuest({
+              ...existingGuest,
+              notes: formData.guestNotes || existingGuest.notes,
+            });
+            showToast(tr('Existing guest selected. Review and save again.', 'Huesped existente seleccionado. Revisa y guarda de nuevo.'), 'success');
+          } catch (guestErr) {
+            showToast(guestErr?.message || tr('Failed to load guest', 'No se pudo cargar el huesped'), 'error');
+          }
+        } else {
+          setError(errorMsg);
+        }
+        return;
+      }
+
       setError(errorMsg);
       showToast(errorMsg, 'error');
       if (String(errorMsg).toLowerCase().includes('already exists')) {
@@ -798,7 +826,7 @@ export default function ReservationManagement() {
     } finally {
       setSubmitting(false);
     }
-  }, [editingReservation, formData, guestMode, loadData, navigate, reservations, showToast, tr]);
+  }, [editingReservation, formData, guestMode, handleSelectGuest, loadData, navigate, reservations, showToast, tr]);
 
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();

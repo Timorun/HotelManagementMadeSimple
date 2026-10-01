@@ -6,7 +6,7 @@ import { useI18n } from '../context/I18nContext';
 import { copyTextToClipboard } from '../utils/clipboard';
 
 function normalizeNamePart(value) {
-  return String(value || '').trim().toLowerCase();
+  return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
 function buildWhatsAppLink(phone) {

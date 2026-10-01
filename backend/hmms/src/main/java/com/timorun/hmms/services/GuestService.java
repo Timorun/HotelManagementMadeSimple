@@ -3,6 +3,8 @@ package com.timorun.hmms.services;
 import com.timorun.hmms.dto.GuestRequest;
 import com.timorun.hmms.dto.GuestResponse;
 import com.timorun.hmms.entities.Guest;
+import com.timorun.hmms.exceptions.GuestConflictException;
+import com.timorun.hmms.util.NameUtils;
 import com.timorun.hmms.entities.Nationality;
 import com.timorun.hmms.repositories.GuestRepository;
 import com.timorun.hmms.repositories.NationalityRepository;
@@ -11,6 +13,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -29,15 +32,23 @@ public class GuestService {
      * Create a new guest.
      */
     public GuestResponse createGuest(GuestRequest request) {
+        return toResponse(createGuestEntity(request));
+    }
+
+    /**
+     * Create and save a new guest, applying the same normalization and duplicate checks
+     * whether the guest is created on its own or inline while creating a reservation.
+     */
+    public Guest createGuestEntity(GuestRequest request) {
         validateGuestRequest(request);
-        String normalizedFirstName = request.getFirstName().trim();
-        String normalizedLastName = request.getLastName().trim();
+        String normalizedFirstName = NameUtils.normalize(request.getFirstName());
+        String normalizedLastName = NameUtils.normalize(request.getLastName());
         validateDuplicateGuestName(normalizedFirstName, normalizedLastName, null);
         
         Guest guest = new Guest();
         guest.setFirstName(normalizedFirstName);
         guest.setLastName(normalizedLastName);
-        guest.setEmail(request.getEmail());
+        guest.setEmail(NameUtils.normalizeEmail(request.getEmail()));
         guest.setPhone(request.getPhone());
         guest.setNotes(request.getNotes());
         guest.setMarketingConsent(request.getMarketingConsent() != null ? request.getMarketingConsent() : false);
@@ -49,8 +60,33 @@ public class GuestService {
             guest.setNationality(nationality);
         }
         
-        Guest saved = guestRepository.save(guest);
-        return toResponse(saved);
+        return guestRepository.save(guest);
+    }
+
+    /**
+     * Find a non-anonymized guest by email (case-insensitive).
+     */
+    public Optional<Guest> findActiveGuestByEmail(String email) {
+        String normalizedEmail = NameUtils.normalizeEmail(email);
+        if (normalizedEmail == null) {
+            return Optional.empty();
+        }
+        return guestRepository.findByEmailIgnoreCaseAndAnonymizedAtIsNull(normalizedEmail)
+                .stream()
+                .findFirst();
+    }
+
+    /**
+     * True when the given first/last name refer to the same person as the guest,
+     * ignoring case, accents and extra whitespace.
+     */
+    public static boolean hasSameName(Guest guest, String firstName, String lastName) {
+        return NameUtils.fold(NameUtils.normalize(guest.getFirstName())).equals(NameUtils.fold(NameUtils.normalize(firstName)))
+                && NameUtils.fold(NameUtils.normalize(guest.getLastName())).equals(NameUtils.fold(NameUtils.normalize(lastName)));
+    }
+
+    public static String fullName(Guest guest) {
+        return guest.getFirstName() + " " + guest.getLastName();
     }
 
     /**
@@ -73,18 +109,22 @@ public class GuestService {
     }
 
     /**
-     * Search guests by first or last name.
+     * Search guests by name. Every word in the query must appear somewhere in the full name,
+     * so "maria garcia lopez" and "garcia lopez" both find "María" "García López".
      */
     public List<GuestResponse> searchByName(String query) {
-        if (query == null || query.isBlank()) {
+        List<String> tokens = NameUtils.searchTokens(query);
+        if (tokens.isEmpty()) {
             return List.of();
         }
 
-        String trimmedQuery = query.trim();
-
         return guestRepository
-                .findByFirstNameContainingIgnoreCaseOrLastNameContainingIgnoreCase(trimmedQuery, trimmedQuery)
+                .findByAnonymizedAtIsNull()
                 .stream()
+                .filter(guest -> {
+                    String fullName = NameUtils.fold(fullName(guest));
+                    return tokens.stream().allMatch(fullName::contains);
+                })
                 .sorted(Comparator
                     .comparing(Guest::getLastName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER))
                     .thenComparing(Guest::getFirstName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
@@ -96,7 +136,7 @@ public class GuestService {
      * Find guest by email.
      */
     public GuestResponse findByEmail(String email) {
-        Guest guest = guestRepository.findByEmail(email)
+        Guest guest = findActiveGuestByEmail(email)
                 .orElseThrow(() -> new IllegalArgumentException("Guest not found with email: " + email));
         return toResponse(guest);
     }
@@ -106,8 +146,8 @@ public class GuestService {
      */
     public GuestResponse updateGuest(Long guestId, GuestRequest request) {
         validateGuestRequest(request);
-        String normalizedFirstName = request.getFirstName().trim();
-        String normalizedLastName = request.getLastName().trim();
+        String normalizedFirstName = NameUtils.normalize(request.getFirstName());
+        String normalizedLastName = NameUtils.normalize(request.getLastName());
         validateDuplicateGuestName(normalizedFirstName, normalizedLastName, guestId);
         
         Guest guest = guestRepository.findById(guestId)
@@ -115,7 +155,7 @@ public class GuestService {
         
         guest.setFirstName(normalizedFirstName);
         guest.setLastName(normalizedLastName);
-        guest.setEmail(request.getEmail());
+        guest.setEmail(NameUtils.normalizeEmail(request.getEmail()));
         guest.setPhone(request.getPhone());
         guest.setNotes(request.getNotes());
         guest.setMarketingConsent(request.getMarketingConsent() != null ? request.getMarketingConsent() : guest.getMarketingConsent());
@@ -166,12 +206,15 @@ public class GuestService {
         List<Guest> duplicates = guestRepository
                 .findByFirstNameIgnoreCaseAndLastNameIgnoreCaseAndAnonymizedAtIsNull(firstName, lastName);
 
-        boolean hasDuplicate = duplicates.stream()
-                .anyMatch((guest) -> excludeGuestId == null || !guest.getGuestId().equals(excludeGuestId));
-
-        if (hasDuplicate) {
-            throw new IllegalArgumentException("A guest with this first and last name already exists");
-        }
+        duplicates.stream()
+                .filter((guest) -> excludeGuestId == null || !guest.getGuestId().equals(excludeGuestId))
+                .findFirst()
+                .ifPresent((guest) -> {
+                    throw new GuestConflictException(
+                            "A guest named " + fullName(guest) + " already exists",
+                            guest.getGuestId(),
+                            fullName(guest));
+                });
     }
 
     private GuestResponse toResponse(Guest guest) {
