@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { fetchCalendar, fetchSuites, fetchGuests, updateReservation, cancelReservation, updateReservationStatus, fetchGuest, updateGuest } from '../api/backend';
 import { 
   format, 
@@ -18,6 +18,8 @@ import {
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
 import { STATUS_META, getStatusLabel } from '../api/reservationStatus';
 import { useI18n } from '../context/I18nContext';
+import { isIsoDate, useSessionState } from '../hooks/useSessionState';
+import PeriodPicker from './calendar/PeriodPicker';
 import { ConfirmCancelReservationModal, ReservationDetailsModal } from './reservations/ReservationDetailsModal';
 
 const STATUS_FILTER_DEFAULTS = {
@@ -59,12 +61,25 @@ function countryCodeToFlag(code) {
 
 export default function CalendarView() {
   const { tr, dateLocale } = useI18n();
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState(VIEW_MODE.MONTH);
+  // The visible period is kept in sessionStorage so it survives switching tabs.
+  const [currentDateIso, setCurrentDateIso] = useSessionState('calendar.date', () => format(new Date(), 'yyyy-MM-dd'), isIsoDate);
+  const currentDate = useMemo(() => parseISO(currentDateIso), [currentDateIso]);
+  const setCurrentDate = useCallback((next) => {
+    setCurrentDateIso((previousIso) => {
+      const nextDate = typeof next === 'function' ? next(parseISO(previousIso)) : next;
+      return format(nextDate, 'yyyy-MM-dd');
+    });
+  }, [setCurrentDateIso]);
+  const [viewMode, setViewMode] = useSessionState(
+    'calendar.viewMode',
+    VIEW_MODE.MONTH,
+    (value) => Object.values(VIEW_MODE).includes(value),
+  );
   const [reservations, setReservations] = useState([]);
   const [suites, setSuites] = useState([]);
   const [guests, setGuests] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState(null);
   const [selectedReservation, setSelectedReservation] = useState(null);
   const [showReservationModal, setShowReservationModal] = useState(false);
@@ -115,6 +130,7 @@ export default function CalendarView() {
       setGuests([]);
     } finally {
       setLoading(false);
+      setHasLoaded(true);
     }
   };
 
@@ -402,7 +418,8 @@ export default function CalendarView() {
     setStatusFilters(STATUS_FILTER_DEFAULTS);
   };
 
-  if (loading) {
+  // Full-page spinner only on the first load; navigating keeps the header in place.
+  if (loading && !hasLoaded) {
     return (
       <div className="loading-spinner">
         <div className="spinner"></div>
@@ -414,7 +431,7 @@ export default function CalendarView() {
   return (
     <div className="calendar-view">
       {/* Header */}
-      <div className="card mb-3">
+      <div className="card mb-3 has-popover">
         <div className="card-header" style={{ alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
           <h2>
             <CalendarIcon size={28} />
@@ -428,9 +445,14 @@ export default function CalendarView() {
               <button type="button" onClick={previousPeriod} className="btn btn-primary btn-sm" aria-label={previousPeriodLabel}>
                 <ChevronLeft size={16} />
               </button>
-              <h3 style={{ margin: 0, fontSize: '1.2rem', minWidth: '220px', textAlign: 'center' }}>
-                {currentPeriodLabel}
-              </h3>
+              <PeriodPicker
+                viewMode={viewMode}
+                currentDate={currentDate}
+                onSelect={setCurrentDate}
+                label={currentPeriodLabel}
+                dateLocale={dateLocale}
+                tr={tr}
+              />
               <button type="button" onClick={nextPeriod} className="btn btn-primary btn-sm" aria-label={nextPeriodLabel}>
                 <ChevronRight size={16} />
               </button>
@@ -464,32 +486,39 @@ export default function CalendarView() {
         </div>
       )}
 
-      {/* Main Calendar Content */}
-      {activeSuites.length === 0 ? (
-        <div className="card">
-          <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--dark-gray)' }}>
-            <CalendarIcon size={48} style={{ marginBottom: '1rem', opacity: 0.5 }} />
-            <p style={{ fontSize: '1.125rem', marginBottom: '0.5rem' }}>{tr('No active suites', 'No hay suites activas')}</p>
-            <p style={{ fontSize: '0.875rem' }}>{tr('Add suites to start managing reservations', 'Agrega suites para empezar a gestionar reservas')}</p>
+      <div className={`loading-region ${loading ? 'is-loading' : ''}`} aria-busy={loading}>
+        {loading && (
+          <div className="loading-overlay">
+            <div className="spinner spinner-sm" />
           </div>
-        </div>
-      ) : (
-        <TimelineView 
-          suites={activeSuites} 
-          reservations={filteredReservations}
-          allReservations={reservations}
-          daysInView={daysInView}
-          viewStart={viewStart}
-          viewMode={viewMode}
-          guestById={guestById}
-          onReservationClick={openReservationModal}
-          statusFilters={statusFilters}
-          onToggleStatusFilter={toggleStatusFilter}
-          onResetStatusFilters={resetStatusFilters}
-          tr={tr}
-          dateLocale={dateLocale}
-        />
-      )}
+        )}
+        {/* Main Calendar Content */}
+        {activeSuites.length === 0 ? (
+          <div className="card">
+            <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--dark-gray)' }}>
+              <CalendarIcon size={48} style={{ marginBottom: '1rem', opacity: 0.5 }} />
+              <p style={{ fontSize: '1.125rem', marginBottom: '0.5rem' }}>{tr('No active suites', 'No hay suites activas')}</p>
+              <p style={{ fontSize: '0.875rem' }}>{tr('Add suites to start managing reservations', 'Agrega suites para empezar a gestionar reservas')}</p>
+            </div>
+          </div>
+        ) : (
+          <TimelineView 
+            suites={activeSuites} 
+            reservations={filteredReservations}
+            allReservations={reservations}
+            daysInView={daysInView}
+            viewStart={viewStart}
+            viewMode={viewMode}
+            guestById={guestById}
+            onReservationClick={openReservationModal}
+            statusFilters={statusFilters}
+            onToggleStatusFilter={toggleStatusFilter}
+            onResetStatusFilters={resetStatusFilters}
+            tr={tr}
+            dateLocale={dateLocale}
+          />
+        )}
+      </div>
 
       {showReservationModal && selectedReservation && (
         <ReservationDetailsModal

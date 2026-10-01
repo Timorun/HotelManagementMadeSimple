@@ -1,4 +1,9 @@
 spring:
+  autoconfigure:
+    # Auth is handled by our own token filter (see SecurityConfig/AuthService), so skip Boot's
+    # default in-memory user and its "Using generated security password" log line.
+    exclude: org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
+
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/hotel}
     username: ${SPRING_DATASOURCE_USERNAME:hotel_user}

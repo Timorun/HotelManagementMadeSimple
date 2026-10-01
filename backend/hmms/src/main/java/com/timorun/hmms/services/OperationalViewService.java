@@ -1,7 +1,6 @@
 package com.timorun.hmms.services;
 
 import com.timorun.hmms.dto.ReservationResponse;
-import com.timorun.hmms.dto.RoomCleaningResponse;
 import com.timorun.hmms.entities.Reservation;
 import com.timorun.hmms.entities.ReservationStatus;
 import com.timorun.hmms.repositories.ReservationRepository;
@@ -50,48 +49,6 @@ public class OperationalViewService {
         return reservationRepository.findDeparturestoday(date)
                 .stream()
                 .map(this::toResponse)
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Get rooms that need cleaning.
-     * This includes:
-     * - Rooms with checkout today
-     * - Rooms that need turnover (checkout completed, new arrival coming)
-     */
-    public List<RoomCleaningResponse> getRoomsToClean() {
-        LocalDate today = LocalDate.now();
-        List<Reservation> departuresToday = reservationRepository.findDeparturestoday(today);
-        List<Reservation> arrivalsToday = reservationRepository.findArrivalsToday(today);
-
-        return departuresToday.stream()
-                .map(departure -> {
-                    // Check if there's an arrival today for the same suite
-                    Reservation nextArrival = arrivalsToday.stream()
-                            .filter(arr -> arr.getSuite().getSuiteId().equals(departure.getSuite().getSuiteId()))
-                            .findFirst()
-                            .orElse(null);
-
-                    String status;
-                    LocalDate nextCheckIn = null;
-                    
-                    if (nextArrival != null) {
-                        status = "needs_turnover"; // Quick clean needed
-                        nextCheckIn = nextArrival.getCheckIn();
-                    } else {
-                        status = "checkout_today"; // Standard clean
-                    }
-
-                    return RoomCleaningResponse.builder()
-                            .suiteId(departure.getSuite().getSuiteId())
-                            .suiteName(departure.getSuite().getSuiteName())
-                            .reservationId(departure.getReservationId())
-                            .guestName(departure.getGuest().getFirstName() + " " + departure.getGuest().getLastName())
-                            .checkOut(departure.getCheckOut())
-                            .status(status)
-                            .nextCheckIn(nextCheckIn)
-                            .build();
-                })
                 .collect(Collectors.toList());
     }
 

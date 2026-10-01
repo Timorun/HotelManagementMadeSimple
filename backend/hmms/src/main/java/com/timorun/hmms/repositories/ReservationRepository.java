@@ -65,6 +65,23 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
     @Query("SELECT r FROM Reservation r WHERE r.suite.suiteId = :suiteId AND r.status != com.timorun.hmms.entities.ReservationStatus.CANCELLED")
     List<Reservation> findActiveBySuite(@Param("suiteId") Long suiteId);
 
+    // Non-cancelled reservations of one suite overlapping [checkIn, checkOut), optionally excluding one reservation
+    @Query("""
+            SELECT r
+            FROM Reservation r
+            WHERE r.suite.suiteId = :suiteId
+              AND r.checkIn < :checkOut
+              AND r.checkOut > :checkIn
+              AND r.status <> com.timorun.hmms.entities.ReservationStatus.CANCELLED
+              AND (:excludeReservationId IS NULL OR r.reservationId <> :excludeReservationId)
+            """)
+    List<Reservation> findActiveOverlapping(
+            @Param("suiteId") Long suiteId,
+            @Param("checkIn") LocalDate checkIn,
+            @Param("checkOut") LocalDate checkOut,
+            @Param("excludeReservationId") Long excludeReservationId
+    );
+
     // Find all reservations with specific status
     List<Reservation> findByStatus(ReservationStatus status);
 

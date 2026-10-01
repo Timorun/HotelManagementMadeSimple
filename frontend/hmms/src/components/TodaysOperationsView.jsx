@@ -447,12 +447,13 @@ export default function TodaysOperationsView() {
                   <div className="suite-room-meta">{entry.nationality} {entry.flag} </div>
                   <button
                     type="button"
-                    className="btn btn-outline btn-sm"
+                    className="btn btn-outline btn-sm btn-icon"
                     style={{ marginTop: '1.2rem' }}
                     onClick={() => openReservationModal(entry.reservation)}
+                    aria-label={tr('View reservation', 'Ver reserva')}
+                    title={tr('View reservation', 'Ver reserva')}
                   >
-                    <Eye size={14} />
-                    {tr('Open', 'Abrir')}
+                    <Eye size={16} />
                   </button>
                 </>
               ) : (
@@ -488,11 +489,12 @@ export default function TodaysOperationsView() {
                   </div>
                   <button
                     type="button"
-                    className="btn btn-outline btn-sm"
+                    className="btn btn-outline btn-sm btn-icon"
                     onClick={() => openReservationById(departure.reservationId)}
+                    aria-label={tr('View reservation', 'Ver reserva')}
+                    title={tr('View reservation', 'Ver reserva')}
                   >
-                    <Eye size={14} />
-                    {tr('Open', 'Abrir')}
+                    <Eye size={16} />
                   </button>
                 </li>
               ))}
@@ -524,11 +526,12 @@ export default function TodaysOperationsView() {
                   </div>
                   <button
                     type="button"
-                    className="btn btn-outline btn-sm"
+                    className="btn btn-outline btn-sm btn-icon"
                     onClick={() => openReservationById(arrival.reservationId)}
+                    aria-label={tr('View reservation', 'Ver reserva')}
+                    title={tr('View reservation', 'Ver reserva')}
                   >
-                    <Eye size={14} />
-                    {tr('Open', 'Abrir')}
+                    <Eye size={16} />
                   </button>
                 </li>
               ))}

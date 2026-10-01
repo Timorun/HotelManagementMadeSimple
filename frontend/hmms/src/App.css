@@ -268,21 +268,29 @@ body {
 
 /* Specific styling for the logout button in the header */
 .header-actions .btn-outline {
-    border: 2px solid #334155; /* A crisp, darker slate gray */
-    color: #334155;            /* Matches the border */
+    border: 2px solid rgba(255, 255, 255, 0.55);
+    color: #ffffff;
     background: transparent;
     transition: all 0.2s ease-in-out;
 }
   
 /* Elegant fill-in effect when hovered */
 .header-actions .btn-outline:hover {
-   background: #334155;
-   color: #ffffff;
+   background: #ffffff;
+   color: var(--primary);
 }
 
 .btn-sm {
   padding: 0.5rem 1rem;
   font-size: 0.875rem;
+}
+
+/* Square icon-only button */
+.btn-icon,
+.btn-sm.btn-icon {
+  padding: 0.45rem;
+  justify-content: center;
+  line-height: 0;
 }
 
 /* Grid Layouts */
@@ -805,6 +813,36 @@ body {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+.spinner-sm {
+  width: 32px;
+  height: 32px;
+  border-width: 3px;
+}
+
+/* Keeps surrounding headers/filters in place while a section reloads */
+.loading-region {
+  position: relative;
+  min-height: 140px;
+  /* Contain z-indexed content (sticky headers) so header popovers stay on top */
+  isolation: isolate;
+}
+
+.loading-region.is-loading > :not(.loading-overlay) {
+  opacity: 0.45;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 6rem;
 }
 
 .empty-state {
@@ -1889,4 +1927,123 @@ pre {
 
 .shake {
   animation: shake 0.5s;
+}
+/* Cards that host a popover must sit above later cards (hover transform creates a stacking context) */
+.card.has-popover {
+  position: relative;
+  z-index: 20;
+}
+
+.card.has-popover:hover {
+  transform: none;
+}
+
+/* Calendar period picker */
+.period-picker {
+  position: relative;
+}
+
+.period-picker-trigger {
+  margin: 0;
+  min-width: 220px;
+  padding: 0.35rem 0.75rem;
+  border: 1px dashed transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--primary);
+  font-size: 1.2rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+}
+
+.period-picker-trigger:hover,
+.period-picker-trigger[aria-expanded='true'] {
+  border-color: var(--gray);
+  background: var(--light-gray);
+}
+
+.period-picker-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  width: 290px;
+  padding: 0.75rem;
+  background: var(--white);
+  border: 1px solid var(--light-gray);
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.18);
+}
+
+.period-picker-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.6rem;
+  text-transform: capitalize;
+}
+
+.period-picker-months {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.4rem;
+}
+
+.period-picker-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.period-picker-weekday {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--dark-gray);
+  padding-bottom: 0.25rem;
+  text-transform: capitalize;
+}
+
+.period-picker-cell,
+.period-picker-day {
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--primary);
+  cursor: pointer;
+  font: inherit;
+}
+
+.period-picker-cell {
+  padding: 0.55rem 0;
+  text-transform: capitalize;
+}
+
+.period-picker-day {
+  padding: 0.4rem 0;
+  font-size: 0.85rem;
+}
+
+.period-picker-day.outside {
+  color: var(--dark-gray);
+  opacity: 0.55;
+}
+
+.period-picker-cell:hover,
+.period-picker-day.hovered {
+  background: var(--light-gray);
+}
+
+.period-picker-cell.today,
+.period-picker-day.today {
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.period-picker-cell.selected,
+.period-picker-day.selected {
+  background: var(--primary);
+  color: var(--white);
+  opacity: 1;
 }

@@ -367,16 +367,14 @@ export async function fetchAnalyticsReport(from, to, options = {}) {
 }
 
 export async function fetchOperationsDashboard() {
-  const [arrivalsToday, departuresToday, roomsToClean] = await Promise.all([
+  const [arrivalsToday, departuresToday] = await Promise.all([
     getJson(`${BASE_URL}/operations/arrivals/today`, 'Failed to fetch arrivals'),
     getJson(`${BASE_URL}/operations/departures/today`, 'Failed to fetch departures'),
-    getJson(`${BASE_URL}/operations/rooms-to-clean`, 'Failed to fetch rooms to clean'),
   ]);
 
   return {
     arrivalsToday: withStubFallback(arrivalsToday, STUB_DATA.operations.arrivalsToday),
     departuresToday: withStubFallback(departuresToday, STUB_DATA.operations.departuresToday),
-    roomsToClean: withStubFallback(roomsToClean, STUB_DATA.operations.roomsToClean),
   };
 }
 

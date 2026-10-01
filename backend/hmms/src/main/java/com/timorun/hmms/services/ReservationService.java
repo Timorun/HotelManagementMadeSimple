@@ -196,13 +196,7 @@ public class ReservationService {
      * Used to check suite availability.
      */
     public List<Reservation> getOverlappingReservations(Long suiteId, LocalDate checkIn, LocalDate checkOut, Long excludeReservationId) {
-        List<Reservation> overlapping = reservationRepository.findByCheckInBeforeAndCheckOutAfter(checkOut, checkIn);
-        
-        return overlapping.stream()
-                .filter(r -> r.getSuite().getSuiteId().equals(suiteId))
-                .filter(r -> r.getStatus() != ReservationStatus.CANCELLED)
-                .filter(r -> excludeReservationId == null || !r.getReservationId().equals(excludeReservationId))
-                .collect(Collectors.toList());
+        return reservationRepository.findActiveOverlapping(suiteId, checkIn, checkOut, excludeReservationId);
     }
 
     // ===== PRIVATE HELPER METHODS =====

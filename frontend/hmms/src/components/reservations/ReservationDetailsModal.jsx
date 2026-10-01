@@ -4,6 +4,7 @@ import { AlertCircle, CalendarDays, Check, Copy, Euro, Hotel, Mail, MessageCircl
 import { STATUS_META, getStatusLabel, getTransitionWarning } from '../../api/reservationStatus';
 import { useI18n } from '../../context/I18nContext';
 import { copyTextToClipboard } from '../../utils/clipboard';
+import { CHANNEL_OPTIONS, formatChannel } from '../../utils/channels';
 
 function parseNumeric(value) {
   const parsed = Number(value);
@@ -358,7 +359,7 @@ export function ReservationDetailsModal({
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                  <InfoRow label={tr('Channel', 'Canal')} value={reservation.channel || '-'} capitalize />
+                  <InfoRow label={tr('Channel', 'Canal')} value={reservation.channel ? formatChannel(reservation.channel, tr) : '-'} />
                   <InfoRow label={tr('Status', 'Estado')} value={getStatusLabel(status, tr) || '-'} />
                 </div>
 
@@ -484,11 +485,9 @@ export function ReservationDetailsModal({
                       value={editForm.channel}
                       onChange={(e) => handleFieldChange('channel', e.target.value)}
                     >
-                      <option value="direct">{tr('Direct', 'Directo')}</option>
-                      <option value="booking.com">Booking.com</option>
-                      <option value="airbnb">Airbnb</option>
-                      <option value="expedia">Expedia</option>
-                      <option value="other">{tr('Other', 'Otro')}</option>
+                      {CHANNEL_OPTIONS.map((channel) => (
+                        <option key={channel} value={channel}>{formatChannel(channel, tr)}</option>
+                      ))}
                     </select>
                   </div>
 
