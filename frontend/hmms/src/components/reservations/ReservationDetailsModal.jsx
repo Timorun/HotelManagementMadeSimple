@@ -115,7 +115,6 @@ export function ReservationDetailsModal({
   const reservationNightCount = getNightCount(reservation.checkIn, reservation.checkOut);
   const editNightCount = getNightCount(editForm.checkIn, editForm.checkOut);
   const reservationPricePerNight = getPricePerNight(reservation.checkIn, reservation.checkOut, reservation.priceTotal);
-  const editPricePerNight = getPricePerNight(editForm.checkIn, editForm.checkOut, editForm.priceTotal);
 
   const mailtoLink = reservation.email ? `mailto:${reservation.email}` : null;
   const whatsappLink = toWhatsAppLink(reservation.phone);

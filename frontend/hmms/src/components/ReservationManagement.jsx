@@ -278,14 +278,6 @@ export default function ReservationManagement() {
     }
   }, [formData.checkIn]);
 
-  const canApplyDateFilters = useMemo(() => {
-    if (!isCompleteDateValue(dateFromDraft) || !isCompleteDateValue(dateToDraft)) {
-      return false;
-    }
-
-    return dateFromDraft !== dateFrom || dateToDraft !== dateTo;
-  }, [dateFromDraft, dateToDraft, dateFrom, dateTo]);
-
   const statusFilterSummary = useMemo(() => {
     const availableStatuses = Object.keys(STATUS_META);
     const enabledStatuses = availableStatuses.filter((status) => Boolean(statusFilters[status]));
@@ -827,10 +819,6 @@ export default function ReservationManagement() {
     }));
   }, []);
 
-  const resetStatusFilters = useCallback(() => {
-    setStatusFilters(STATUS_FILTER_DEFAULTS);
-  }, []);
-
   const enableAllStatusFilters = useCallback(() => {
     const nextFilters = Object.keys(STATUS_META).reduce((accumulator, status) => {
       accumulator[status] = true;
@@ -1343,7 +1331,7 @@ export default function ReservationManagement() {
                     </div>
 
                     <div className="status-filter-menu-list">
-                      {Object.entries(STATUS_META).map(([status, meta]) => (
+                      {Object.keys(STATUS_META).map((status) => (
                         <label key={status} className="status-filter-option">
                           <input
                             type="checkbox"

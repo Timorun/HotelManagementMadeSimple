@@ -9,7 +9,7 @@ export default function AppShell({ children }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { t, language, setLanguage } = useI18n();
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
 
   const tabs = useMemo(() => ([
     { id: 'operations', path: '/today', icon: ClipboardCheck },

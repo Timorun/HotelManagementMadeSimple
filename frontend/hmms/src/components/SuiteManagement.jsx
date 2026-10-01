@@ -10,10 +10,6 @@ export default function SuiteManagement() {
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState('all'); // all, active, inactive
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
   const loadData = () => {
     setLoading(true);
     fetchSuites()
@@ -21,6 +17,10 @@ export default function SuiteManagement() {
       .catch((err) => setError(err?.message || String(err)))
       .finally(() => setLoading(false));
   };
+
+  useEffect(() => {
+    loadData();
+  }, []);
 
   const filteredSuites = suites.filter(suite => {
     if (filter === 'active') return suite.active;
