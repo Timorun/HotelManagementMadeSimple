@@ -29,9 +29,14 @@ Create a new reservation. Can either link to an existing guest or create a new o
   "email": "john@example.com",
   "phone": "+31612345678",
   "nationalityCode": "NL",
-  "notes": "VIP guest"
+  "guestNotes": "Allergic to feathers",   // saved on the new guest's profile
+  "notes": "Late arrival"                 // reservation notes for this stay
 }
 ```
+
+If the email belongs to an existing guest with a **different** name the request is rejected with
+`409 Conflict` (`{"error", "existingGuestId", "existingGuestName"}`) instead of silently attaching
+the stay to that guest; the UI then offers to use the existing guest.
 
 **Response:** `201 Created`
 ```json
@@ -229,13 +234,14 @@ Get all guests in the system.
 
 ---
 
-### Search Guests by Last Name
-**GET** `/api/guests/search?lastName=Doe`
+### Search Guests by Name
+**GET** `/api/guests/search?q=maria garcia lopez`
 
-Search for guests by last name (case-insensitive).
+Every word of `q` must appear in the guest's full name. Case- and accent-insensitive, so
+"maria garcia lopez" finds "María García López". Anonymized guests are excluded.
 
 **Query Parameters:**
-- `lastName` (required): Guest's last name
+- `q` (required): one or more name parts
 
 **Response:** `200 OK` - Array of matching guest objects
 
@@ -442,6 +448,8 @@ All endpoints return appropriate HTTP status codes:
 - `201 Created` - Successful POST
 - `400 Bad Request` - Validation error or conflict (e.g., suite not available)
 - `404 Not Found` - Resource not found
+- `409 Conflict` - Guest details clash with an existing guest (see Create Reservation)
+- `429 Too Many Requests` - Public endpoint rate limit (10 requests / 10 minutes per IP)
 - `500 Internal Server Error` - Server error
 
 ---
@@ -455,8 +463,9 @@ All endpoints return appropriate HTTP status codes:
 - Capacity cannot exceed suite capacity
 
 ### Guests
-- First name and last name are required
-- Email must be unique (for new guests)
+- First name and last name are required; whitespace is trimmed and collapsed
+- Phone numbers are stored in E.164 (`+34612345678`); local numbers assume `HMMS_DEFAULT_PHONE_REGION` (ES); invalid numbers return 400
+- A guest with the same first and last name returns 409
 - Nationality code must exist in nationalities table (if provided)
 
 ### Suites
@@ -477,9 +486,9 @@ When creating or updating a reservation:
 ### Guest Auto-Creation
 When creating a reservation:
 1. If `guestId` provided → use existing guest
-2. If email provided → search for existing guest by email
-3. If email exists → link to that guest
-4. Otherwise → create new guest from provided data
+2. If the email belongs to a guest with the same name → link to that guest
+3. If the email belongs to a guest with a different name → 409 Conflict
+4. Otherwise → create a new guest (with `guestNotes`) through the same validation as `POST /api/guests`
 
 ### Soft Delete Policies
 - Reservations: Status changed to "cancelled"
@@ -487,3 +496,68 @@ When creating a reservation:
 - Guests: All personal data anonymized (email, phone, notes, nationality)
 
 ---
+---
+
+## OPERATIONS API (Today view)
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/operations/arrivals/today` | Check-ins today: pending, confirmed and checked-in |
+| GET | `/api/operations/departures/today` | Check-outs today: confirmed, checked-in and checked-out |
+| GET | `/api/operations/occupancy?date=` | Stays occupying a date |
+| GET | `/api/operations/calendar?from=&to=` | Reservations overlapping a range |
+
+Check guests in/out with `PATCH /api/reservations/{id}/status` (`{"status": "checked_in"}`).
+
+---
+
+## BOOKING REQUESTS API ("solicitudes")
+
+Requests from the public booking page are `pending` reservations with channel `website`.
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/booking-requests` | Pending reservations, oldest stay first |
+| GET | `/api/booking-requests/count` | `{"pending": 3}` for the navigation badge |
+| PATCH | `/api/booking-requests/{id}/confirm` | `{"priceTotal": 450, "message": "...", "notifyGuest": true}` → confirmed, guest emailed |
+| PATCH | `/api/booking-requests/{id}/reject` | `{"message": "...", "notifyGuest": true}` → cancelled, guest emailed |
+
+---
+
+## BOOKING.COM SYNC API
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/booking-sync/ical` | Import every suite's booking.com calendar now |
+| POST | `/api/booking-sync/ical/{suiteId}` | Import one suite's calendar |
+| GET | `/api/booking-sync/conflicts` | Imported stays overlapping another reservation |
+| POST | `/api/booking-sync/import` | Import rows of a booking.com reservations export: `{"dryRun": true, "rows": [{bookingNumber, guestName, bookerName, phone, country, checkIn, checkOut, people, price, status, suiteId, remarks}]}` |
+
+Suites carry `bookingIcalUrl` (set with `PUT /api/suites/{id}`) and return `icalExportUrl`,
+`icalLastSyncAt` and `icalLastSyncError`. The calendar of each suite is also imported every
+15 minutes (`hmms.ical.sync-interval-ms`).
+
+---
+
+## OTHER AUTHENTICATED ENDPOINTS
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/settings` | Hotel, mail and public link configuration (read-only) |
+| GET | `/api/guests/{id}/preferences-link` | `{"url": ...}` personal link to unsubscribe / request deletion |
+
+---
+
+## PUBLIC API (no login)
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/public/hotel` | `{"name": "Carmen Suites"}` |
+| GET | `/api/public/nationalities` | Countries for the booking form |
+| GET | `/api/public/availability?checkIn=&checkOut=&guests=` | Active suites with enough capacity and free for the stay |
+| POST | `/api/public/booking-requests` | Booking request (rate limited, honeypot field `website`) → pending reservation; guest and owner are emailed |
+| POST | `/api/public/preferences/request-link` | `{"email"}` → emails a 7-day preferences link if the email is a guest's (always 202) |
+| GET | `/api/public/preferences/{token}` | `{firstName, marketingConsent, deletionRequested, hotelName}` |
+| POST | `/api/public/preferences/{token}/opt-out` | Unsubscribe from marketing |
+| POST | `/api/public/preferences/{token}/delete-request` | Request data deletion (owner is emailed and anonymizes) |
+| GET | `/api/public/ical/{token}.ics` | A suite's availability feed for booking.com (no guest names) |
