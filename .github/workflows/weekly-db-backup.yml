@@ -1,0 +1,106 @@
+name: Weekly database backup
+
+# Dumps the production database every Monday, keeps it as a workflow artifact for 90 days
+# and emails it. Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   PROD_DATABASE_URL   postgresql://user:password@host:5432/dbname?sslmode=require
+#                       (libpq format, not the jdbc: URL)
+#   SMTP_SERVER, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD   e.g. smtp.gmail.com / 465 / app password
+#   BACKUP_EMAIL_TO     where to send the backup
+# Optional:
+#   BACKUP_PASSPHRASE   if set, the dump is encrypted with gpg (AES256) before it leaves GitHub.
+#                       Decrypt with: gpg --decrypt hmms-backup-....dump.gpg > backup.dump
+# Restore with: pg_restore --clean --no-owner -d "$DATABASE_URL" backup.dump
+
+on:
+  schedule:
+    - cron: '17 3 * * 1' # Mondays 03:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      BACKUP_EMAIL_TO: ${{ secrets.BACKUP_EMAIL_TO }}
+
+    steps:
+      - name: Check configuration
+        id: check
+        env:
+          PROD_DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+        run: |
+          if [ -z "$PROD_DATABASE_URL" ]; then
+            # Scheduled runs skip quietly until backups are configured; manual runs fail loudly.
+            if [ "${{ github.event_name }}" = "schedule" ]; then
+              echo "::warning::Backups are not configured yet (PROD_DATABASE_URL secret missing); skipping."
+              echo "enabled=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error::Set the PROD_DATABASE_URL repository secret to enable backups."
+            exit 1
+          fi
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+          if [ -z "$BACKUP_EMAIL_TO" ]; then
+            echo "::warning::BACKUP_EMAIL_TO is not set; the backup will only be kept as an artifact."
+          fi
+
+      - name: Install the latest PostgreSQL client
+        if: steps.check.outputs.enabled == 'true'
+        # pg_dump must be at least as new as the server, so use the PostgreSQL apt repository
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq postgresql-client
+          pg_dump --version
+
+      - name: Dump database
+        if: steps.check.outputs.enabled == 'true'
+        id: dump
+        env:
+          PROD_DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          name="hmms-backup-$(date -u +%Y-%m-%d).dump"
+          pg_dump --format=custom --compress=9 --no-owner --no-privileges --file="$name" "$PROD_DATABASE_URL"
+          if [ -n "$BACKUP_PASSPHRASE" ]; then
+            gpg --batch --yes --pinentry-mode loopback --passphrase "$BACKUP_PASSPHRASE" \
+                --symmetric --cipher-algo AES256 --output "$name.gpg" "$name"
+            rm "$name"
+            name="$name.gpg"
+          fi
+          echo "file=$name" >> "$GITHUB_OUTPUT"
+          echo "size=$(du -h "$name" | cut -f1)" >> "$GITHUB_OUTPUT"
+          ls -lh "$name"
+
+      - name: Keep as artifact
+        if: steps.check.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.dump.outputs.file }}
+          path: ${{ steps.dump.outputs.file }}
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Email backup
+        if: steps.check.outputs.enabled == 'true' && env.BACKUP_EMAIL_TO != ''
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          secure: ${{ secrets.SMTP_PORT == '465' }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          from: HotelManagementMadeSimple backups <${{ secrets.SMTP_USERNAME }}>
+          to: ${{ secrets.BACKUP_EMAIL_TO }}
+          subject: Weekly database backup ${{ steps.dump.outputs.file }}
+          body: |
+            Weekly backup of the HotelManagementMadeSimple database (${{ steps.dump.outputs.size }}), attached.
+            It is also kept for 90 days as an artifact of this run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            Restore with: pg_restore --clean --no-owner -d "<database url>" <file>
+            (decrypt first with gpg --decrypt if the file ends in .gpg)
+          attachments: ${{ steps.dump.outputs.file }}
