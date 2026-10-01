@@ -3,24 +3,12 @@ import { fetchGuests, createGuest, updateGuest, fetchNationalities, anonymizeGue
 import { Users, Plus, Edit, Search, Globe, UserX, Download, Copy, Check, MessageCircle, Send } from 'lucide-react';
 import { exportRowsToExcel } from '../utils/excelExport';
 import { useI18n } from '../context/I18nContext';
+import { formatPhoneDisplay, toWhatsAppLink } from '../utils/phone';
+import PhoneInput from './common/PhoneInput';
 import { copyTextToClipboard } from '../utils/clipboard';
 
 function normalizeNamePart(value) {
   return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
-}
-
-function buildWhatsAppLink(phone) {
-  const cleaned = String(phone || '').replace(/[^\d+]/g, '');
-  if (!cleaned) {
-    return null;
-  }
-
-  const normalized = cleaned.startsWith('+') ? cleaned.slice(1) : cleaned.replace(/^0+/, '');
-  if (!normalized) {
-    return null;
-  }
-
-  return `https://wa.me/${normalized}`;
 }
 
 export default function GuestManagement() {
@@ -485,7 +473,7 @@ export default function GuestManagement() {
             </thead>
             <tbody>
               {filteredGuests.map((guest) => {
-                const whatsappLink = buildWhatsAppLink(guest.phone);
+                const whatsappLink = toWhatsAppLink(guest.phone);
                 const emailCopyKey = `guest-email-${guest.guestId}`;
                 const phoneCopyKey = `guest-phone-${guest.guestId}`;
 
@@ -538,7 +526,7 @@ export default function GuestManagement() {
                           guest.phone
                             ? (
                               <span className="contact-data-group">
-                                <span className="contact-value" title={guest.phone}>{guest.phone}</span>
+                                <span className="contact-value" title={guest.phone}>{formatPhoneDisplay(guest.phone)}</span>
                                 <span className="contact-actions-inline guest-contact-actions">
                                   {whatsappLink ? (
                                     <a
@@ -709,12 +697,9 @@ export default function GuestManagement() {
                 </div>
                 <div className="form-group">
                   <label className="form-label">{tr('Phone', 'Telefono')}</label>
-                  <input
-                    type="tel"
-                    className="form-input"
+                  <PhoneInput
                     value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    placeholder="+31 6 12345678"
+                    onChange={(phone) => setFormData((prev) => ({ ...prev, phone }))}
                   />
                 </div>
                 <div className="form-group">

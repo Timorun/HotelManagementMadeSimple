@@ -19,6 +19,9 @@ spring:
     locations: ${SPRING_FLYWAY_LOCATIONS:classpath:db/migration}
 
 hmms:
+  hotel:
+    # Region assumed for phone numbers typed without a country code (ISO 3166 code)
+    default-phone-region: ${HMMS_DEFAULT_PHONE_REGION:ES}
   cors:
     allowed-origins: ${HMMS_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
   auth:

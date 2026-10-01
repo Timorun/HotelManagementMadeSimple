@@ -6,6 +6,7 @@ import { format, differenceInDays, parseISO, isBefore, addDays, startOfDay, star
 import { STATUS_META, getStatusLabel, getTransitionWarning } from '../api/reservationStatus';
 import { exportRowsToExcel } from '../utils/excelExport';
 import { CHANNEL_OPTIONS, formatChannel } from '../utils/channels';
+import PhoneInput from './common/PhoneInput';
 import { useI18n } from '../context/I18nContext';
 import { isIsoDate, useSessionState } from '../hooks/useSessionState';
 import { ConfirmCancelReservationModal, ReservationDetailsModal } from './reservations/ReservationDetailsModal';
@@ -1750,12 +1751,9 @@ export default function ReservationManagement() {
                       </div>
                       <div className="form-group">
                         <label className="form-label">{tr('Phone', 'Telefono')}</label>
-                        <input
-                          type="tel"
-                          className="form-input"
+                        <PhoneInput
                           value={formData.phone}
-                          onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                          placeholder="+31 6 12345678"
+                          onChange={(phone) => setFormData((prev) => ({ ...prev, phone }))}
                         />
                       </div>
                       <div className="form-group">

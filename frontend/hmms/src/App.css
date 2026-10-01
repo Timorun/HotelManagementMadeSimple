@@ -787,6 +787,17 @@ body {
   box-shadow: 0 0 0 3px rgba(230, 126, 34, 0.1);
 }
 
+.field-hint {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.78rem;
+  color: var(--dark-gray);
+}
+
+.field-hint.error {
+  color: var(--danger);
+}
+
 .form-textarea {
   resize: vertical;
   min-height: 100px;

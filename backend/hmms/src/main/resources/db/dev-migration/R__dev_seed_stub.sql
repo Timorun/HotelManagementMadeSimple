@@ -19,7 +19,7 @@ BEGIN
         (10, 'Marie', 'Dupont', 'marie.dupont@example.fr', '+33612345678', 'FR', true, NULL),
         (11, 'Thomas', 'Martin', 'thomas.martin@example.fr', '+33687654321', 'FR', true, NULL),
         (12, 'Sophie', 'Dubois', 'sophie.dubois@example.be', '+32470123456', 'BE', false, NULL),
-        (13, 'James', 'Smith', 'james.smith@example.co.uk', '+447700900123', 'GB', true, NULL),
+        (13, 'James', 'Smith', 'james.smith@example.co.uk', '+447911123456', 'GB', true, NULL),
         (14, 'Emily', 'Johnson', 'emily.johnson@example.com', '+12025550123', 'US', true, NULL),
         (15, 'Carmen', 'Ruiz Pérez', 'carmen.ruiz@example.es', '+34655443322', 'ES', true, NULL);
 

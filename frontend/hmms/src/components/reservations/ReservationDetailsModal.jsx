@@ -5,6 +5,7 @@ import { STATUS_META, getStatusLabel, getTransitionWarning } from '../../api/res
 import { useI18n } from '../../context/I18nContext';
 import { copyTextToClipboard } from '../../utils/clipboard';
 import { CHANNEL_OPTIONS, formatChannel } from '../../utils/channels';
+import { formatPhoneDisplay, toWhatsAppLink } from '../../utils/phone';
 
 function parseNumeric(value) {
   const parsed = Number(value);
@@ -69,20 +70,6 @@ function getPricePerNight(checkIn, checkOut, totalPrice) {
   }
 
   return total / nights;
-}
-
-function toWhatsAppLink(phone) {
-  const cleaned = String(phone || '').replace(/[^\d+]/g, '');
-  if (!cleaned) {
-    return null;
-  }
-
-  const normalized = cleaned.startsWith('+') ? cleaned.slice(1) : cleaned.replace(/^0+/, '');
-  if (!normalized) {
-    return null;
-  }
-
-  return `https://wa.me/${normalized}`;
 }
 
 export function ReservationDetailsModal({
@@ -260,7 +247,7 @@ export function ReservationDetailsModal({
                 <div className="reservation-contact-line">
                   <span className="reservation-contact-value">
                     <Phone size={13} />
-                    {reservation.phone}
+                    {formatPhoneDisplay(reservation.phone)}
                   </span>
                   <span className="contact-actions-inline">
                     {whatsappLink ? (

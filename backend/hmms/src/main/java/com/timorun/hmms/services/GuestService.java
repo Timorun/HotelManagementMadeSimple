@@ -20,12 +20,15 @@ import java.util.stream.Collectors;
 public class GuestService {
     private final GuestRepository guestRepository;
     private final NationalityRepository nationalityRepository;
+    private final PhoneNormalizer phoneNormalizer;
 
     public GuestService(
             GuestRepository guestRepository,
-            NationalityRepository nationalityRepository) {
+            NationalityRepository nationalityRepository,
+            PhoneNormalizer phoneNormalizer) {
         this.guestRepository = guestRepository;
         this.nationalityRepository = nationalityRepository;
+        this.phoneNormalizer = phoneNormalizer;
     }
 
     /**
@@ -49,7 +52,7 @@ public class GuestService {
         guest.setFirstName(normalizedFirstName);
         guest.setLastName(normalizedLastName);
         guest.setEmail(NameUtils.normalizeEmail(request.getEmail()));
-        guest.setPhone(request.getPhone());
+        guest.setPhone(phoneNormalizer.normalize(request.getPhone()));
         guest.setNotes(request.getNotes());
         guest.setMarketingConsent(request.getMarketingConsent() != null ? request.getMarketingConsent() : false);
         guest.setCreatedAt(LocalDateTime.now());
@@ -156,7 +159,7 @@ public class GuestService {
         guest.setFirstName(normalizedFirstName);
         guest.setLastName(normalizedLastName);
         guest.setEmail(NameUtils.normalizeEmail(request.getEmail()));
-        guest.setPhone(request.getPhone());
+        guest.setPhone(phoneNormalizer.normalize(request.getPhone()));
         guest.setNotes(request.getNotes());
         guest.setMarketingConsent(request.getMarketingConsent() != null ? request.getMarketingConsent() : guest.getMarketingConsent());
         

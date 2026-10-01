@@ -95,4 +95,21 @@ class GuestCreationTest extends IntegrationTest {
     private List<String> names(List<GuestResponse> guests) {
         return guests.stream().map(g -> g.getFirstName() + " " + g.getLastName()).toList();
     }
+
+    @Test
+    void guestPhoneIsSavedInE164AndInvalidPhoneIsRejected() {
+        GuestRequest request = new GuestRequest();
+        request.setFirstName("Phone");
+        request.setLastName("Tester");
+        request.setPhone("612 34 56 78");
+        assertThat(guestService.createGuest(request).getPhone()).isEqualTo("+34612345678");
+
+        GuestRequest invalid = new GuestRequest();
+        invalid.setFirstName("Bad");
+        invalid.setLastName("Phone");
+        invalid.setPhone("12");
+        assertThatThrownBy(() -> guestService.createGuest(invalid))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Invalid phone number");
+    }
 }
