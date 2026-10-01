@@ -53,13 +53,28 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
             @Param("nationalityCode") String nationalityCode
     );
 
-    // Find reservations for today (check-in today)
-    @Query("SELECT r FROM Reservation r WHERE r.checkIn = :today AND r.status = com.timorun.hmms.entities.ReservationStatus.CONFIRMED")
-    List<Reservation> findArrivalsToday(@Param("today") LocalDate today);
+    // Arrivals on a date: still expected (pending/confirmed) or already checked in,
+    // so a guest stays in the list after being marked as arrived.
+    @Query("""
+            SELECT r FROM Reservation r
+            WHERE r.checkIn = :date
+              AND r.status IN (com.timorun.hmms.entities.ReservationStatus.PENDING,
+                               com.timorun.hmms.entities.ReservationStatus.CONFIRMED,
+                               com.timorun.hmms.entities.ReservationStatus.CHECKED_IN)
+            ORDER BY r.suite.suiteName
+            """)
+    List<Reservation> findArrivalsOn(@Param("date") LocalDate date);
 
-    // Find reservations with check-out today
-    @Query("SELECT r FROM Reservation r WHERE r.checkOut = :today AND r.status IN (com.timorun.hmms.entities.ReservationStatus.CONFIRMED, com.timorun.hmms.entities.ReservationStatus.CHECKED_IN)")
-    List<Reservation> findDeparturestoday(@Param("today") LocalDate today);
+    // Departures on a date: still in house (confirmed/checked in) or already checked out.
+    @Query("""
+            SELECT r FROM Reservation r
+            WHERE r.checkOut = :date
+              AND r.status IN (com.timorun.hmms.entities.ReservationStatus.CONFIRMED,
+                               com.timorun.hmms.entities.ReservationStatus.CHECKED_IN,
+                               com.timorun.hmms.entities.ReservationStatus.CHECKED_OUT)
+            ORDER BY r.suite.suiteName
+            """)
+    List<Reservation> findDeparturesOn(@Param("date") LocalDate date);
 
     // Find active reservations for a specific suite
     @Query("SELECT r FROM Reservation r WHERE r.suite.suiteId = :suiteId AND r.status != com.timorun.hmms.entities.ReservationStatus.CANCELLED")

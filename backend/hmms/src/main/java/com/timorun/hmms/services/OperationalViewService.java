@@ -1,7 +1,6 @@
 package com.timorun.hmms.services;
 
 import com.timorun.hmms.dto.ReservationResponse;
-import com.timorun.hmms.entities.Reservation;
 import com.timorun.hmms.entities.ReservationStatus;
 import com.timorun.hmms.repositories.ReservationRepository;
 import org.springframework.stereotype.Service;
@@ -13,9 +12,11 @@ import java.util.stream.Collectors;
 @Service
 public class OperationalViewService {
     private final ReservationRepository reservationRepository;
+    private final ReservationService reservationService;
 
-    public OperationalViewService(ReservationRepository reservationRepository) {
+    public OperationalViewService(ReservationRepository reservationRepository, ReservationService reservationService) {
         this.reservationRepository = reservationRepository;
+        this.reservationService = reservationService;
     }
 
     /**
@@ -29,9 +30,9 @@ public class OperationalViewService {
      * Get arrivals for a specific date.
      */
     public List<ReservationResponse> getArrivals(LocalDate date) {
-        return reservationRepository.findArrivalsToday(date)
+        return reservationRepository.findArrivalsOn(date)
                 .stream()
-                .map(this::toResponse)
+                .map(reservationService::toResponse)
                 .collect(Collectors.toList());
     }
 
@@ -46,9 +47,9 @@ public class OperationalViewService {
      * Get departures for a specific date.
      */
     public List<ReservationResponse> getDepartures(LocalDate date) {
-        return reservationRepository.findDeparturestoday(date)
+        return reservationRepository.findDeparturesOn(date)
                 .stream()
-                .map(this::toResponse)
+                .map(reservationService::toResponse)
                 .collect(Collectors.toList());
     }
 
@@ -61,7 +62,7 @@ public class OperationalViewService {
         return reservationRepository.findByCheckInBeforeAndCheckOutAfter(dayAfter, date)
                 .stream()
                 .filter(r -> r.getStatus() == ReservationStatus.CONFIRMED || r.getStatus() == ReservationStatus.CHECKED_IN)
-                .map(this::toResponse)
+                .map(reservationService::toResponse)
                 .collect(Collectors.toList());
     }
 
@@ -72,32 +73,8 @@ public class OperationalViewService {
     public List<ReservationResponse> getCalendarData(LocalDate from, LocalDate to) {
         return reservationRepository.findByCheckInBeforeAndCheckOutAfter(to.plusDays(1), from)
                 .stream()
-                .map(this::toResponse)
+                .map(reservationService::toResponse)
                 .collect(Collectors.toList());
     }
 
-    // ===== PRIVATE HELPER METHODS =====
-
-    private ReservationResponse toResponse(Reservation reservation) {
-        return ReservationResponse.builder()
-                .reservationId(reservation.getReservationId())
-                .suiteId(reservation.getSuite().getSuiteId())
-                .suiteName(reservation.getSuite().getSuiteName())
-                .guestId(reservation.getGuest().getGuestId())
-                .guestName(reservation.getGuest().getFirstName() + " " + reservation.getGuest().getLastName())
-                .email(reservation.getGuest().getEmail())
-                .phone(reservation.getGuest().getPhone())
-                .guestNotes(reservation.getGuest().getNotes())
-                .checkIn(reservation.getCheckIn())
-                .checkOut(reservation.getCheckOut())
-                .numGuests(reservation.getNumGuests())
-                .priceTotal(reservation.getPriceTotal())
-                .channel(reservation.getChannel())
-                .notes(reservation.getNotes())
-                .status(reservation.getStatus().getValue())
-                .statusLabel(reservation.getStatus().getLabel())
-                .statusColor(reservation.getStatus().getColor())
-                .createdAt(reservation.getCreatedAt())
-                .build();
-    }
 }

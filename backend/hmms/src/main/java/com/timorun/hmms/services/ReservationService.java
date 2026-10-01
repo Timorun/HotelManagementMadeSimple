@@ -273,7 +273,7 @@ public class ReservationService {
                 || status == ReservationStatus.CHECKED_IN;
     }
 
-    private ReservationResponse toResponse(Reservation reservation) {
+    public ReservationResponse toResponse(Reservation reservation) {
         boolean guestAnonymized = reservation.getGuest().getAnonymizedAt() != null;
         String guestName = reservation.getGuest().getFirstName() + " " + reservation.getGuest().getLastName();
         String guestDisplayName = guestAnonymized

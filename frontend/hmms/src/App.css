@@ -1222,6 +1222,106 @@ body {
   font-weight: 700;
   color: var(--primary);
   margin-bottom: 0.1rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.operations-item.status-checked_in,
+.operations-item.status-checked_out {
+  background: #f6faf8;
+}
+
+.operations-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.operations-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--success);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.status-pill {
+  display: inline-block;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+
+.suite-room-nudge {
+  margin-top: 0.75rem;
+  padding: 0.6rem;
+  border-radius: 8px;
+  background: rgba(243, 156, 18, 0.12);
+  border: 1px solid rgba(243, 156, 18, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+  color: #7a4a00;
+  font-weight: 600;
+}
+
+.suite-room-nudge .btn {
+  align-self: flex-start;
+}
+
+.suite-room-footer {
+  margin-top: 0.85rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.ops-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  max-width: calc(100vw - 32px);
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  color: #fff;
+  background: var(--primary);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  font-weight: 500;
+}
+
+.ops-toast.error {
+  background: var(--danger);
+}
+
+.ops-toast-undo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 6px;
+  background: transparent;
+  color: #fff;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.ops-toast-undo:hover {
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .operations-item-sub {
