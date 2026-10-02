@@ -357,16 +357,31 @@ Get only active suites.
 ### Update Suite
 **PUT** `/api/suites/{id}`
 
-Update suite information.
+Update suite information. `suiteName` and `capacity` are required; every other field is
+optional, and leaving it out (or `null`) keeps the current value.
 
 **Request Body:**
 ```json
 {
   "suiteName": "Luxury Suite",
   "capacity": 4,
-  "active": true
+  "active": true,
+  "descriptionEn": "Bright suite with a private terrace.",
+  "descriptionEs": "Suite luminosa con terraza privada.",
+  "sizeM2": 45,
+  "amenities": ["double_bed", "private_terrace", "kitchen", "wifi"],
+  "photoUrls": ["/suites/patio/01.webp", "https://example.com/photo.jpg"]
 }
 ```
+
+The booking-page details (also accepted by **POST**):
+
+| Field | Rules | Clear it with |
+|---|---|---|
+| `descriptionEn`, `descriptionEs` | At most 4000 characters; line breaks are kept | `""` |
+| `sizeM2` | 1 to 1000 | `0` |
+| `amenities` | At most 30 keys matching `[a-z][a-z0-9_]*` (max 40 characters); the frontend knows `double_bed`, `twin_beds`, `sofa_bed`, `living_area`, `private_terrace`, `patio`, `balcony`, `kitchen`, `kitchenette`, `dining_area`, `fridge`, `coffee_machine`, `washing_machine`, `air_conditioning`, `heating`, `fan`, `wifi`, `smart_tv`, `workspace`, `private_bathroom`, `bathtub`, `hairdryer`, `iron`, `cot_available`, `self_check_in` and shows others as text | `[]` |
+| `photoUrls` | At most 20, in display order; each a path of an image shipped with the frontend (`/suites/...`) or an `https://` link, at most 500 characters | `[]` |
 
 **Response:** `200 OK` - Updated suite object
 
@@ -434,7 +449,16 @@ Reactivate a deactivated suite.
   "suiteId": "Long",
   "suiteName": "String",
   "capacity": "Integer",
-  "active": "Boolean"
+  "active": "Boolean",
+  "bookingIcalUrl": "String (booking.com calendar to import)",
+  "icalExportUrl": "String (this suite's availability feed for booking.com)",
+  "icalLastSyncAt": "LocalDateTime (ISO-8601)",
+  "icalLastSyncError": "String",
+  "descriptionEn": "String",
+  "descriptionEs": "String",
+  "sizeM2": "Integer",
+  "amenities": ["String (amenity key)"],
+  "photoUrls": ["String (in display order)"]
 }
 ```
 
@@ -554,7 +578,7 @@ Suites carry `bookingIcalUrl` (set with `PUT /api/suites/{id}`) and return `ical
 |---|---|---|
 | GET | `/api/public/hotel` | `{"name": "Carmen Suites"}` |
 | GET | `/api/public/nationalities` | Countries for the booking form |
-| GET | `/api/public/availability?checkIn=&checkOut=&guests=` | Active suites with enough capacity and free for the stay |
+| GET | `/api/public/availability?checkIn=&checkOut=&guests=` | Active suites with enough capacity and free for the stay: `[{suiteId, suiteName, capacity, sizeM2, descriptionEn, descriptionEs, amenities, photoUrls}]` |
 | POST | `/api/public/booking-requests` | Booking request (rate limited, honeypot field `website`) → pending reservation; guest and owner are emailed |
 | POST | `/api/public/preferences/request-link` | `{"email"}` → emails a 7-day preferences link if the email is a guest's (always 202) |
 | GET | `/api/public/preferences/{token}` | `{firstName, marketingConsent, deletionRequested, hotelName}` |
