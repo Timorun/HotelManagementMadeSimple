@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { addDays, differenceInCalendarDays, format, parseISO } from 'date-fns';
-import { BedDouble, CalendarCheck, CheckCircle2, Search, Users } from 'lucide-react';
+import { CalendarCheck, CheckCircle2, Search } from 'lucide-react';
 import { fetchPublicAvailability, fetchPublicNationalities, submitBookingRequest } from '../../api/backend';
 import { useI18n } from '../../context/I18nContext';
 import PhoneInput from '../common/PhoneInput';
 import { isValidPhoneOrEmpty } from '../../utils/phone';
 import PublicLayout from './PublicLayout';
+import SuiteCard from './SuiteCard';
 
 const today = () => format(new Date(), 'yyyy-MM-dd');
 
@@ -40,6 +41,14 @@ export default function BookingPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [confirmation, setConfirmation] = useState(null);
+  const detailsRef = useRef(null);
+
+  // After choosing a suite, bring the guest-details form into view
+  useEffect(() => {
+    if (selectedSuite) {
+      detailsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [selectedSuite]);
 
   useEffect(() => {
     fetchPublicNationalities()
@@ -196,25 +205,21 @@ export default function BookingPage() {
           {suites.length === 0 && (
             <p className="public-lead">{tr('Try other dates or fewer guests.', 'Prueba otras fechas o menos huespedes.')}</p>
           )}
-          <div className="public-suite-grid">
+          <div className="suite-card-grid">
             {suites.map((suite) => (
-              <button
+              <SuiteCard
                 key={suite.suiteId}
-                type="button"
-                className={`public-suite ${selectedSuite?.suiteId === suite.suiteId ? 'selected' : ''}`}
-                onClick={() => setSelectedSuite(suite)}
-              >
-                <BedDouble size={22} />
-                <span className="public-suite-name">{suite.suiteName}</span>
-                <span className="public-suite-meta"><Users size={14} /> {tr(`Up to ${suite.capacity} guests`, `Hasta ${suite.capacity} huespedes`)}</span>
-              </button>
+                suite={suite}
+                selected={selectedSuite?.suiteId === suite.suiteId}
+                onChoose={() => setSelectedSuite(suite)}
+              />
             ))}
           </div>
         </section>
       )}
 
       {selectedSuite && searchedStay && (
-        <section className="card public-card">
+        <section className="card public-card" ref={detailsRef}>
           <h3 className="public-subtitle">
             {tr('Your details', 'Tus datos')} · {selectedSuite.suiteName}, {formatDate(searchedStay.checkIn)} – {formatDate(searchedStay.checkOut)}
           </h3>

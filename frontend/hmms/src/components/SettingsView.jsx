@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Copy, ExternalLink, Home, Plus, Save, Settings } from 'lucide-react';
+import { Copy, ExternalLink, Home, Images, Plus, Save, Settings } from 'lucide-react';
 import { createSuite, fetchSettings, fetchSuites, updateSuite } from '../api/backend';
 import { useI18n } from '../context/I18nContext';
 import { copyTextToClipboard } from '../utils/clipboard';
 import BookingImportPanel from './settings/BookingImportPanel';
 import CalendarSyncPanel from './settings/CalendarSyncPanel';
+import SuiteDetailsModal from './settings/SuiteDetailsModal';
 
 const EMPTY_SUITE = { suiteName: '', capacity: 2, active: true };
 
@@ -17,6 +18,7 @@ export default function SettingsView() {
   const [suites, setSuites] = useState([]);
   const [drafts, setDrafts] = useState({});
   const [newSuite, setNewSuite] = useState(EMPTY_SUITE);
+  const [detailsSuite, setDetailsSuite] = useState(null);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
   const [savingId, setSavingId] = useState(null);
@@ -114,9 +116,20 @@ export default function SettingsView() {
                     <td><input type="number" min={1} max={20} className="form-input settings-capacity" value={draft.capacity} onChange={(e) => setDraftField(suite, 'capacity', e.target.value)} /></td>
                     <td><input type="checkbox" checked={Boolean(draft.active)} onChange={(e) => setDraftField(suite, 'active', e.target.checked)} aria-label={tr('Active', 'Activa')} /></td>
                     <td>
-                      <button type="button" className="btn btn-primary btn-sm" disabled={!changed || savingId === suite.suiteId} onClick={() => saveSuite(suite)}>
-                        <Save size={14} /> {tr('Save', 'Guardar')}
-                      </button>
+                      <div className="settings-suite-actions">
+                        <button type="button" className="btn btn-primary btn-sm" disabled={!changed || savingId === suite.suiteId} onClick={() => saveSuite(suite)}>
+                          <Save size={14} /> {tr('Save', 'Guardar')}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          onClick={() => setDetailsSuite(suite)}
+                          title={tr('Photos and description for the booking page', 'Fotos y descripción para la página de reservas')}
+                        >
+                          <Images size={14} /> {tr('Details', 'Detalles')}
+                          {suite.photoUrls?.length > 0 && <span className="settings-photo-count">{suite.photoUrls.length}</span>}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -131,6 +144,17 @@ export default function SettingsView() {
         </form>
         <p className="field-hint">{tr('Inactive suites are hidden from the calendar and the public booking page.', 'Las suites inactivas no aparecen en el calendario ni en la pagina publica de reservas.')}</p>
       </section>
+
+      {detailsSuite && (
+        <SuiteDetailsModal
+          suite={detailsSuite}
+          onClose={() => setDetailsSuite(null)}
+          onSaved={async (message) => {
+            setNotice(message);
+            await load();
+          }}
+        />
+      )}
 
       <CalendarSyncPanel suites={suites} onChanged={load} onNotice={setNotice} onError={setError} />
       <BookingImportPanel suites={suites} />
