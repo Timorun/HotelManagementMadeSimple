@@ -381,7 +381,7 @@ The booking-page details (also accepted by **POST**):
 | `descriptionEn`, `descriptionEs` | At most 4000 characters; line breaks are kept | `""` |
 | `sizeM2` | 1 to 1000 | `0` |
 | `amenities` | At most 30 keys matching `[a-z][a-z0-9_]*` (max 40 characters); the frontend knows `double_bed`, `twin_beds`, `sofa_bed`, `living_area`, `private_terrace`, `patio`, `balcony`, `kitchen`, `kitchenette`, `dining_area`, `fridge`, `coffee_machine`, `washing_machine`, `air_conditioning`, `heating`, `fan`, `wifi`, `smart_tv`, `workspace`, `private_bathroom`, `bathtub`, `hairdryer`, `iron`, `cot_available`, `self_check_in` and shows others as text | `[]` |
-| `photoUrls` | At most 20, in display order; each a path of an image shipped with the frontend (`/suites/...`) or an `https://` link, at most 500 characters | `[]` |
+| `photoUrls` | At most 30, in display order; each a path of an image shipped with the frontend (`/suites/...`) or an `https://` link, at most 500 characters | `[]` |
 
 **Response:** `200 OK` - Updated suite object
 

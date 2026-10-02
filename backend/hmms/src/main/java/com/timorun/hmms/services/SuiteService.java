@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
 public class SuiteService {
     private static final Pattern AMENITY_KEY = Pattern.compile("[a-z][a-z0-9_]{0,39}");
     private static final int MAX_AMENITIES = 30;
-    private static final int MAX_PHOTOS = 20;
+    private static final int MAX_PHOTOS = 30;
 
     private final SuiteRepository suiteRepository;
 

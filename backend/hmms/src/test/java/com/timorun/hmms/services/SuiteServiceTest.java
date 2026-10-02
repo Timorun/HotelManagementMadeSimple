@@ -30,6 +30,27 @@ class SuiteServiceTest extends IntegrationTest {
     }
 
     @Test
+    void seededSuitesHaveTheWebsiteContent() {
+        // Filled by V3__suite_content.sql from carmensuites.com
+        List<String> websiteSuites = List.of("Suite 0ºA", "Suite 1ºA", "Suite 1ºB", "Suite 2ºA", "Suite 2ºB");
+        List<SuiteResponse> suites = suiteService.getAllSuites().stream()
+                .filter(suite -> websiteSuites.contains(suite.getSuiteName()))
+                .toList();
+
+        assertThat(suites).extracting(SuiteResponse::getSuiteName).containsExactlyInAnyOrderElementsOf(websiteSuites);
+        assertThat(suites).allSatisfy(suite -> {
+            assertThat(suite.getDescriptionEn()).isNotBlank();
+            assertThat(suite.getDescriptionEs()).isNotBlank();
+            assertThat(suite.getSizeM2()).isIn(45, 48);
+            assertThat(suite.getAmenities()).contains("wifi", "elevator", "air_conditioning", "kitchen", "no_pets");
+            assertThat(suite.getPhotoUrls()).hasSizeBetween(17, 28).allMatch(url -> url.matches("/suites/\\d+\\.webp"));
+        });
+        SuiteResponse patioSuite = suites.stream().filter(suite -> suite.getSuiteName().equals("Suite 0ºA")).findFirst().orElseThrow();
+        assertThat(patioSuite.getAmenities()).contains("patio", "accessible", "twin_beds", "extra_bed");
+        assertThat(patioSuite.getPhotoUrls()).first().isEqualTo("/suites/57.webp");
+    }
+
+    @Test
     void detailsAreSavedAndKeptWhenOnlyBasicsAreUpdated() {
         SuiteRequest request = basics("Patio", 3);
         request.setDescriptionEn("  Bright suite with a private patio.  ");
