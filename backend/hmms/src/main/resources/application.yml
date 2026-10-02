@@ -1,3 +1,10 @@
+logging:
+  level:
+    # Internet scanners send garbage to any open port (TLS or SOCKS on plain http, malformed
+    # cookies). Tomcat logs each such request at INFO; they are not errors of this app.
+    org.apache.coyote.http11.Http11Processor: WARN
+    org.apache.tomcat.util.http.parser.Cookie: WARN
+
 spring:
   autoconfigure:
     # Auth is handled by our own token filter (see SecurityConfig/AuthService), so skip Boot's

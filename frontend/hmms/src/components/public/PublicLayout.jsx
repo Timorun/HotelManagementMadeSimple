@@ -16,6 +16,15 @@ export default function PublicLayout({ children }) {
       .catch(() => {});
   }, []);
 
+  // Guests see the hotel's name in the browser tab rather than the app's name
+  useEffect(() => {
+    const appTitle = document.title;
+    document.title = hotelName;
+    return () => {
+      document.title = appTitle;
+    };
+  }, [hotelName]);
+
   return (
     <div className="public-page">
       <header className="public-header">
