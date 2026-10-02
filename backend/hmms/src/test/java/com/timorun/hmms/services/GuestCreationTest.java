@@ -5,7 +5,9 @@ import com.timorun.hmms.dto.CreateReservationRequest;
 import com.timorun.hmms.dto.GuestRequest;
 import com.timorun.hmms.dto.GuestResponse;
 import com.timorun.hmms.dto.ReservationResponse;
+import com.timorun.hmms.entities.Guest;
 import com.timorun.hmms.exceptions.GuestConflictException;
+import com.timorun.hmms.repositories.GuestRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -23,6 +25,9 @@ class GuestCreationTest extends IntegrationTest {
 
     @Autowired
     private GuestService guestService;
+
+    @Autowired
+    private GuestRepository guestRepository;
 
     private CreateReservationRequest inlineGuestReservation(String firstName, String lastName, String email) {
         CreateReservationRequest request = new CreateReservationRequest();
@@ -109,6 +114,32 @@ class GuestCreationTest extends IntegrationTest {
         invalid.setLastName("Phone");
         invalid.setPhone("12");
         assertThatThrownBy(() -> guestService.createGuest(invalid))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Invalid phone number");
+    }
+
+    @Test
+    void guestWithOldUnconvertiblePhoneCanStillBeUpdated() {
+        Guest legacy = new Guest();
+        legacy.setFirstName("Legacy");
+        legacy.setLastName("Phone");
+        legacy.setPhone("0612 345678");
+        legacy.setMarketingConsent(false);
+        legacy = guestRepository.save(legacy);
+
+        GuestRequest update = new GuestRequest();
+        update.setFirstName("Legacy");
+        update.setLastName("Phone");
+        update.setPhone("0612 345678");
+        update.setNotes("Prefers late check-in");
+
+        GuestResponse updated = guestService.updateGuest(legacy.getGuestId(), update);
+        assertThat(updated.getNotes()).isEqualTo("Prefers late check-in");
+        assertThat(updated.getPhone()).isEqualTo("0612 345678");
+
+        Long legacyId = legacy.getGuestId();
+        update.setPhone("12");
+        assertThatThrownBy(() -> guestService.updateGuest(legacyId, update))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Invalid phone number");
     }

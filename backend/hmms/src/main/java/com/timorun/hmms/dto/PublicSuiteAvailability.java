@@ -1,7 +1,17 @@
 package com.timorun.hmms.dto;
 
+import java.util.List;
+
 /**
- * A suite that can be requested for the searched dates.
+ * A suite that can be requested for the searched dates, with what the booking page shows about it.
  */
-public record PublicSuiteAvailability(Long suiteId, String suiteName, Integer capacity) {
+public record PublicSuiteAvailability(
+        Long suiteId,
+        String suiteName,
+        Integer capacity,
+        Integer sizeM2,
+        String descriptionEn,
+        String descriptionEs,
+        List<String> amenities,
+        List<String> photoUrls) {
 }

@@ -7,6 +7,7 @@ import lombok.Setter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -32,6 +33,20 @@ public class Suite {
     private String icalExportToken;
     private LocalDateTime icalLastSyncAt;
     private String icalLastSyncError;
+
+    // Details shown on the public booking page
+    private String descriptionEn;
+    private String descriptionEs;
+    private Integer sizeM2;
+    // Comma-separated amenity keys, e.g. "double_bed,wifi,kitchen"; labels and icons live in the frontend
+    private String amenities;
+
+    // Photo URLs in display order: paths of images shipped with the frontend (/suites/...) or https:// links
+    @ElementCollection
+    @CollectionTable(name = "suite_photos", joinColumns = @JoinColumn(name = "suite_id"))
+    @OrderColumn(name = "sort_order")
+    @Column(name = "url", nullable = false)
+    private List<String> photoUrls = new ArrayList<>();
 
     @PrePersist
     void ensureExportToken() {

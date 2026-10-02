@@ -1,9 +1,14 @@
-INSERT INTO suites (suite_name, capacity) VALUES
-('Patio', 3),
-('Suite 1ºA', 2),
-('Suite 1ºB', 3),
-('Suite 2ºA', 2),
-('Suite 2ºB', 3);
+-- Initial data: the hotel's suites and the nationality list.
+-- Each suite gets a random secret for its iCal feed URL.
+INSERT INTO suites (suite_name, capacity, ical_export_token)
+SELECT suite_name, capacity, md5(random()::text || clock_timestamp()::text || suite_name)
+FROM (VALUES
+    ('Patio', 3),
+    ('Suite 1ºA', 2),
+    ('Suite 1ºB', 3),
+    ('Suite 2ºA', 2),
+    ('Suite 2ºB', 3)
+) AS initial_suites (suite_name, capacity);
 
 INSERT INTO nationalities (nationality_code, name) VALUES
 ('NL', 'Netherlands'),

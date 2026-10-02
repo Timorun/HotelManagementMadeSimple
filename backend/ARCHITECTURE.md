@@ -56,11 +56,15 @@ deal with HTTP.
 - **Transactions.** `@Transactional` on a service method means all its database writes succeed or
   fail together. For example, `createReservation` creates the guest and the reservation in one
   transaction, so a failed availability check doesn't leave an orphan guest behind.
-- **Flyway migrations.** The schema is never generated from entities (`ddl-auto: validate`). Every
-  change is a new numbered file in `resources/db/migration` (`V7__something.sql`), applied once
-  in order at startup. `V4__normalize_guest_phones` is a Java migration (in `src/main/java/db/migration`)
-  because it needs libphonenumber. Never edit a migration that has already run in production;
-  add a new one.
+- **Flyway migrations.** The schema is never generated from entities (`ddl-auto: validate`).
+  `V1__schema.sql` creates all tables and `V2__seed.sql` adds the suites and nationalities. Each
+  later change is a new numbered file in `resources/db/migration` (`V3__something.sql`), applied
+  once, in order, at startup; Flyway records what ran in the `flyway_schema_history` table and
+  refuses to start if an applied file was edited afterwards (its checksum changed). So never edit
+  a migration that already ran on a real database: add a new one. Migrations can also be Java
+  classes when SQL isn't enough; they then live in `src/main/java/db/migration`, because Flyway
+  reads the `db/migration` classpath folder, which holds both the SQL resources and compiled
+  classes in that package.
 - **Profiles and configuration.** `application.yml` holds defaults (mostly read from environment
   variables). `application-dev.yml` / `application-prod.yml` override them when
   `SPRING_PROFILES_ACTIVE` is `dev` or `prod`. Values are read with `@Value("${hmms.…}")` (see

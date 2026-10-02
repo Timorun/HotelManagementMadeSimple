@@ -1,6 +1,7 @@
 package com.timorun.hmms.dto;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -23,4 +24,9 @@ public class SuiteResponse {
     private String icalExportUrl;
     private LocalDateTime icalLastSyncAt;
     private String icalLastSyncError;
+    private String descriptionEn;
+    private String descriptionEs;
+    private Integer sizeM2;
+    private List<String> amenities;
+    private List<String> photoUrls;
 }

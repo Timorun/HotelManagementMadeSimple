@@ -170,7 +170,11 @@ public class GuestService {
         guest.setFirstName(normalizedFirstName);
         guest.setLastName(normalizedLastName);
         guest.setEmail(NameUtils.normalizeEmail(request.getEmail()));
-        guest.setPhone(phoneNormalizer.normalize(request.getPhone()));
+        // An unchanged phone is kept as stored: older numbers that can't be converted to the
+        // international format must not block saving other changes (e.g. notes).
+        if (!isUnchanged(request.getPhone(), guest.getPhone())) {
+            guest.setPhone(phoneNormalizer.normalize(request.getPhone()));
+        }
         guest.setNotes(request.getNotes());
         Boolean previousConsent = guest.getMarketingConsent();
         guest.setMarketingConsent(request.getMarketingConsent() != null ? request.getMarketingConsent() : previousConsent);
@@ -250,6 +254,12 @@ public class GuestService {
     }
 
     // ===== PRIVATE HELPER METHODS =====
+
+    private static boolean isUnchanged(String requested, String stored) {
+        String requestedTrimmed = requested == null ? "" : requested.trim();
+        String storedTrimmed = stored == null ? "" : stored.trim();
+        return requestedTrimmed.equals(storedTrimmed);
+    }
 
     private static String normalizeLanguage(String language) {
         if (language == null || language.isBlank()) {

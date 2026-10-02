@@ -63,7 +63,15 @@ public class BookingRequestService {
                 .filter(suite -> suite.getCapacity() != null && suite.getCapacity() >= numGuests)
                 .filter(suite -> isFree(suite, checkIn, checkOut))
                 .sorted(Comparator.comparing(Suite::getCapacity).thenComparing(Suite::getSuiteName))
-                .map(suite -> new PublicSuiteAvailability(suite.getSuiteId(), suite.getSuiteName(), suite.getCapacity()))
+                .map(suite -> new PublicSuiteAvailability(
+                        suite.getSuiteId(),
+                        suite.getSuiteName(),
+                        suite.getCapacity(),
+                        suite.getSizeM2(),
+                        suite.getDescriptionEn(),
+                        suite.getDescriptionEs(),
+                        SuiteService.amenityList(suite),
+                        List.copyOf(suite.getPhotoUrls())))
                 .toList();
     }
 
