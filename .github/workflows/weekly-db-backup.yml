@@ -1,92 +1,170 @@
 name: Weekly database backup
 
-# Dumps the production database every Monday, keeps it as a workflow artifact for 90 days
-# and emails it. Required repository secrets (Settings -> Secrets and variables -> Actions):
-#   PROD_DATABASE_URL   postgresql://user:password@host:5432/dbname?sslmode=require
-#                       (libpq format, not the jdbc: URL)
-#   SMTP_SERVER, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD   e.g. smtp.gmail.com / 465 / app password
-#   BACKUP_EMAIL_TO     where to send the backup
-# Optional:
-#   BACKUP_PASSPHRASE   if set, the dump is encrypted with gpg (AES256) before it leaves GitHub.
-#                       Decrypt with: gpg --decrypt hmms-backup-....dump.gpg > backup.dump
-# Restore with: pg_restore --clean --no-owner -d "$DATABASE_URL" backup.dump
+# Every Monday, dumps the production database over SSH and emails it to you. Nothing is kept on
+# GitHub: the artifacts and logs of a public repository can be read by anyone.
+#
+# One-time setup, from your own computer:
+#
+# 1. Create a key that is only used for backups:
+#      ssh-keygen -t ed25519 -N "" -C hmms-backup -f hmms-backup-key
+#
+# 2. Allow that key on the VM, restricted so that it can only produce the dump: whatever a
+#    connection with this key asks for, the VM runs this one command. Replace <vm-ip>, and add
+#    -i <your key> to ssh if you normally pass one:
+#      echo "restrict,command=\"docker exec pg18 pg_dump -U postgres --clean --if-exists postgres | gzip -9\" $(cat hmms-backup-key.pub)" | ssh ubuntu@<vm-ip> 'cat >> ~/.ssh/authorized_keys'
+#
+# 3. Print the VM's host key, which lets the workflow check that it is talking to your VM:
+#      ssh-keyscan -t ed25519 <vm-ip>
+#
+# 4. Add these repository secrets (Settings > Secrets and variables > Actions):
+#      BACKUP_SSH_HOST         the VM's public IP address. Not api.manage-carmensuites.com:
+#                              Cloudflare only passes web traffic, not SSH.
+#      BACKUP_SSH_USER         the user you log in with, e.g. ubuntu
+#      BACKUP_SSH_KEY          the contents of the file hmms-backup-key (the one without .pub)
+#      BACKUP_SSH_KNOWN_HOSTS  the line printed in step 3
+#      SMTP_SERVER, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD
+#                              e.g. smtp.gmail.com, 587, and the same Gmail address and app
+#                              password as in the backend's .env
+#      BACKUP_EMAIL_TO         the address that receives the backups
+#    Optional:
+#      BACKUP_SSH_PORT         when SSH on the VM does not listen on port 22
+#      BACKUP_PASSPHRASE       encrypts the attachment with gpg. Decrypt with:
+#                              gpg --decrypt hmms-backup-<date>.sql.gz.gpg > hmms-backup-<date>.sql.gz
+#    Then delete both hmms-backup-key files from your computer; to replace the key later,
+#    repeat these steps and remove the old line from ~/.ssh/authorized_keys on the VM.
+#
+# 5. Run it once by hand (Actions > Weekly database backup > Run workflow) and check the email.
+#
+# Restoring a backup on the VM replaces all current data with the backup:
+#   docker stop hmms-backend
+#   gunzip -c hmms-backup-<date>.sql.gz | docker exec -i pg18 psql -U postgres -d postgres -v ON_ERROR_STOP=1
+#   docker start hmms-backend
 
 on:
   schedule:
     - cron: '17 3 * * 1' # Mondays 03:17 UTC
   workflow_dispatch:
 
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
   backup:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      BACKUP_EMAIL_TO: ${{ secrets.BACKUP_EMAIL_TO }}
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash # = bash -e -o pipefail
 
     steps:
       - name: Check configuration
         id: check
         env:
-          PROD_DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          BACKUP_SSH_HOST: ${{ secrets.BACKUP_SSH_HOST }}
+          BACKUP_SSH_USER: ${{ secrets.BACKUP_SSH_USER }}
+          BACKUP_SSH_KEY: ${{ secrets.BACKUP_SSH_KEY }}
+          BACKUP_SSH_KNOWN_HOSTS: ${{ secrets.BACKUP_SSH_KNOWN_HOSTS }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          BACKUP_EMAIL_TO: ${{ secrets.BACKUP_EMAIL_TO }}
         run: |
-          if [ -z "$PROD_DATABASE_URL" ]; then
-            # Scheduled runs skip quietly until backups are configured; manual runs fail loudly.
-            if [ "${{ github.event_name }}" = "schedule" ]; then
-              echo "::warning::Backups are not configured yet (PROD_DATABASE_URL secret missing); skipping."
-              echo "enabled=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            echo "::error::Set the PROD_DATABASE_URL repository secret to enable backups."
-            exit 1
+          ssh_secrets=(BACKUP_SSH_HOST BACKUP_SSH_USER BACKUP_SSH_KEY BACKUP_SSH_KNOWN_HOSTS)
+          mail_secrets=(SMTP_SERVER SMTP_PORT SMTP_USERNAME SMTP_PASSWORD BACKUP_EMAIL_TO)
+          missing=()
+          for name in "${ssh_secrets[@]}" "${mail_secrets[@]}"; do
+            [ -n "${!name}" ] || missing+=("$name")
+          done
+          if [ ${#missing[@]} -eq 0 ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
-          echo "enabled=true" >> "$GITHUB_OUTPUT"
-          if [ -z "$BACKUP_EMAIL_TO" ]; then
-            echo "::warning::BACKUP_EMAIL_TO is not set; the backup will only be kept as an artifact."
+          # Until backups are set up, scheduled runs skip quietly; manual runs fail loudly
+          ssh_missing=0
+          for name in "${ssh_secrets[@]}"; do
+            [ -n "${!name}" ] || ssh_missing=$((ssh_missing + 1))
+          done
+          if [ "$GITHUB_EVENT_NAME" = schedule ] && [ "$ssh_missing" -eq ${#ssh_secrets[@]} ]; then
+            echo "::warning::Backups are not set up yet; see the top of .github/workflows/weekly-db-backup.yml. Skipping."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "::error::Missing repository secrets: ${missing[*]}. See the top of .github/workflows/weekly-db-backup.yml."
+          exit 1
 
-      - name: Install the latest PostgreSQL client
-        if: steps.check.outputs.enabled == 'true'
-        # pg_dump must be at least as new as the server, so use the PostgreSQL apt repository
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq postgresql-common
-          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
-          sudo apt-get install -y -qq postgresql-client
-          pg_dump --version
-
-      - name: Dump database
+      - name: Dump the database over SSH
         if: steps.check.outputs.enabled == 'true'
         id: dump
         env:
-          PROD_DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          BACKUP_SSH_HOST: ${{ secrets.BACKUP_SSH_HOST }}
+          BACKUP_SSH_PORT: ${{ secrets.BACKUP_SSH_PORT }}
+          BACKUP_SSH_USER: ${{ secrets.BACKUP_SSH_USER }}
+          BACKUP_SSH_KEY: ${{ secrets.BACKUP_SSH_KEY }}
+          BACKUP_SSH_KNOWN_HOSTS: ${{ secrets.BACKUP_SSH_KNOWN_HOSTS }}
+        run: |
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$BACKUP_SSH_KEY" > ~/.ssh/backup_key
+          printf '%s\n' "$BACKUP_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          file="hmms-backup-$(date -u +%Y-%m-%d).sql.gz"
+          # The VM ignores the command sent here and runs the key's forced command (setup step 2)
+          ssh -T -i ~/.ssh/backup_key -p "${BACKUP_SSH_PORT:-22}" \
+            -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o ConnectTimeout=30 \
+            -o ServerAliveInterval=15 -o ServerAliveCountMax=4 \
+            "$BACKUP_SSH_USER@$BACKUP_SSH_HOST" hmms-backup < /dev/null > "$file"
+          rm -f ~/.ssh/backup_key
+          echo "file=$file" >> "$GITHUB_OUTPUT"
+
+      - name: Check the dump
+        if: steps.check.outputs.enabled == 'true'
+        id: verify
+        env:
+          FILE: ${{ steps.dump.outputs.file }}
+        run: |
+          # Never print the dump itself: the logs of a public repository are public
+          fail() {
+            echo "::error::$1"
+            exit 1
+          }
+          gzip -t "$FILE" 2> /dev/null || fail "The backup is not a valid gzip file."
+          gzip -dc "$FILE" > dump.sql
+          head -n 5 dump.sql > first-lines.txt
+          tail -n 20 dump.sql > last-lines.txt
+          grep -q "PostgreSQL database dump" first-lines.txt \
+            || fail "The backup is empty or not a pg_dump. Check that the pg18 container is running and that the key's line in ~/.ssh/authorized_keys on the VM starts with the restrict,command=... part from setup step 2."
+          grep -q "PostgreSQL database dump complete" last-lines.txt \
+            || fail "The dump stopped before the end; see the messages of the previous step."
+          grep -q "^CREATE TABLE public.reservations " dump.sql \
+            || fail "The dump has no reservations table: is it the right database?"
+          tables=$(grep -c "^CREATE TABLE " dump.sql)
+          rm dump.sql first-lines.txt last-lines.txt
+          size=$(du -h "$FILE" | cut -f1)
+          # Gmail and most providers refuse attachments over 25 MB
+          [ "$(stat -c %s "$FILE")" -le $((20 * 1024 * 1024)) ] \
+            || fail "The backup is $size, too big to send by email (limit 20 MB)."
+          echo "Backup OK: $size, $tables tables."
+          echo "size=$size" >> "$GITHUB_OUTPUT"
+
+      - name: Encrypt (when BACKUP_PASSPHRASE is set)
+        if: steps.check.outputs.enabled == 'true'
+        id: final
+        env:
+          FILE: ${{ steps.dump.outputs.file }}
           BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
         run: |
-          name="hmms-backup-$(date -u +%Y-%m-%d).dump"
-          pg_dump --format=custom --compress=9 --no-owner --no-privileges --file="$name" "$PROD_DATABASE_URL"
+          file="$FILE"
           if [ -n "$BACKUP_PASSPHRASE" ]; then
-            gpg --batch --yes --pinentry-mode loopback --passphrase "$BACKUP_PASSPHRASE" \
-                --symmetric --cipher-algo AES256 --output "$name.gpg" "$name"
-            rm "$name"
-            name="$name.gpg"
+            gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+              --symmetric --cipher-algo AES256 --output "$file.gpg" "$file" <<< "$BACKUP_PASSPHRASE"
+            rm "$file"
+            file="$file.gpg"
+            echo "note= It is encrypted; decrypt it first with: gpg --decrypt $file > $FILE" >> "$GITHUB_OUTPUT"
           fi
-          echo "file=$name" >> "$GITHUB_OUTPUT"
-          echo "size=$(du -h "$name" | cut -f1)" >> "$GITHUB_OUTPUT"
-          ls -lh "$name"
+          echo "file=$file" >> "$GITHUB_OUTPUT"
 
-      - name: Keep as artifact
+      - name: Email the backup
         if: steps.check.outputs.enabled == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.dump.outputs.file }}
-          path: ${{ steps.dump.outputs.file }}
-          retention-days: 90
-          if-no-files-found: error
-
-      - name: Email backup
-        if: steps.check.outputs.enabled == 'true' && env.BACKUP_EMAIL_TO != ''
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: ${{ secrets.SMTP_SERVER }}
@@ -94,13 +172,16 @@ jobs:
           secure: ${{ secrets.SMTP_PORT == '465' }}
           username: ${{ secrets.SMTP_USERNAME }}
           password: ${{ secrets.SMTP_PASSWORD }}
-          from: HotelManagementMadeSimple backups <${{ secrets.SMTP_USERNAME }}>
+          from: Hmms backups <${{ secrets.SMTP_USERNAME }}>
           to: ${{ secrets.BACKUP_EMAIL_TO }}
-          subject: Weekly database backup ${{ steps.dump.outputs.file }}
+          subject: Database backup ${{ steps.final.outputs.file }}
           body: |
-            Weekly backup of the HotelManagementMadeSimple database (${{ steps.dump.outputs.size }}), attached.
-            It is also kept for 90 days as an artifact of this run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            The weekly backup of the Hmms database (${{ steps.verify.outputs.size }}) is attached.${{ steps.final.outputs.note }}
 
-            Restore with: pg_restore --clean --no-owner -d "<database url>" <file>
-            (decrypt first with gpg --decrypt if the file ends in .gpg)
-          attachments: ${{ steps.dump.outputs.file }}
+            To restore it on the VM (this replaces all current data with the backup):
+              docker stop hmms-backend
+              gunzip -c ${{ steps.dump.outputs.file }} | docker exec -i pg18 psql -U postgres -d postgres -v ON_ERROR_STOP=1
+              docker start hmms-backend
+
+            Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          attachments: ${{ steps.final.outputs.file }}
