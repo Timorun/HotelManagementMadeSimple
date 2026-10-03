@@ -57,9 +57,11 @@ deal with HTTP.
   fail together. For example, `createReservation` creates the guest and the reservation in one
   transaction, so a failed availability check doesn't leave an orphan guest behind.
 - **Flyway migrations.** The schema is never generated from entities (`ddl-auto: validate`).
-  `V1__schema.sql` creates all tables, `V2__seed.sql` adds the suites and nationalities and
-  `V3__suite_content.sql` fills in the suites' texts and photos from carmensuites.com. Each later
-  change is a new numbered file in `resources/db/migration` (`V4__something.sql`), applied
+  `V1__schema.sql` creates all tables, `V2__seed.sql` adds the suites and nationalities,
+  `V3__suite_content.sql` fills in the suites' texts and photos from carmensuites.com and
+  `V4__prices_and_payments.sql` adds the price per night (`suite_rates`), the payment settings
+  (`app_settings`) and the `awaiting_payment` status. Each later change is a new numbered file
+  in `resources/db/migration` (`V5__something.sql`), applied
   once, in order, at startup; Flyway records what ran in the `flyway_schema_history` table and
   refuses to start if an applied file was edited afterwards (its checksum changed). So never edit
   a migration that already ran on a real database: add a new one. Migrations can also be Java

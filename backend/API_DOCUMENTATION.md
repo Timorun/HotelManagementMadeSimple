@@ -161,6 +161,7 @@ Backend allows status corrections to any other status. Frontend should show warn
 
 **Valid status values:**
 - `pending`
+- `awaiting_payment` (an accepted booking request; the dates are held until the guest pays)
 - `confirmed`
 - `checked_in`
 - `checked_out`
@@ -168,7 +169,8 @@ Backend allows status corrections to any other status. Frontend should show warn
 - `no_show`
 
 **Recommended transition flow (warning-only):**
-- `pending` → `confirmed`, `cancelled`, `no_show`
+- `pending` → `awaiting_payment`, `confirmed`, `cancelled`, `no_show`
+- `awaiting_payment` → `confirmed`, `cancelled`
 - `confirmed` → `checked_in`, `cancelled`, `no_show`
 - `checked_in` → `checked_out`, `cancelled`
 - Any other transition can still be saved for correction purposes.
@@ -421,7 +423,10 @@ Reactivate a deactivated suite.
   "numGuests": "Integer",
   "priceTotal": "BigDecimal",
   "channel": "String (direct|booking.com|airbnb|etc)",
-  "status": "String (confirmed|completed|cancelled|no_show)",
+  "status": "String (pending|awaiting_payment|confirmed|checked_in|checked_out|cancelled|no_show)",
+  "paymentDueDate": "LocalDate (accepted booking requests: pay by this date)",
+  "paidAt": "LocalDateTime (when the payment was marked as received)",
+  "paymentOverdue": "Boolean (awaiting payment and the due date has passed)",
   "createdAt": "LocalDateTime (ISO-8601)"
 }
 ```
@@ -526,7 +531,7 @@ When creating a reservation:
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/operations/arrivals/today` | Check-ins today: pending, confirmed and checked-in |
+| GET | `/api/operations/arrivals/today` | Check-ins today: pending, awaiting payment, confirmed and checked-in |
 | GET | `/api/operations/departures/today` | Check-outs today: confirmed, checked-in and checked-out |
 | GET | `/api/operations/occupancy?date=` | Stays occupying a date |
 | GET | `/api/operations/calendar?from=&to=` | Reservations overlapping a range |
@@ -537,14 +542,38 @@ Check guests in/out with `PATCH /api/reservations/{id}/status` (`{"status": "che
 
 ## BOOKING REQUESTS API ("solicitudes")
 
-Requests from the public booking page are `pending` reservations with channel `website`.
+Requests from the public booking page are `pending` reservations with channel `website`, with
+the price the guest was quoted. Accepting one makes it `awaiting_payment`: the dates are held
+(also in the booking.com calendar feed) and the guest is emailed the price, the payment details
+from `/api/settings/payment` and a pay-by date. Marking it as paid confirms the booking. An
+unpaid request past its date is flagged (`paymentOverdue`), never cancelled automatically.
+
+Every PATCH takes `{"message": "...", "notifyGuest": true}`; the message is added to the email
+to the guest, and `notifyGuest: false` sends no email.
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/booking-requests` | Pending reservations, oldest stay first |
-| GET | `/api/booking-requests/count` | `{"pending": 3}` for the navigation badge |
-| PATCH | `/api/booking-requests/{id}/confirm` | `{"priceTotal": 450, "message": "...", "notifyGuest": true}` → confirmed, guest emailed |
-| PATCH | `/api/booking-requests/{id}/reject` | `{"message": "...", "notifyGuest": true}` → cancelled, guest emailed |
+| GET | `/api/booking-requests` | Pending requests, oldest stay first |
+| GET | `/api/booking-requests/awaiting-payment` | Accepted requests waiting for payment, earliest pay-by date first |
+| GET | `/api/booking-requests/count` | `{"pending": 1, "awaitingPayment": 2, "overdue": 1}`; the navigation badge shows pending + overdue |
+| PATCH | `/api/booking-requests/{id}/accept` | Pending → `awaiting_payment`. Also takes `priceTotal` (default: the quoted price; required when there was none) and `paymentDueDate` (default: today + the deadline days from the payment settings, never after check-in). Emailing the guest needs an IBAN or Bizum number in the payment settings |
+| PATCH | `/api/booking-requests/{id}/paid` | Awaiting payment → `confirmed`, sets `paidAt`; the guest gets the confirmation |
+| PATCH | `/api/booking-requests/{id}/payment-deadline` | New `paymentDueDate` (today or later) for an unpaid request; the guest gets a reminder |
+| PATCH | `/api/booking-requests/{id}/reject` | Pending or awaiting payment → `cancelled`, the dates are free again |
+
+---
+
+## PRICES API
+
+A price per night for each suite and date (table `suite_rates`). The public availability and the
+booking request use it to quote the whole stay; a stay with a night without a price is quoted as
+`null` ("price on request").
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/rates?from=&to=` | `[{suiteId, date, price}]` for every priced night in the range |
+| PUT | `/api/rates` | `{"suiteIds": [1, 2], "from": "2026-11-01", "to": "2026-11-30", "weekdays": [5, 6], "price": 150}` → `{"nights": 16}`. `to` is included; `weekdays` are ISO days (1 = Monday ... 7 = Sunday), empty means every day; `"price": null` removes the prices. At most 2 years at a time |
+| GET | `/api/rates/quote?suiteId=&checkIn=&checkOut=` | `{"total": 360.00, "nights": 3}`; `total` is `null` when a night has no price |
 
 ---
 
@@ -568,6 +597,8 @@ Suites carry `bookingIcalUrl` (set with `PUT /api/suites/{id}`) and return `ical
 | Method | Path | Description |
 |---|---|---|
 | GET | `/api/settings` | Hotel, mail and public link configuration (read-only) |
+| GET | `/api/settings/payment` | `{iban, accountHolder, bizumPhone, deadlineDays}` sent to accepted guests |
+| PUT | `/api/settings/payment` | Same body. The IBAN is checked (country format and check digits) and needs an account holder; the Bizum number must be Spanish (+34); `deadlineDays` is 1-30 (default 3) |
 | GET | `/api/guests/{id}/preferences-link` | `{"url": ...}` personal link to unsubscribe / request deletion |
 
 ---
@@ -578,8 +609,8 @@ Suites carry `bookingIcalUrl` (set with `PUT /api/suites/{id}`) and return `ical
 |---|---|---|
 | GET | `/api/public/hotel` | `{"name": "Carmen Suites"}` |
 | GET | `/api/public/nationalities` | Countries for the booking form |
-| GET | `/api/public/availability?checkIn=&checkOut=&guests=` | Active suites with enough capacity and free for the stay: `[{suiteId, suiteName, capacity, sizeM2, descriptionEn, descriptionEs, amenities, photoUrls}]` |
-| POST | `/api/public/booking-requests` | Booking request (rate limited, honeypot field `website`) → pending reservation; guest and owner are emailed |
+| GET | `/api/public/availability?checkIn=&checkOut=&guests=` | Active suites with enough capacity and free for the stay: `[{suiteId, suiteName, capacity, sizeM2, descriptionEn, descriptionEs, amenities, photoUrls, priceTotal, nights}]`; `priceTotal` is the whole stay, `null` when a night has no price |
+| POST | `/api/public/booking-requests` | Booking request (rate limited, honeypot field `website`) → pending reservation with the quoted price; guest and owner are emailed. Returns `{reference, suiteName, checkIn, checkOut, status, priceTotal}` |
 | POST | `/api/public/preferences/request-link` | `{"email"}` → emails a 7-day preferences link if the email is a guest's (always 202) |
 | GET | `/api/public/preferences/{token}` | `{firstName, marketingConsent, deletionRequested, hotelName}` |
 | POST | `/api/public/preferences/{token}/opt-out` | Unsubscribe from marketing |
