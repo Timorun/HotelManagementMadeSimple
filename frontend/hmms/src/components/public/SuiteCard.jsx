@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Check, Maximize2, Users } from 'lucide-react';
 import { useI18n } from '../../context/I18nContext';
 import { amenityIcon, amenityLabel } from '../../utils/amenities';
+import { formatEuro } from '../../utils/money';
 import { suiteDescription } from '../../utils/suites';
 import PhotoGallery from '../common/PhotoGallery';
 
@@ -12,7 +13,7 @@ const SHORT_DESCRIPTION_CHARS = 220;
  * A suite on the public booking page: photos, key facts, amenities and description.
  */
 export default function SuiteCard({ suite, selected, onChoose }) {
-  const { tr, language } = useI18n();
+  const { tr, language, locale } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const description = suiteDescription(suite, language);
   const isLong = description.length > SHORT_DESCRIPTION_CHARS;
@@ -55,6 +56,17 @@ export default function SuiteCard({ suite, selected, onChoose }) {
             )}
           </>
         )}
+
+        <div className="suite-card-price">
+          {suite.priceTotal != null ? (
+            <>
+              <strong>{formatEuro(suite.priceTotal, locale)}</strong>
+              <span>{tr(`total for ${suite.nights} night(s)`, `total por ${suite.nights} noche(s)`)}</span>
+            </>
+          ) : (
+            <span>{tr('Price on request', 'Precio a consultar')}</span>
+          )}
+        </div>
 
         <button type="button" className={`btn ${selected ? 'btn-success' : 'btn-accent'} suite-card-choose`} onClick={onChoose}>
           {selected ? <><Check size={16} /> {tr('Selected', 'Seleccionada')}</> : tr('Choose this suite', 'Elegir esta suite')}

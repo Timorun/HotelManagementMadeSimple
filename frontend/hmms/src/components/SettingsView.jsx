@@ -5,6 +5,7 @@ import { useI18n } from '../context/I18nContext';
 import { copyTextToClipboard } from '../utils/clipboard';
 import BookingImportPanel from './settings/BookingImportPanel';
 import CalendarSyncPanel from './settings/CalendarSyncPanel';
+import PaymentSettingsPanel from './settings/PaymentSettingsPanel';
 import SuiteDetailsModal from './settings/SuiteDetailsModal';
 
 const EMPTY_SUITE = { suiteName: '', capacity: 2, active: true };
@@ -156,6 +157,7 @@ export default function SettingsView() {
         />
       )}
 
+      <PaymentSettingsPanel onNotice={setNotice} />
       <CalendarSyncPanel suites={suites} onChanged={load} onNotice={setNotice} onError={setError} />
       <BookingImportPanel suites={suites} />
 

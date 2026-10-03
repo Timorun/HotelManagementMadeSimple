@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { fetchReservations, fetchSuites, fetchNationalities, createReservation, updateReservation, cancelReservation, searchGuests, updateReservationStatus, fetchGuest, updateGuest } from '../api/backend';
+import { fetchReservations, fetchSuites, fetchNationalities, createReservation, updateReservation, cancelReservation, searchGuests, updateReservationStatus, fetchGuest, updateGuest, fetchPriceQuote } from '../api/backend';
 import { Calendar, Plus, Search, AlertCircle, CheckCircle, Users, Euro, Download, Eye, SlidersHorizontal, ChevronDown, ChevronRight } from 'lucide-react';
 import { format, differenceInDays, parseISO, isBefore, addDays, startOfDay, startOfMonth, endOfMonth } from 'date-fns';
 import { STATUS_META, getStatusLabel, getTransitionWarning } from '../api/reservationStatus';
@@ -208,7 +208,34 @@ export default function ReservationManagement() {
     });
   }, [nightsCount, priceInputSource, parseCurrencyValue, formatCurrencyValue]);
 
+  // New reservations: fill in the price from the price calendar until the owner types one
+  const [priceTouched, setPriceTouched] = useState(false);
+  useEffect(() => {
+    if (priceTouched || editingReservation || !formData.suiteId || !formData.checkIn || !formData.checkOut || nightsCount <= 0) {
+      return undefined;
+    }
+    let cancelled = false;
+    fetchPriceQuote(formData.suiteId, formData.checkIn, formData.checkOut)
+      .then((quote) => {
+        if (cancelled || quote?.total == null) {
+          return;
+        }
+        const total = Number(quote.total);
+        setPriceInputSource('total');
+        setFormData((prev) => ({
+          ...prev,
+          priceTotal: formatCurrencyValue(total),
+          pricePerNight: formatCurrencyValue(total / nightsCount),
+        }));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [priceTouched, editingReservation, formData.suiteId, formData.checkIn, formData.checkOut, nightsCount, formatCurrencyValue]);
+
   const handlePricePerNightChange = useCallback((value) => {
+    setPriceTouched(true);
     setPriceInputSource('perNight');
 
     setFormData((prev) => {
@@ -227,6 +254,7 @@ export default function ReservationManagement() {
   }, [nightsCount, parseCurrencyValue, formatCurrencyValue]);
 
   const handlePriceTotalChange = useCallback((value) => {
+    setPriceTouched(true);
     setPriceInputSource('total');
 
     setFormData((prev) => {
@@ -659,6 +687,7 @@ export default function ReservationManagement() {
       notes: '',
     });
     setPriceInputSource('total');
+    setPriceTouched(false);
     setShowModal(true);
   }, []);
 

@@ -2377,8 +2377,23 @@ pre {
   font-size: 0.85rem;
 }
 
-.suite-card-choose {
+.suite-card-price {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.4rem;
   margin-top: auto;
+  padding-top: 0.25rem;
+  color: var(--dark-gray);
+  font-size: 0.85rem;
+}
+
+.suite-card-price strong {
+  color: var(--primary);
+  font-size: 1.3rem;
+}
+
+.suite-card-choose {
   justify-content: center;
 }
 
@@ -2525,6 +2540,12 @@ pre {
   color: var(--white);
   font-size: 0.9rem;
   opacity: 0.85;
+}
+
+.public-price-line {
+  margin: -0.5rem 0 1rem;
+  color: var(--primary);
+  font-weight: 600;
 }
 
 .public-details {
@@ -2770,6 +2791,170 @@ pre {
   margin-top: 1rem;
 }
 
+/* ===== Prices ===== */
+.prices-page .card:hover {
+  transform: none;
+}
+
+.prices-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 1rem;
+  align-items: end;
+}
+
+.prices-form-full {
+  grid-column: 1 / -1;
+}
+
+.prices-form .form-group {
+  margin-bottom: 1rem;
+}
+
+.prices-form-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.chip-toggle-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.chip-toggle {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--gray);
+  border-radius: 999px;
+  background: var(--white);
+  color: var(--primary);
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+.chip-toggle.on {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--white);
+}
+
+.chip-toggle.weekday {
+  min-width: 2.75rem;
+  text-transform: capitalize;
+}
+
+.prices-month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.prices-month-nav h3 {
+  min-width: 11rem;
+  text-align: center;
+  text-transform: capitalize;
+  color: var(--primary);
+}
+
+.prices-grid-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--light-gray);
+  border-radius: 10px;
+  transition: opacity 0.15s ease;
+}
+
+.prices-grid-wrap.is-loading {
+  opacity: 0.55;
+}
+
+.prices-grid {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.85rem;
+}
+
+.prices-grid th,
+.prices-grid td {
+  border-right: 1px solid var(--light-gray);
+  border-bottom: 1px solid var(--light-gray);
+  text-align: center;
+}
+
+.prices-grid thead th {
+  min-width: 46px;
+  padding: 0.4rem 0.2rem;
+  background: var(--white);
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.prices-grid thead th span {
+  display: block;
+  color: var(--dark-gray);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.prices-grid thead th.today {
+  color: var(--accent-dark);
+  background: rgba(230, 126, 34, 0.1);
+}
+
+.prices-grid .weekend {
+  background: #f6f8fa;
+}
+
+.prices-grid .prices-suite-col {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  min-width: 110px;
+  padding: 0.4rem 0.6rem;
+  background: var(--light-gray);
+  color: var(--primary);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.prices-grid tbody .prices-suite-col span {
+  display: block;
+  color: var(--dark-gray);
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+.prices-grid tbody .prices-suite-col span.prices-missing {
+  color: var(--accent-dark);
+}
+
+.prices-grid td button {
+  width: 100%;
+  min-width: 46px;
+  height: 40px;
+  border: none;
+  background: none;
+  color: var(--primary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.prices-grid td button:hover {
+  background: rgba(52, 152, 219, 0.1);
+}
+
+.prices-grid td.selected {
+  background: rgba(230, 126, 34, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(230, 126, 34, 0.45);
+}
+
 /* ===== Communications ===== */
 .communications-grid {
   display: grid;
@@ -2966,6 +3151,24 @@ pre {
   gap: 0.5rem;
 }
 
+.payment-settings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 1rem;
+  max-width: 760px;
+}
+
+.payment-settings .form-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.payment-settings-actions {
+  grid-column: 1 / -1;
+  margin-bottom: 0.5rem;
+}
+
 .settings-suite-actions {
   display: flex;
   flex-wrap: wrap;
@@ -3069,6 +3272,8 @@ pre {
 }
 
 @media (max-width: 640px) {
+  .prices-form,
+  .payment-settings,
   .request-decision-row,
   .public-search,
   .public-details,

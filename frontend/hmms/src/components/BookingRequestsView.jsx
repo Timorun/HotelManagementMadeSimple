@@ -194,8 +194,12 @@ function BookingRequestCard({ reservation, deadlineDays, onHandled }) {
           ? tr(`Request ${reference} cancelled; the dates are free again.`, `Solicitud ${reference} cancelada; las fechas vuelven a estar libres.`)
           : tr(`Request ${reference} rejected.`, `Solicitud ${reference} rechazada.`));
       }
+      // A card that stays in its list (e.g. after "More time") goes back to its buttons
+      setMode(null);
+      setMessage('');
     } catch (err) {
       setError(err.message);
+    } finally {
       setBusy(false);
     }
   };

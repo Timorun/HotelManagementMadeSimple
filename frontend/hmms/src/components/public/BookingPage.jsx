@@ -4,6 +4,7 @@ import { CalendarCheck, CheckCircle2, Search } from 'lucide-react';
 import { fetchPublicAvailability, fetchPublicNationalities, submitBookingRequest } from '../../api/backend';
 import { useI18n } from '../../context/I18nContext';
 import PhoneInput from '../common/PhoneInput';
+import { formatEuro } from '../../utils/money';
 import { isValidPhoneOrEmpty } from '../../utils/phone';
 import PublicLayout from './PublicLayout';
 import SuiteCard from './SuiteCard';
@@ -27,7 +28,7 @@ const EMPTY_DETAILS = {
  * that the owner confirms or rejects from the Requests tab.
  */
 export default function BookingPage() {
-  const { tr, language, dateLocale } = useI18n();
+  const { tr, language, locale, dateLocale } = useI18n();
   const [search, setSearch] = useState({
     checkIn: format(addDays(new Date(), 7), 'yyyy-MM-dd'),
     checkOut: format(addDays(new Date(), 10), 'yyyy-MM-dd'),
@@ -125,8 +126,8 @@ export default function BookingPage() {
           <h2>{tr('Request sent!', '¡Solicitud enviada!')}</h2>
           <p>
             {tr(
-              'Thank you. We have emailed you a copy of your request and will confirm availability and the price as soon as possible.',
-              'Gracias. Te hemos enviado una copia de tu solicitud por correo y te confirmaremos la disponibilidad y el precio lo antes posible.',
+              'Thank you. We have emailed you a copy of your request. If the suite is available, we will send you the payment details; your booking is confirmed once we receive the payment.',
+              'Gracias. Te hemos enviado una copia de tu solicitud por correo. Si la suite está disponible, te enviaremos los datos para el pago; tu reserva queda confirmada cuando recibamos el pago.',
             )}
           </p>
           <dl className="public-summary">
@@ -134,6 +135,8 @@ export default function BookingPage() {
             <dt>{tr('Suite', 'Suite')}</dt><dd>{confirmation.suiteName}</dd>
             <dt>{tr('Check-in', 'Llegada')}</dt><dd>{formatDate(confirmation.checkIn)}</dd>
             <dt>{tr('Check-out', 'Salida')}</dt><dd>{formatDate(confirmation.checkOut)}</dd>
+            <dt>{tr('Total price', 'Precio total')}</dt>
+            <dd>{confirmation.priceTotal != null ? formatEuro(confirmation.priceTotal, locale) : tr('We will confirm it by email', 'Te lo confirmaremos por correo')}</dd>
           </dl>
         </section>
       </PublicLayout>
@@ -146,8 +149,8 @@ export default function BookingPage() {
         <h2 className="public-title"><CalendarCheck size={24} /> {tr('Request a stay', 'Solicita tu estancia')}</h2>
         <p className="public-lead">
           {tr(
-            'Choose your dates to see which suites are available. We confirm every request personally by email.',
-            'Elige tus fechas para ver que suites estan disponibles. Confirmamos cada solicitud personalmente por correo.',
+            'Choose your dates to see which suites are available and what your stay costs. We confirm every request personally by email.',
+            'Elige tus fechas para ver qué suites están disponibles y cuánto cuesta tu estancia. Confirmamos cada solicitud personalmente por correo.',
           )}
         </p>
 
@@ -223,6 +226,11 @@ export default function BookingPage() {
           <h3 className="public-subtitle">
             {tr('Your details', 'Tus datos')} · {selectedSuite.suiteName}, {formatDate(searchedStay.checkIn)} – {formatDate(searchedStay.checkOut)}
           </h3>
+          <p className="public-price-line">
+            {selectedSuite.priceTotal != null
+              ? tr(`Total price: ${formatEuro(selectedSuite.priceTotal, locale)}`, `Precio total: ${formatEuro(selectedSuite.priceTotal, locale)}`)
+              : tr('Price on request: we will confirm it by email.', 'Precio a consultar: te lo confirmaremos por correo.')}
+          </p>
           <form className="public-details" onSubmit={handleSubmit}>
             <label className="form-group">
               <span className="form-label">{tr('First name *', 'Nombre *')}</span>
@@ -290,7 +298,7 @@ export default function BookingPage() {
                 {busy ? tr('Sending…', 'Enviando…') : tr('Send booking request', 'Enviar solicitud')}
               </button>
               <span className="field-hint">
-                {tr('No payment now. We will confirm the price by email.', 'No se paga ahora. Te confirmaremos el precio por correo.')}
+                {tr('No payment now. If the suite is available, we will email you the payment details.', 'No se paga ahora. Si la suite está disponible, te enviaremos por correo los datos de pago.')}
               </span>
             </div>
           </form>

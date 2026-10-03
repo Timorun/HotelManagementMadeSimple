@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
+  BadgeEuro,
   BarChart3,
   CalendarDays,
   ClipboardCheck,
@@ -40,6 +41,7 @@ export default function AppShell({ children }) {
     { id: 'guests', path: '/guests', icon: Users },
     { id: 'analytics', path: '/analytics', icon: BarChart3 },
     { id: 'requests', path: '/requests', icon: Inbox },
+    { id: 'prices', path: '/prices', icon: BadgeEuro },
     { id: 'communications', path: '/communications', icon: Megaphone },
     { id: 'settings', path: '/settings', icon: Settings },
   ]), []);
