@@ -42,6 +42,7 @@ public class BookingIcalSyncService {
             "Created by the booking.com calendar sync. Add the guest's details, or import the booking.com reservations export.";
 
     private static final Logger log = LoggerFactory.getLogger(BookingIcalSyncService.class);
+    private static final long EXPORT_READ_INTERVAL_MINUTES = 5;
 
     private final SuiteRepository suiteRepository;
     private final ReservationRepository reservationRepository;
@@ -149,6 +150,7 @@ public class BookingIcalSyncService {
     public String exportFeed(String token) {
         Suite suite = suiteRepository.findByIcalExportToken(token)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown calendar"));
+        recordExportRead(suite);
         List<IcalEvent> events = reservationRepository.findForIcalExport(suite.getSuiteId(), LocalDate.now().minusDays(1)).stream()
                 .map(reservation -> new IcalEvent(
                         "hmms-" + reservation.getReservationId() + "@hotelmanagementmadesimple",
@@ -222,6 +224,15 @@ public class BookingIcalSyncService {
             }
         }
         return conflicts;
+    }
+
+    // Shows the owner that booking.com really reads the feed; written at most every few minutes
+    private void recordExportRead(Suite suite) {
+        LocalDateTime now = LocalDateTime.now();
+        if (suite.getIcalExportReadAt() == null || suite.getIcalExportReadAt().isBefore(now.minusMinutes(EXPORT_READ_INTERVAL_MINUTES))) {
+            suite.setIcalExportReadAt(now);
+            suiteRepository.save(suite);
+        }
     }
 
     private void recordSync(Long suiteId, String error) {

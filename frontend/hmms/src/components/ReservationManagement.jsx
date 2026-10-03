@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { fetchReservations, fetchSuites, fetchNationalities, createReservation, updateReservation, cancelReservation, searchGuests, updateReservationStatus, fetchGuest, updateGuest } from '../api/backend';
+import { fetchReservations, fetchSuites, fetchNationalities, createReservation, updateReservation, cancelReservation, searchGuests, updateReservationStatus, fetchGuest, updateGuest, fetchPriceQuote, fetchPaymentSettings } from '../api/backend';
 import { Calendar, Plus, Search, AlertCircle, CheckCircle, Users, Euro, Download, Eye, SlidersHorizontal, ChevronDown, ChevronRight } from 'lucide-react';
 import { format, differenceInDays, parseISO, isBefore, addDays, startOfDay, startOfMonth, endOfMonth } from 'date-fns';
 import { STATUS_META, getStatusLabel, getTransitionWarning } from '../api/reservationStatus';
@@ -11,6 +11,11 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useI18n } from '../context/I18nContext';
 import { isIsoDate, useSessionState } from '../hooks/useSessionState';
 import { ConfirmCancelReservationModal, ReservationDetailsModal } from './reservations/ReservationDetailsModal';
+
+const EDIT_STATUS_OPTIONS = ['pending', 'awaiting_payment', 'confirmed', 'checked_in', 'checked_out', 'cancelled', 'no_show'];
+// A new reservation can't start cancelled or as a no-show; checked out is for entering past stays
+const CREATE_STATUS_OPTIONS = ['confirmed', 'awaiting_payment', 'pending', 'checked_in', 'checked_out'];
+const DEFAULT_DEADLINE_DAYS = 3;
 
 const STATUS_FILTER_DEFAULTS = Object.keys(STATUS_META).reduce((accumulator, statusKey) => {
   accumulator[statusKey] = true;
@@ -92,8 +97,11 @@ export default function ReservationManagement() {
     guestNotes: '',
     nationalityCode: '',
     notes: '',
-    status: 'pending',
+    status: 'confirmed',
+    paymentDueDate: '',
+    notifyGuest: true,
   });
+  const [paymentSettings, setPaymentSettings] = useState(null);
 
   // Toast notification handler
   const showToast = useCallback((message, type = 'success') => {
@@ -208,7 +216,61 @@ export default function ReservationManagement() {
     });
   }, [nightsCount, priceInputSource, parseCurrencyValue, formatCurrencyValue]);
 
+  // Awaiting payment: today plus the days to pay, but never after the day of arrival
+  const defaultPayBy = useMemo(() => {
+    if (!formData.checkIn) {
+      return '';
+    }
+    const today = startOfDay(new Date());
+    const checkIn = parseISO(formData.checkIn);
+    const due = addDays(today, paymentSettings?.deadlineDays || DEFAULT_DEADLINE_DAYS);
+    if (isBefore(checkIn, due)) {
+      return format(isBefore(checkIn, today) ? today : checkIn, 'yyyy-MM-dd');
+    }
+    return format(due, 'yyyy-MM-dd');
+  }, [formData.checkIn, paymentSettings]);
+
+  const paymentEmailBlocker = useMemo(() => {
+    if (!formData.email) {
+      return tr('Add the guest\'s email address to send the payment details.', 'Añade el correo del huésped para enviarle los datos de pago.');
+    }
+    if (!paymentSettings?.iban && !paymentSettings?.bizumPhone) {
+      return tr('Add your bank account or Bizum number in Settings, Payments first.', 'Añade primero tu cuenta bancaria o tu Bizum en Ajustes, Pagos.');
+    }
+    if (formData.priceTotal === '' || formData.priceTotal == null) {
+      return tr('Enter the total price, so the guest knows how much to pay.', 'Introduce el precio total, para que el huésped sepa cuánto pagar.');
+    }
+    return null;
+  }, [formData.email, formData.priceTotal, paymentSettings, tr]);
+
+  // New reservations: fill in the price from the price calendar until the owner types one
+  const [priceTouched, setPriceTouched] = useState(false);
+  useEffect(() => {
+    if (priceTouched || editingReservation || !formData.suiteId || !formData.checkIn || !formData.checkOut || nightsCount <= 0) {
+      return undefined;
+    }
+    let cancelled = false;
+    fetchPriceQuote(formData.suiteId, formData.checkIn, formData.checkOut)
+      .then((quote) => {
+        if (cancelled || quote?.total == null) {
+          return;
+        }
+        const total = Number(quote.total);
+        setPriceInputSource('total');
+        setFormData((prev) => ({
+          ...prev,
+          priceTotal: formatCurrencyValue(total),
+          pricePerNight: formatCurrencyValue(total / nightsCount),
+        }));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [priceTouched, editingReservation, formData.suiteId, formData.checkIn, formData.checkOut, nightsCount, formatCurrencyValue]);
+
   const handlePricePerNightChange = useCallback((value) => {
+    setPriceTouched(true);
     setPriceInputSource('perNight');
 
     setFormData((prev) => {
@@ -227,6 +289,7 @@ export default function ReservationManagement() {
   }, [nightsCount, parseCurrencyValue, formatCurrencyValue]);
 
   const handlePriceTotalChange = useCallback((value) => {
+    setPriceTouched(true);
     setPriceInputSource('total');
 
     setFormData((prev) => {
@@ -657,9 +720,15 @@ export default function ReservationManagement() {
       guestNotes: '',
       nationalityCode: '',
       notes: '',
+      status: 'confirmed',
+      paymentDueDate: '',
+      notifyGuest: true,
     });
     setPriceInputSource('total');
+    setPriceTouched(false);
     setShowModal(true);
+    // Days to pay and whether there are payment details to email, for "Awaiting payment"
+    fetchPaymentSettings().then(setPaymentSettings).catch(() => setPaymentSettings(null));
   }, []);
 
   const closeCreateReservationModal = useCallback(() => {
@@ -735,6 +804,8 @@ export default function ReservationManagement() {
           return;
         }
 
+        const awaitingPayment = formData.status === 'awaiting_payment';
+        const emailPayment = awaitingPayment && !paymentEmailBlocker && formData.notifyGuest;
         const createdReservation = await createReservation({
           suiteId: parseInt(formData.suiteId),
           guestId: formData.guestId ? parseInt(formData.guestId) : undefined,
@@ -751,13 +822,20 @@ export default function ReservationManagement() {
           // New guests get their profile notes saved in the same request.
           guestNotes: formData.guestId ? undefined : formData.guestNotes,
           notes: formData.notes,
+          status: formData.status || 'confirmed',
+          ...(awaitingPayment && {
+            paymentDueDate: formData.paymentDueDate || defaultPayBy,
+            notifyGuest: emailPayment,
+          }),
         });
 
         if (!formData.guestId && createdReservation?.guestId) {
           setFormData((prev) => ({ ...prev, guestId: createdReservation.guestId }));
         }
 
-        reservationSuccessMessage = tr('Reservation created successfully', 'Reserva creada correctamente');
+        reservationSuccessMessage = emailPayment
+          ? tr('Reservation created; the payment details were emailed to the guest.', 'Reserva creada; se enviaron los datos de pago al huésped.')
+          : tr('Reservation created successfully', 'Reserva creada correctamente');
       }
 
       // Existing guests: save edited profile notes separately. New inline guests already have them.
@@ -836,7 +914,7 @@ export default function ReservationManagement() {
     } finally {
       setSubmitting(false);
     }
-  }, [editingReservation, formData, guestMode, handleSelectGuest, loadData, navigate, reservations, showToast, tr]);
+  }, [editingReservation, formData, guestMode, handleSelectGuest, loadData, navigate, reservations, showToast, tr, defaultPayBy, paymentEmailBlocker]);
 
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
@@ -878,6 +956,7 @@ export default function ReservationManagement() {
       checked_in: 'status-checked-in',
       cancelled: 'status-cancelled',
       pending: 'status-pending',
+      awaiting_payment: 'status-awaiting-payment',
     };
     return `status-badge ${statusMap[status] || ''}`;
   };
@@ -2014,22 +2093,44 @@ export default function ReservationManagement() {
                     ))}
                   </select>
                 </div>
-                {editingReservation && (
-                  <div className="form-group">
+                <div className="form-group">
                     <label className="form-label">{tr('Status', 'Estado')}</label>
                     <select
                       className="form-select"
                       value={formData.status}
                       onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                     >
-                      <option value="pending">{getStatusLabel('pending', tr)}</option>
-                      <option value="confirmed">{getStatusLabel('confirmed', tr)}</option>
-                      <option value="checked_in">{getStatusLabel('checked_in', tr)}</option>
-                      <option value="checked_out">{getStatusLabel('checked_out', tr)}</option>
-                      <option value="cancelled">{getStatusLabel('cancelled', tr)}</option>
-                      <option value="no_show">{getStatusLabel('no_show', tr)}</option>
+                      {(editingReservation ? EDIT_STATUS_OPTIONS : CREATE_STATUS_OPTIONS).map((status) => (
+                        <option key={status} value={status}>{getStatusLabel(status, tr)}</option>
+                      ))}
                     </select>
-                    {statusTransitionWarning && (
+                    {!editingReservation && formData.status === 'awaiting_payment' && (
+                      <div className="create-payment-fields">
+                        <label className="form-group">
+                          <span className="form-label">{tr('Pay by', 'Pagar antes del')}</span>
+                          <input
+                            type="date"
+                            className="form-input"
+                            min={format(new Date(), 'yyyy-MM-dd')}
+                            value={formData.paymentDueDate || defaultPayBy}
+                            onChange={(e) => setFormData({ ...formData, paymentDueDate: e.target.value })}
+                          />
+                        </label>
+                        <label className="public-check">
+                          <input
+                            type="checkbox"
+                            checked={!paymentEmailBlocker && formData.notifyGuest}
+                            disabled={Boolean(paymentEmailBlocker)}
+                            onChange={(e) => setFormData({ ...formData, notifyGuest: e.target.checked })}
+                          />
+                          <span>{tr('Email the guest the price and payment details', 'Enviar al huésped el precio y los datos de pago')}</span>
+                        </label>
+                        <span className="field-hint">
+                          {paymentEmailBlocker || tr('It waits under Requests, Awaiting payment, until you mark it as paid.', 'Espera en Solicitudes, Pendientes de pago, hasta que la marques como pagada.')}
+                        </span>
+                      </div>
+                    )}
+                    {editingReservation && statusTransitionWarning && (
                       <div style={{
                         marginTop: '0.5rem',
                         padding: '0.65rem 0.75rem',
@@ -2042,8 +2143,7 @@ export default function ReservationManagement() {
                         {statusTransitionWarning}
                       </div>
                     )}
-                  </div>
-                )}
+                </div>
                 {showGuestNotesField && (
                   <div className="form-group">
                     <label className="form-label">

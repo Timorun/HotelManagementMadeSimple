@@ -33,4 +33,12 @@ public class CreateReservationRequest {
     private String guestNotes;
     // Reservation notes for this stay.
     private String notes;
+
+    // Status to start in: "confirmed" (default), "awaiting_payment", "pending", "checked_in" or
+    // "checked_out" (to enter a past stay).
+    private String status;
+    // Awaiting payment: pay by this date (default: today + the days to pay, never after check-in)
+    private LocalDate paymentDueDate;
+    // Awaiting payment: email the guest the price and payment details
+    private Boolean notifyGuest;
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { fetchCalendar, fetchSuites, fetchGuests, updateReservation, cancelReservation, updateReservationStatus, fetchGuest, updateGuest } from '../api/backend';
 import { 
   format, 
@@ -21,6 +21,7 @@ import { useI18n } from '../context/I18nContext';
 import { isIsoDate, useSessionState } from '../hooks/useSessionState';
 import PeriodPicker from './calendar/PeriodPicker';
 import { MOBILE_BREAKPOINT, useIsMobile } from '../hooks/useIsMobile';
+import { WEEK_STARTS_ON } from '../utils/dates';
 import { ConfirmCancelReservationModal, ReservationDetailsModal } from './reservations/ReservationDetailsModal';
 
 const STATUS_FILTER_DEFAULTS = {
@@ -28,6 +29,7 @@ const STATUS_FILTER_DEFAULTS = {
   checked_in: true,
   checked_out: true,
   pending: true,
+  awaiting_payment: true,
   no_show: true,
   cancelled: false
 };
@@ -40,8 +42,8 @@ const VIEW_MODE = {
 function getCalendarRange(baseDate, viewMode, locale) {
   if (viewMode === VIEW_MODE.WEEK) {
     return {
-      start: startOfWeek(baseDate, { locale }),
-      end: endOfWeek(baseDate, { locale }),
+      start: startOfWeek(baseDate, { locale, weekStartsOn: WEEK_STARTS_ON }),
+      end: endOfWeek(baseDate, { locale, weekStartsOn: WEEK_STARTS_ON }),
     };
   }
 
@@ -438,7 +440,7 @@ export default function CalendarView() {
         <div className="card-header calendar-header">
           <h2>
             <CalendarIcon size={28} />
-            {tr('Calendar & Planning', 'Calendario y planificacion')}
+            {isMobile ? tr('Calendar', 'Calendario') : tr('Calendar & Planning', 'Calendario y planificacion')}
           </h2>
           <div className="calendar-controls">
             <div className="calendar-nav">
@@ -660,8 +662,9 @@ function TimelineView({
     return String(guestById?.get(guestId)?.nationalityCode || '');
   };
 
-  const getGuestLabel = (reservation) => {
-    const guestName = reservation.guestDisplayName || reservation.guestName || tr('Guest', 'Huesped');
+  const getGuestLabel = (reservation, firstNameOnly = false) => {
+    const fullName = reservation.guestDisplayName || reservation.guestName || tr('Guest', 'Huesped');
+    const guestName = firstNameOnly ? fullName.split(' ')[0] : fullName;
     const guestFlag = countryCodeToFlag(getNationalityCode(reservation));
     return `${guestName} ${guestFlag}`.trim();
   };
@@ -669,28 +672,49 @@ function TimelineView({
   const getStatusColor = (status) => STATUS_META[status?.toLowerCase()]?.color || STATUS_META.pending.color;
   const isWeekView = viewMode === VIEW_MODE.WEEK;
   const isDenseMonth = viewMode === VIEW_MODE.MONTH && daysInView.length >= 30;
-  // Phones: narrow suite column and day columns; the grid scrolls sideways with the suite column pinned.
-  const suiteColumnWidth = isMobile ? 92 : (isWeekView ? 196 : (isDenseMonth ? 184 : 196));
-  const dayColumnWidth = isMobile ? (isWeekView ? 64 : 34) : (isWeekView ? 120 : (isDenseMonth ? 30 : 34));
+  // Phones: a narrow suite column; a week fits the screen, a month scrolls sideways with the
+  // suite column pinned.
+  const suiteColumnWidth = isMobile ? 64 : (isWeekView ? 196 : (isDenseMonth ? 184 : 196));
+  const dayColumnWidth = isMobile ? (isWeekView ? 0 : 34) : (isWeekView ? 120 : (isDenseMonth ? 30 : 34));
   const timelineMinWidth = isMobile
     ? daysInView.length * dayColumnWidth
     : Math.max(isWeekView ? 900 : 760, daysInView.length * dayColumnWidth);
-  const suiteCellPadding = isMobile ? '0.6rem 0.5rem' : '1rem 1.125rem';
+  const suiteCellPadding = isMobile ? '0.5rem 0.4rem' : '1rem 1.125rem';
   const laneHeight = isWeekView ? 28 : (isDenseMonth ? 26 : 28);
-  const laneInsetTop = isWeekView ? 12 : (isDenseMonth ? 10 : 12);
   const barHeight = isWeekView ? 22 : (isDenseMonth ? 20 : 22);
-  const baseRowHeight = isWeekView ? 80 : (isDenseMonth ? 72 : 80);
+  // Phones: shorter rows, with a single stay centred in its row
+  const baseRowHeight = isMobile ? 56 : (isWeekView ? 80 : (isDenseMonth ? 72 : 80));
+  const laneInsetTop = isMobile ? (baseRowHeight - barHeight) / 2 : (isWeekView ? 12 : (isDenseMonth ? 10 : 12));
+  const rowPadding = isMobile ? 2 * laneInsetTop - (laneHeight - barHeight) : 24;
   const enableVerticalScroll = suites.length > 10;
+  const dayLabelFormat = isMobile ? 'EEEEEE' : 'EEE';
+  const shortSuiteName = (name) => (isMobile ? name.replace(/^suite\s+/i, '') : name);
+
+  // A month opens scrolled to today when it doesn't fit the screen (phones), not at day 1
+  const scrollRef = useRef(null);
+  const viewStartTime = viewStart.getTime();
+  const todayIndex = daysInView.findIndex((day) => isToday(day));
+  useLayoutEffect(() => {
+    const container = scrollRef.current;
+    if (!container) {
+      return;
+    }
+    const dayWidth = (container.scrollWidth - suiteColumnWidth) / daysInView.length;
+    container.scrollLeft = todayIndex > 0 ? Math.round((todayIndex - 1) * dayWidth) : 0;
+  }, [viewStartTime, todayIndex, daysInView.length, suiteColumnWidth]);
 
   return (
-    <div className="card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
-        <div style={{ fontSize: '0.93rem', color: 'var(--primary)', fontWeight: 600 }}>
-          {tr('Reservation timeline by suite', 'Linea de reservas por suite')}
+    <div className="card calendar-timeline-card">
+      {!isMobile && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+          <div style={{ fontSize: '0.93rem', color: 'var(--primary)', fontWeight: 600 }}>
+            {tr('Reservation timeline by suite', 'Linea de reservas por suite')}
+          </div>
         </div>
-      </div>
+      )}
 
       <div
+        ref={scrollRef}
         style={{
           overflowX: 'auto',
           overflowY: enableVerticalScroll ? 'auto' : 'visible',
@@ -708,7 +732,7 @@ function TimelineView({
             fontWeight: 700,
             borderRight: '2px solid var(--gray)',
             background: 'var(--light-gray)',
-            fontSize: '0.95rem',
+            fontSize: isMobile ? '0.8rem' : '0.95rem',
             position: 'sticky',
             left: 0,
             top: 0,
@@ -723,9 +747,9 @@ function TimelineView({
                 style={{
                   flex: 1,
                   minWidth: `${dayColumnWidth}px`,
-                  padding: isDenseMonth ? '0.45rem 0.2rem' : '0.6rem 0.35rem',
+                  padding: isMobile ? '0.4rem 0' : (isDenseMonth ? '0.45rem 0.2rem' : '0.6rem 0.35rem'),
                   textAlign: 'center',
-                  fontSize: isDenseMonth ? '0.72rem' : '0.82rem',
+                  fontSize: isDenseMonth || isMobile ? '0.72rem' : '0.82rem',
                   fontWeight: isToday(day) ? 700 : 400,
                   color: isToday(day) ? 'var(--accent)' : 'var(--dark-gray)',
                   background: isToday(day) ? 'rgba(255, 107, 107, 0.1)' : 
@@ -734,8 +758,8 @@ function TimelineView({
                   borderBottom: '1px solid var(--gray)'
                 }}
               >
-                <div style={{ textTransform: 'uppercase', letterSpacing: '0.35px', fontWeight: 600 }}>{format(day, 'EEE', { locale: dateLocale })}</div>
-                <div style={{ fontSize: isDenseMonth ? '0.88rem' : '1rem', fontWeight: 700 }}>{format(day, 'd')}</div>
+                <div style={{ textTransform: 'uppercase', letterSpacing: '0.35px', fontWeight: 600 }}>{format(day, dayLabelFormat, { locale: dateLocale })}</div>
+                <div style={{ fontSize: isDenseMonth || isMobile ? '0.88rem' : '1rem', fontWeight: 700 }}>{format(day, 'd')}</div>
               </div>
             ))}
           </div>
@@ -750,7 +774,7 @@ function TimelineView({
             return Math.max(maxLane, lane);
           }, -1);
           const lanesToRender = maxVisibleLane >= 0 ? maxVisibleLane + 1 : 0;
-          const rowHeight = Math.max(baseRowHeight, lanesToRender * laneHeight + 24);
+          const rowHeight = Math.max(baseRowHeight, lanesToRender * laneHeight + rowPadding);
           const rowBaseBackground = suiteRowIndex % 2 === 0 ? 'white' : '#fbfdff';
           
           return (
@@ -763,12 +787,15 @@ function TimelineView({
                 background: 'var(--light-gray)',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '0.35rem',
+                justifyContent: isMobile ? 'center' : 'flex-start',
+                gap: isMobile ? '0.15rem' : '0.35rem',
                 position: 'sticky',
                 left: 0,
                 zIndex: 30,
               }}>
-                <div style={{ fontWeight: 700, fontSize: isMobile ? '0.8rem' : (isDenseMonth ? '0.85rem' : '0.93rem') }}>{suite.suiteName}</div>
+                <div style={{ fontWeight: 700, fontSize: isMobile ? '0.8rem' : (isDenseMonth ? '0.85rem' : '0.93rem') }} title={suite.suiteName}>
+                  {shortSuiteName(suite.suiteName)}
+                </div>
                 <div style={{ fontSize: isDenseMonth || isMobile ? '0.72rem' : '0.8rem', color: 'var(--dark-gray)' }}>
                   {isMobile ? `👤 ${suite.capacity}` : `${tr('Capacity:', 'Capacidad:')} ${suite.capacity}`}
                 </div>
@@ -802,6 +829,7 @@ function TimelineView({
                   const color = getStatusColor(reservation.status);
                   const laneIndex = laneByReservationId[reservation.reservationId] ?? idx;
                   const guestLabel = getGuestLabel(reservation);
+                  const barLabel = isMobile ? getGuestLabel(reservation, true) : guestLabel;
                   
                   return (
                     <div
@@ -814,8 +842,8 @@ function TimelineView({
                         height: `${barHeight}px`,
                         background: color,
                         borderRadius: '4px',
-                        padding: isDenseMonth ? '0 6px' : '0 8px',
-                        fontSize: isDenseMonth ? '0.72rem' : '0.78rem',
+                        padding: isMobile ? '0 4px' : (isDenseMonth ? '0 6px' : '0 8px'),
+                        fontSize: isDenseMonth || isMobile ? '0.72rem' : '0.78rem',
                         fontWeight: 600,
                         color: 'white',
                         border: '1px solid rgba(255, 255, 255, 0.35)',
@@ -831,7 +859,7 @@ function TimelineView({
                       title={`${guestLabel}\n${format(parseISO(reservation.checkIn), 'dd/MM/yyyy', { locale: dateLocale })} → ${format(parseISO(reservation.checkOut), 'dd/MM/yyyy', { locale: dateLocale })}\n${reservation.numGuests} ${reservation.numGuests > 1 ? tr('guests', 'huespedes') : tr('guest', 'huesped')}\n${tr('Status', 'Estado')}: ${getStatusLabel(reservation.status, tr)}`}
                       onClick={() => onReservationClick(reservation)}
                     >
-                      {guestLabel}
+                      {barLabel}
                     </div>
                   );
                 })}
@@ -842,8 +870,17 @@ function TimelineView({
       </div>
 
       {/* Legend */}
-      <div style={{ padding: '1rem 1.125rem', background: 'var(--light-gray)', borderTop: '1px solid var(--gray)' }}>
-        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', fontSize: '0.9rem', alignItems: 'center' }}>
+      <div style={{ padding: isMobile ? '0.6rem 0.5rem' : '1rem 1.125rem', background: 'var(--light-gray)', borderTop: '1px solid var(--gray)' }}>
+        <div
+          style={{
+            display: 'flex',
+            gap: isMobile ? '0.4rem' : '0.75rem',
+            flexWrap: isMobile ? 'nowrap' : 'wrap',
+            overflowX: isMobile ? 'auto' : 'visible',
+            fontSize: isMobile ? '0.8rem' : '0.9rem',
+            alignItems: 'center',
+          }}
+        >
           {Object.entries(STATUS_META).map(([key, meta]) => (
             <button
               key={key}
@@ -853,21 +890,23 @@ function TimelineView({
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.5rem',
+                gap: isMobile ? '0.35rem' : '0.5rem',
+                flexShrink: 0,
+                whiteSpace: 'nowrap',
                 background: statusFilters[key] ? 'rgba(255,255,255,0.65)' : 'transparent',
                 border: '1px solid var(--gray)',
                 borderRadius: '999px',
-                padding: '0.3rem 0.65rem',
+                padding: isMobile ? '0.25rem 0.55rem' : '0.3rem 0.65rem',
                 cursor: 'pointer',
                 opacity: statusFilters[key] ? 1 : 0.35,
               }}
             >
-              <div style={{ width: '20px', height: '14px', background: meta.color, borderRadius: '3px', flexShrink: 0 }}></div>
+              <div style={{ width: isMobile ? '14px' : '20px', height: isMobile ? '10px' : '14px', background: meta.color, borderRadius: '3px', flexShrink: 0 }}></div>
               <span>{getStatusLabel(key, tr)}</span>
             </button>
           ))}
 
-          <button type="button" className="btn btn-outline btn-sm" onClick={onResetStatusFilters}>
+          <button type="button" className="btn btn-outline btn-sm" style={{ flexShrink: 0, whiteSpace: 'nowrap' }} onClick={onResetStatusFilters}>
             {tr('Reset filters', 'Restablecer filtros')}
           </button>
         </div>

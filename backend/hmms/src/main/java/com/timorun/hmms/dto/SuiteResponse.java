@@ -24,6 +24,8 @@ public class SuiteResponse {
     private String icalExportUrl;
     private LocalDateTime icalLastSyncAt;
     private String icalLastSyncError;
+    // Last time booking.com (or anyone with the link) downloaded this suite's feed
+    private LocalDateTime icalExportReadAt;
     private String descriptionEn;
     private String descriptionEs;
     private Integer sizeM2;

@@ -504,6 +504,7 @@ export function ReservationDetailsModal({
                       onChange={(e) => handleFieldChange('status', e.target.value)}
                     >
                       <option value="pending">{getStatusLabel('pending', tr)}</option>
+                      <option value="awaiting_payment">{getStatusLabel('awaiting_payment', tr)}</option>
                       <option value="confirmed">{getStatusLabel('confirmed', tr)}</option>
                       <option value="checked_in">{getStatusLabel('checked_in', tr)}</option>
                       <option value="checked_out">{getStatusLabel('checked_out', tr)}</option>

@@ -11,6 +11,8 @@ import lombok.Getter;
 @Getter
 public enum ReservationStatus {
     PENDING("pending", "Pending Confirmation", "#F39C12"),
+    // Booking request accepted by the owner; the guest still has to pay before it is confirmed
+    AWAITING_PAYMENT("awaiting_payment", "Awaiting Payment", "#8E44AD"),
     CONFIRMED("confirmed", "Confirmed", "#27AE60"),
     CHECKED_IN("checked_in", "Checked In", "#3498DB"),
     CHECKED_OUT("checked_out", "Checked Out", "#95A5A6"),

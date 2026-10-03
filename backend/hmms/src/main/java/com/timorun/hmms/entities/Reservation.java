@@ -44,6 +44,10 @@ public class Reservation {
     private String externalRef;
     // Imported stay overlaps another reservation in the same suite
     private boolean syncConflict;
+
+    // Accepted booking requests: pay by this date; set when the owner marks the stay as paid
+    private LocalDate paymentDueDate;
+    private LocalDateTime paidAt;
     
     // Audit fields
     @Column(name = "updated_at")

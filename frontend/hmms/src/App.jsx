@@ -8,6 +8,7 @@ import CalendarView from './components/CalendarView'
 import AppShell from './components/layout/AppShell'
 import LoginPage from './components/auth/LoginPage'
 import BookingRequestsView from './components/BookingRequestsView'
+import PricesView from './components/PricesView'
 import CommunicationsView from './components/CommunicationsView'
 import SettingsView from './components/SettingsView'
 import BookingPage from './components/public/BookingPage'
@@ -57,6 +58,7 @@ function App() {
                 <Route path="/guests" element={<GuestManagement />} />
                 <Route path="/analytics" element={<AnalyticsView />} />
                 <Route path="/requests" element={<BookingRequestsView />} />
+                <Route path="/prices" element={<PricesView />} />
                 <Route path="/communications" element={<CommunicationsView />} />
                 <Route path="/settings" element={<SettingsView />} />
                 <Route path="*" element={<Navigate to="/today" replace />} />

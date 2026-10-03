@@ -488,12 +488,14 @@ export default function GuestManagement() {
                           <MessageCircle size={14} /> {formatPhoneDisplay(guest.phone)}
                         </a>
                       )}
-                      <button type="button" className="btn btn-primary btn-sm btn-icon" onClick={() => openEditModal(guest)} aria-label={tr('Edit guest', 'Editar huesped')}>
-                        <Edit size={14} />
-                      </button>
-                      <button type="button" className="btn btn-danger btn-sm btn-icon" onClick={() => handleAnonymize(guest)} aria-label={tr('Anonymize guest', 'Anonimizar huesped')}>
-                        <UserX size={14} />
-                      </button>
+                      <span className="mobile-card-icon-actions">
+                        <button type="button" className="btn btn-primary btn-sm btn-icon" onClick={() => openEditModal(guest)} aria-label={tr('Edit guest', 'Editar huesped')}>
+                          <Edit size={14} />
+                        </button>
+                        <button type="button" className="btn btn-danger btn-sm btn-icon" onClick={() => handleAnonymize(guest)} aria-label={tr('Anonymize guest', 'Anonimizar huesped')}>
+                          <UserX size={14} />
+                        </button>
+                      </span>
                     </div>
                   )}
                 </li>

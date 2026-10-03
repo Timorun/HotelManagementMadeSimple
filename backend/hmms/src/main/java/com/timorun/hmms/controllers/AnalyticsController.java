@@ -1,14 +1,18 @@
 package com.timorun.hmms.controllers;
 
-import com.timorun.hmms.dto.AnalyticsReportResponse;
-import com.timorun.hmms.dto.MonthlyAnalyticsResponse;
+import com.timorun.hmms.dto.AnalyticsOutlook;
+import com.timorun.hmms.dto.AnalyticsOverview;
 import com.timorun.hmms.services.AnalyticsService;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
-import java.time.YearMonth;
 
+/**
+ * Analytics page: a period compared with the same dates last year, and what is booked from today on.
+ */
 @RestController
 @RequestMapping("/api/analytics")
 public class AnalyticsController {
@@ -18,58 +22,15 @@ public class AnalyticsController {
         this.analyticsService = analyticsService;
     }
 
-    /**
-     * Get monthly analytics for current month.
-     * GET /api/analytics/monthly
-     */
-    @GetMapping("/monthly")
-    public ResponseEntity<MonthlyAnalyticsResponse> getCurrentMonthAnalytics() {
-        YearMonth currentMonth = YearMonth.now();
-        MonthlyAnalyticsResponse analytics = analyticsService.getMonthlyAnalytics(currentMonth);
-        return ResponseEntity.ok(analytics);
+    /** GET /api/analytics/overview?from=2026-01-01&to=2026-12-31 */
+    @GetMapping("/overview")
+    public AnalyticsOverview overview(@RequestParam LocalDate from, @RequestParam LocalDate to) {
+        return analyticsService.overview(from, to);
     }
 
-    /**
-     * Get monthly analytics for a specific month.
-     * GET /api/analytics/monthly?month=2026-01
-     */
-    @GetMapping("/monthly/{month}")
-    public ResponseEntity<MonthlyAnalyticsResponse> getMonthlyAnalytics(@PathVariable String month) {
-        try {
-            YearMonth yearMonth = YearMonth.parse(month);
-            MonthlyAnalyticsResponse analytics = analyticsService.getMonthlyAnalytics(yearMonth);
-            return ResponseEntity.ok(analytics);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().build();
-        }
-    }
-
-    /**
-     * Get analytics report for a specific date range.
-     * GET /api/analytics/report?from=2026-01-01&to=2026-01-31&compare=false
-     */
-    @GetMapping("/report")
-    public ResponseEntity<AnalyticsReportResponse> getAnalyticsReport(
-            @RequestParam LocalDate from,
-            @RequestParam LocalDate to,
-            @RequestParam(defaultValue = "false") boolean compare,
-            @RequestParam(required = false) String comparisonMode,
-            @RequestParam(required = false) LocalDate comparisonFrom,
-            @RequestParam(required = false) LocalDate comparisonTo,
-            @RequestParam(required = false) String nationalityCode) {
-        try {
-            AnalyticsReportResponse report = analyticsService.getAnalyticsReport(
-                    from,
-                    to,
-                    compare,
-                    comparisonMode,
-                    comparisonFrom,
-                    comparisonTo,
-                    nationalityCode
-            );
-            return ResponseEntity.ok(report);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().build();
-        }
+    /** GET /api/analytics/outlook */
+    @GetMapping("/outlook")
+    public AnalyticsOutlook outlook() {
+        return analyticsService.outlook();
     }
 }

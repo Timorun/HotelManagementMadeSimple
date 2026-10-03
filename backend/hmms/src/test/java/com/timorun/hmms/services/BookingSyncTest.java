@@ -112,6 +112,8 @@ class BookingSyncTest extends IntegrationTest {
         assertThat(exported).extracting(IcalEvent::uid)
                 .contains("hmms-" + direct.getReservationId() + "@hotelmanagementmadesimple")
                 .doesNotContain("clash@booking");
+        // The owner can see that booking.com reads the feed
+        assertThat(suiteRepository.findById(SUITE_ID).orElseThrow().getIcalExportReadAt()).isNotNull();
     }
 
     @Test

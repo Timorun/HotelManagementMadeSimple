@@ -25,41 +25,13 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
     // Find reservations that overlap with a specific date range
     List<Reservation> findByCheckInBeforeAndCheckOutAfter(LocalDate checkOut, LocalDate checkIn);
 
-    // Find reservations that overlap with a specific date range for a nationality
-    @Query("""
-            SELECT r
-            FROM Reservation r
-            WHERE r.checkIn < :checkOut
-              AND r.checkOut > :checkIn
-              AND r.guest.nationality IS NOT NULL
-              AND UPPER(r.guest.nationality.nationalityCode) = UPPER(:nationalityCode)
-            """)
-    List<Reservation> findByCheckInBeforeAndCheckOutAfterAndGuestNationalityNationalityCodeIgnoreCase(
-            @Param("checkOut") LocalDate checkOut,
-            @Param("checkIn") LocalDate checkIn,
-            @Param("nationalityCode") String nationalityCode
-    );
-
-    // Find reservations starting in a period for a nationality
-    @Query("""
-            SELECT r
-            FROM Reservation r
-            WHERE r.checkIn BETWEEN :start AND :end
-              AND r.guest.nationality IS NOT NULL
-              AND UPPER(r.guest.nationality.nationalityCode) = UPPER(:nationalityCode)
-            """)
-    List<Reservation> findByCheckInBetweenAndGuestNationalityNationalityCodeIgnoreCase(
-            @Param("start") LocalDate start,
-            @Param("end") LocalDate end,
-            @Param("nationalityCode") String nationalityCode
-    );
-
-    // Arrivals on a date: still expected (pending/confirmed) or already checked in,
-    // so a guest stays in the list after being marked as arrived.
+    // Arrivals on a date: still expected (pending/awaiting payment/confirmed) or already checked
+    // in, so a guest stays in the list after being marked as arrived.
     @Query("""
             SELECT r FROM Reservation r
             WHERE r.checkIn = :date
               AND r.status IN (com.timorun.hmms.entities.ReservationStatus.PENDING,
+                               com.timorun.hmms.entities.ReservationStatus.AWAITING_PAYMENT,
                                com.timorun.hmms.entities.ReservationStatus.CONFIRMED,
                                com.timorun.hmms.entities.ReservationStatus.CHECKED_IN)
             ORDER BY r.suite.suiteName

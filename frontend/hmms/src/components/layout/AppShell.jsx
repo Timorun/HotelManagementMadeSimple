@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
+  BadgeEuro,
   BarChart3,
   CalendarDays,
   ClipboardCheck,
@@ -40,16 +41,18 @@ export default function AppShell({ children }) {
     { id: 'guests', path: '/guests', icon: Users },
     { id: 'analytics', path: '/analytics', icon: BarChart3 },
     { id: 'requests', path: '/requests', icon: Inbox },
+    { id: 'prices', path: '/prices', icon: BadgeEuro },
     { id: 'communications', path: '/communications', icon: Megaphone },
     { id: 'settings', path: '/settings', icon: Settings },
   ]), []);
   const [pendingRequests, setPendingRequests] = useState(0);
 
-  // Badge on the Requests tab; refreshed periodically and after a request is handled.
+  // Badge on the Requests tab: new requests plus unpaid ones past their deadline. Refreshed
+  // periodically and after a request is handled.
   useEffect(() => {
     let cancelled = false;
     const refresh = () => fetchBookingRequestCount()
-      .then((count) => !cancelled && setPendingRequests(count))
+      .then((counts) => !cancelled && setPendingRequests(counts.pending + counts.overdue))
       .catch(() => {});
     refresh();
     const interval = setInterval(refresh, 2 * 60 * 1000);
@@ -79,7 +82,7 @@ export default function AppShell({ children }) {
   };
 
   const badgeFor = (tab) => (tab.id === 'requests' && pendingRequests > 0 ? (
-    <span className="nav-badge" aria-label={`${pendingRequests} pending`}>{pendingRequests}</span>
+    <span className="nav-badge" aria-label={tr(`${pendingRequests} to handle`, `${pendingRequests} por atender`)}>{pendingRequests}</span>
   ) : null);
 
   const languageSelect = (
