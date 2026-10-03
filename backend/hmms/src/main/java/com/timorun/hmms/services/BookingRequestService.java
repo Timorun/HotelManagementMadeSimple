@@ -17,6 +17,7 @@ import com.timorun.hmms.mail.GuestMails;
 import com.timorun.hmms.mail.MailService;
 import com.timorun.hmms.repositories.ReservationRepository;
 import com.timorun.hmms.repositories.SuiteRepository;
+import com.timorun.hmms.util.Channels;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,7 +37,6 @@ import java.util.Map;
  */
 @Service
 public class BookingRequestService {
-    public static final String WEBSITE_CHANNEL = "website";
     private static final int MAX_NIGHTS = 60;
     private static final int MAX_MONTHS_AHEAD = 18;
 
@@ -47,13 +47,15 @@ public class BookingRequestService {
     private final GuestPreferencesService preferencesService;
     private final RateService rateService;
     private final PaymentSettingsService paymentSettingsService;
+    private final PaymentRequestSender paymentRequestSender;
     private final MailService mailService;
     private final GuestMails guestMails;
 
     public BookingRequestService(SuiteRepository suiteRepository, ReservationRepository reservationRepository,
                                  ReservationService reservationService, GuestService guestService,
                                  GuestPreferencesService preferencesService, RateService rateService,
-                                 PaymentSettingsService paymentSettingsService, MailService mailService, GuestMails guestMails) {
+                                 PaymentSettingsService paymentSettingsService, PaymentRequestSender paymentRequestSender,
+                                 MailService mailService, GuestMails guestMails) {
         this.suiteRepository = suiteRepository;
         this.reservationRepository = reservationRepository;
         this.reservationService = reservationService;
@@ -61,6 +63,7 @@ public class BookingRequestService {
         this.preferencesService = preferencesService;
         this.rateService = rateService;
         this.paymentSettingsService = paymentSettingsService;
+        this.paymentRequestSender = paymentRequestSender;
         this.mailService = mailService;
         this.guestMails = guestMails;
     }
@@ -122,7 +125,8 @@ public class BookingRequestService {
         reservation.setCheckIn(request.getCheckIn());
         reservation.setCheckOut(request.getCheckOut());
         reservation.setNumGuests(numGuests);
-        reservation.setChannel(WEBSITE_CHANNEL);
+        // A request from the own booking page is a direct booking: no platform commission
+        reservation.setChannel(Channels.DIRECT);
         reservation.setNotes(blankToNull(request.getNotes()));
         // The price shown on the booking page, from the price calendar; null = to be agreed
         reservation.setPriceTotal(rateService.quote(suite.getSuiteId(), request.getCheckIn(), request.getCheckOut()).total());
@@ -183,11 +187,8 @@ public class BookingRequestService {
             throw new IllegalArgumentException("Price must be 0 or higher");
         }
         boolean notify = !Boolean.FALSE.equals(d.getNotifyGuest());
-        PaymentSettings payment = paymentSettingsService.get();
-        if (notify && !payment.hasMethod()) {
-            throw new IllegalArgumentException("First add your bank account or Bizum number under Settings, Payments, so the guest knows how to pay");
-        }
-        LocalDate dueDate = d.getPaymentDueDate() != null ? d.getPaymentDueDate() : defaultDueDate(reservation, payment);
+        PaymentSettings payment = notify ? paymentRequestSender.requirePaymentDetails() : null;
+        LocalDate dueDate = d.getPaymentDueDate() != null ? d.getPaymentDueDate() : paymentSettingsService.defaultDueDate(reservation.getCheckIn());
         if (dueDate.isBefore(LocalDate.now())) {
             throw new IllegalArgumentException("The payment deadline can't be in the past");
         }
@@ -198,8 +199,7 @@ public class BookingRequestService {
         reservation.setUpdatedAt(LocalDateTime.now());
         Reservation saved = reservationRepository.save(reservation);
         if (notify) {
-            mailService.send(guestMails.paymentRequested(saved, d.getMessage(), payment, false,
-                    preferencesService.preferencesLink(saved.getGuest().getGuestId())));
+            paymentRequestSender.send(saved, d.getMessage(), payment, false);
         }
         return reservationService.toResponse(saved);
     }
@@ -232,8 +232,7 @@ public class BookingRequestService {
         reservation.setUpdatedAt(LocalDateTime.now());
         Reservation saved = reservationRepository.save(reservation);
         if (!Boolean.FALSE.equals(d.getNotifyGuest())) {
-            mailService.send(guestMails.paymentRequested(saved, d.getMessage(), paymentSettingsService.get(), true,
-                    preferencesService.preferencesLink(saved.getGuest().getGuestId())));
+            paymentRequestSender.sendReminder(saved, d.getMessage());
         }
         return reservationService.toResponse(saved);
     }
@@ -273,15 +272,6 @@ public class BookingRequestService {
     }
 
     /** Today plus the deadline from the settings, but never after the day of arrival. */
-    private static LocalDate defaultDueDate(Reservation reservation, PaymentSettings payment) {
-        LocalDate today = LocalDate.now();
-        LocalDate dueDate = today.plusDays(payment.deadlineDays());
-        if (dueDate.isAfter(reservation.getCheckIn())) {
-            dueDate = reservation.getCheckIn().isBefore(today) ? today : reservation.getCheckIn();
-        }
-        return dueDate;
-    }
-
     private Guest findOrCreateGuest(PublicBookingRequest request) {
         var existing = guestService.findActiveGuestByEmail(request.getEmail());
         if (existing.isPresent() && GuestService.hasSameName(existing.get(), request.getFirstName(), request.getLastName())) {

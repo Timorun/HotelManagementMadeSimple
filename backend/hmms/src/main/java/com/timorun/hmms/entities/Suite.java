@@ -33,6 +33,8 @@ public class Suite {
     private String icalExportToken;
     private LocalDateTime icalLastSyncAt;
     private String icalLastSyncError;
+    // Last time our feed was downloaded (by booking.com, normally every couple of hours)
+    private LocalDateTime icalExportReadAt;
 
     // Details shown on the public booking page
     private String descriptionEn;

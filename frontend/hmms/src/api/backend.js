@@ -52,87 +52,6 @@ const STUB_DATA = {
     { id: 3, name: 'Belgian' },
     { id: 4, name: 'French' },
   ],
-  analytics: {
-    month: '2026-03',
-    totalReservations: 42,
-    occupancyPercentage: 74.5,
-    totalRevenue: 32850.0,
-    averagePricePerNight: 189.4,
-  },
-  analyticsReport: {
-    fromDate: '2026-03-01',
-    toDate: '2026-03-31',
-    daysInPeriod: 31,
-    currency: 'EUR',
-    comparisonFromDate: '2025-03-01',
-    comparisonToDate: '2025-03-31',
-    comparisonMode: 'SAME_DATES_LAST_YEAR',
-    summary: {
-      totalRevenue: 32850.0,
-      occupancyPercentage: 74.5,
-      averageDailyRate: 189.4,
-      revenuePerAvailableNight: 141.1,
-      occupiedNights: 173,
-      availableNights: 232,
-      reservationsOverlappingPeriod: 42,
-      reservationsStartingInPeriod: 46,
-      cancelledReservations: 4,
-      cancellationRate: 8.7,
-      averageLengthOfStay: 4.2,
-    },
-    previousPeriodSummary: {
-      totalRevenue: 30100.0,
-      occupancyPercentage: 70.3,
-      averageDailyRate: 181.6,
-      revenuePerAvailableNight: 127.7,
-      occupiedNights: 165,
-      availableNights: 224,
-      reservationsOverlappingPeriod: 38,
-      reservationsStartingInPeriod: 41,
-      cancelledReservations: 5,
-      cancellationRate: 12.2,
-      averageLengthOfStay: 4.0,
-    },
-    deltas: {
-      revenueChangePercentage: 9.14,
-      occupancyChangePercentagePoints: 4.2,
-      averageDailyRateChangePercentage: 4.3,
-      revParChangePercentage: 10.48,
-      cancellationRateChangePercentagePoints: -3.5,
-    },
-    dailyTrend: [
-      { date: '2026-03-01', occupiedNights: 5, availableNights: 8, occupancyPercentage: 62.5, revenue: 910, averageDailyRate: 182, revenuePerAvailableNight: 113.75, arrivals: 2, departures: 1 },
-      { date: '2026-03-02', occupiedNights: 6, availableNights: 8, occupancyPercentage: 75.0, revenue: 1120, averageDailyRate: 186.67, revenuePerAvailableNight: 140.0, arrivals: 3, departures: 2 },
-      { date: '2026-03-03', occupiedNights: 7, availableNights: 8, occupancyPercentage: 87.5, revenue: 1380, averageDailyRate: 197.14, revenuePerAvailableNight: 172.5, arrivals: 4, departures: 2 },
-      { date: '2026-03-04', occupiedNights: 8, availableNights: 8, occupancyPercentage: 100.0, revenue: 1560, averageDailyRate: 195.0, revenuePerAvailableNight: 195.0, arrivals: 2, departures: 1 },
-      { date: '2026-03-05', occupiedNights: 7, availableNights: 8, occupancyPercentage: 87.5, revenue: 1430, averageDailyRate: 204.29, revenuePerAvailableNight: 178.75, arrivals: 3, departures: 4 },
-      { date: '2026-03-06', occupiedNights: 6, availableNights: 8, occupancyPercentage: 75.0, revenue: 1170, averageDailyRate: 195.0, revenuePerAvailableNight: 146.25, arrivals: 2, departures: 3 },
-      { date: '2026-03-07', occupiedNights: 5, availableNights: 8, occupancyPercentage: 62.5, revenue: 980, averageDailyRate: 196.0, revenuePerAvailableNight: 122.5, arrivals: 1, departures: 2 },
-    ],
-    channelPerformance: [
-      { channel: 'direct', revenue: 18500.0, reservations: 19, occupiedNights: 93, revenueSharePercentage: 56.3, averageBookingValue: 973.68 },
-      { channel: 'booking.com', revenue: 9100.0, reservations: 13, occupiedNights: 49, revenueSharePercentage: 27.7, averageBookingValue: 700.0 },
-      { channel: 'airbnb', revenue: 5250.0, reservations: 8, occupiedNights: 24, revenueSharePercentage: 16.0, averageBookingValue: 656.25 },
-    ],
-    reservationStatusBreakdown: [
-      { status: 'confirmed', count: 29, sharePercentage: 63.0 },
-      { status: 'checked_in', count: 7, sharePercentage: 15.2 },
-      { status: 'checked_out', count: 5, sharePercentage: 10.9 },
-      { status: 'cancelled', count: 4, sharePercentage: 8.7 },
-      { status: 'no_show', count: 1, sharePercentage: 2.2 },
-    ],
-    topRevenueDays: [
-      { date: '2026-03-04', revenue: 1560.0, occupancyPercentage: 100.0, note: 'Peak occupancy day' },
-      { date: '2026-03-05', revenue: 1430.0, occupancyPercentage: 87.5, note: 'Revenue spike day' },
-      { date: '2026-03-03', revenue: 1380.0, occupancyPercentage: 87.5, note: 'Strong occupancy day' },
-    ],
-    insights: [
-      'Revenue increased by 9.1% versus the previous period.',
-      'Occupancy is running at a high 74.5%, indicating strong demand.',
-      'Direct channel drives 56.3% of revenue; monitor channel concentration risk.',
-      'Top revenue day was 2026-03-04 with €1560 and occupancy at 100.0%.',
-    ],
-  },
   operations: {
     arrivalsToday: [
       { id: 201, guestName: 'Mila Peters', suiteName: 'Canal View Suite' },
@@ -164,24 +83,6 @@ function withStubFallback(data, stubData) {
   }
 
   return data;
-}
-
-function withoutComparisonData(report) {
-  if (!report || typeof report !== 'object') {
-    return report;
-  }
-
-  return {
-    ...report,
-    comparisonFromDate: null,
-    comparisonToDate: null,
-    comparisonMode: null,
-    previousPeriodSummary: null,
-    deltas: null,
-    insights: Array.isArray(report.insights)
-      ? report.insights.filter((line) => !String(line).toLowerCase().includes('versus'))
-      : report.insights,
-  };
 }
 
 function notifyUnauthorized() {
@@ -321,49 +222,17 @@ export async function fetchNationalities() {
   return withStubFallback(data, STUB_DATA.nationalities);
 }
 
-export async function fetchAnalytics(month) {
-  const url = month ? `${BASE_URL}/analytics/monthly/${month}` : `${BASE_URL}/analytics/monthly`;
-  const data = await getJson(url, 'Failed to fetch analytics');
-  return withStubFallback(data, STUB_DATA.analytics);
+// ===== Analytics =====
+
+/** A period (yyyy-MM-dd, inclusive) compared with the same dates last year. */
+export async function fetchAnalyticsOverview(from, to) {
+  const params = new URLSearchParams({ from, to });
+  return request(`${BASE_URL}/analytics/overview?${params}`, { method: 'GET' }, 'Failed to load analytics');
 }
 
-export async function fetchAnalyticsReport(from, to, options = {}) {
-  const {
-    compare = false,
-    comparisonMode,
-    comparisonFrom,
-    comparisonTo,
-    nationalityCode,
-  } = options;
-
-  const params = new URLSearchParams();
-  params.set('from', from);
-  params.set('to', to);
-  params.set('compare', compare ? 'true' : 'false');
-
-  if (comparisonMode) {
-    params.set('comparisonMode', comparisonMode);
-  }
-
-  if (comparisonFrom) {
-    params.set('comparisonFrom', comparisonFrom);
-  }
-
-  if (comparisonTo) {
-    params.set('comparisonTo', comparisonTo);
-  }
-
-  if (nationalityCode) {
-    params.set('nationalityCode', nationalityCode);
-  }
-
-  const data = await getJson(
-    `${BASE_URL}/analytics/report?${params.toString()}`,
-    'Failed to fetch analytics report',
-  );
-
-  const result = withStubFallback(data, STUB_DATA.analyticsReport);
-  return compare ? result : withoutComparisonData(result);
+/** Booked and empty nights from today on. */
+export async function fetchAnalyticsOutlook() {
+  return request(`${BASE_URL}/analytics/outlook`, { method: 'GET' }, 'Failed to load the coming weeks');
 }
 
 export async function fetchOperationsDashboard() {
@@ -553,6 +422,21 @@ export async function fetchPaymentSettings() {
 
 export async function updatePaymentSettings(settings) {
   return request(`${BASE_URL}/settings/payment`, { method: 'PUT', body: JSON.stringify(settings) }, 'Failed to save payment details');
+}
+
+/** [{channel, validFrom, rate}] for every platform, oldest first */
+export async function fetchCommissionRates() {
+  return request(`${BASE_URL}/settings/commission`, { method: 'GET' }, 'Failed to load commission rates');
+}
+
+/** {channel, validFrom, rate}: adds a rate from that date, or changes the rate starting on it */
+export async function saveCommissionRate(rate) {
+  return request(`${BASE_URL}/settings/commission`, { method: 'POST', body: JSON.stringify(rate) }, 'Failed to save the commission');
+}
+
+export async function deleteCommissionRate(channel, validFrom) {
+  const params = new URLSearchParams({ channel, validFrom });
+  return request(`${BASE_URL}/settings/commission?${params}`, { method: 'DELETE' }, 'Failed to remove the commission rate');
 }
 
 // ===== Public (no login): booking page and guest preferences =====

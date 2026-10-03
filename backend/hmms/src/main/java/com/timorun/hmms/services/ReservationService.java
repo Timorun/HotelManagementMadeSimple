@@ -2,6 +2,7 @@ package com.timorun.hmms.services;
 
 import com.timorun.hmms.dto.CreateReservationRequest;
 import com.timorun.hmms.dto.GuestRequest;
+import com.timorun.hmms.dto.PaymentSettings;
 import com.timorun.hmms.dto.ReservationResponse;
 import com.timorun.hmms.dto.UpdateReservationRequest;
 import com.timorun.hmms.dto.UpdateReservationStatusRequest;
@@ -13,12 +14,15 @@ import com.timorun.hmms.exceptions.GuestConflictException;
 import com.timorun.hmms.repositories.GuestRepository;
 import com.timorun.hmms.repositories.ReservationRepository;
 import com.timorun.hmms.repositories.SuiteRepository;
+import com.timorun.hmms.util.Channels;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -27,16 +31,27 @@ public class ReservationService {
     private final GuestRepository guestRepository;
     private final SuiteRepository suiteRepository;
     private final GuestService guestService;
+    private final PaymentSettingsService paymentSettingsService;
+    private final PaymentRequestSender paymentRequestSender;
+
+    // Statuses a reservation can be created in; cancelled or no-show make no sense for a new one
+    private static final Set<ReservationStatus> CREATABLE_STATUSES = EnumSet.of(
+            ReservationStatus.PENDING, ReservationStatus.AWAITING_PAYMENT, ReservationStatus.CONFIRMED,
+            ReservationStatus.CHECKED_IN, ReservationStatus.CHECKED_OUT);
 
     public ReservationService(
             ReservationRepository reservationRepository,
             GuestRepository guestRepository,
             SuiteRepository suiteRepository,
-            GuestService guestService) {
+            GuestService guestService,
+            PaymentSettingsService paymentSettingsService,
+            PaymentRequestSender paymentRequestSender) {
         this.reservationRepository = reservationRepository;
         this.guestRepository = guestRepository;
         this.suiteRepository = suiteRepository;
         this.guestService = guestService;
+        this.paymentSettingsService = paymentSettingsService;
+        this.paymentRequestSender = paymentRequestSender;
     }
 
     /**
@@ -46,9 +61,23 @@ public class ReservationService {
     @Transactional
     public ReservationResponse createReservation(CreateReservationRequest request) {
         validateReservationDates(request.getCheckIn(), request.getCheckOut());
+        ReservationStatus status = initialStatus(request.getStatus());
+        boolean awaitingPayment = status == ReservationStatus.AWAITING_PAYMENT;
+        boolean notifyGuest = awaitingPayment && Boolean.TRUE.equals(request.getNotifyGuest());
+        LocalDate paymentDueDate = awaitingPayment ? paymentDueDate(request) : null;
+        PaymentSettings payment = null;
+        if (notifyGuest) {
+            if (request.getPriceTotal() == null) {
+                throw new IllegalArgumentException("Enter the total price of the stay, so the guest knows how much to pay");
+            }
+            payment = paymentRequestSender.requirePaymentDetails();
+        }
         
         // Get or create guest
         Guest guest = getOrCreateGuest(request);
+        if (notifyGuest && (guest.getEmail() == null || guest.getEmail().isBlank())) {
+            throw new IllegalArgumentException("Add the guest's email address to send the payment details");
+        }
         
         // Get suite
         Suite suite = suiteRepository.findById(request.getSuiteId())
@@ -66,13 +95,43 @@ public class ReservationService {
         reservation.setCheckOut(request.getCheckOut());
         reservation.setNumGuests(request.getNumGuests());
         reservation.setPriceTotal(request.getPriceTotal());
-        reservation.setChannel(request.getChannel());
+        reservation.setChannel(channelOf(request.getChannel()));
         reservation.setNotes(request.getNotes());
-        reservation.setStatus(ReservationStatus.CONFIRMED);
+        reservation.setStatus(status);
+        reservation.setPaymentDueDate(paymentDueDate);
         reservation.setCreatedAt(LocalDateTime.now());
         
         Reservation saved = reservationRepository.save(reservation);
+        if (notifyGuest) {
+            paymentRequestSender.send(saved, null, payment, false);
+        }
         return toResponse(saved);
+    }
+
+    // Reservations entered by hand without a channel are direct bookings
+    private static String channelOf(String channel) {
+        return channel == null || channel.isBlank() ? Channels.DIRECT : Channels.normalize(channel);
+    }
+
+    private static ReservationStatus initialStatus(String value) {
+        if (value == null || value.isBlank()) {
+            return ReservationStatus.CONFIRMED;
+        }
+        ReservationStatus status = ReservationStatus.fromValue(value);
+        if (!CREATABLE_STATUSES.contains(status)) {
+            throw new IllegalArgumentException("A new reservation can't start as " + status.getValue());
+        }
+        return status;
+    }
+
+    private LocalDate paymentDueDate(CreateReservationRequest request) {
+        if (request.getPaymentDueDate() == null) {
+            return paymentSettingsService.defaultDueDate(request.getCheckIn());
+        }
+        if (request.getPaymentDueDate().isBefore(LocalDate.now())) {
+            throw new IllegalArgumentException("The payment deadline can't be in the past");
+        }
+        return request.getPaymentDueDate();
     }
 
     /**
@@ -110,7 +169,7 @@ public class ReservationService {
         reservation.setCheckOut(request.getCheckOut());
         reservation.setNumGuests(request.getNumGuests());
         reservation.setPriceTotal(request.getPriceTotal());
-        reservation.setChannel(request.getChannel());
+        reservation.setChannel(channelOf(request.getChannel()));
         reservation.setNotes(request.getNotes());
         
         Reservation updated = reservationRepository.save(reservation);
@@ -158,6 +217,10 @@ public class ReservationService {
         }
         
         reservation.setStatus(newStatus);
+        // Without a pay-by date an unpaid stay could never be flagged as overdue
+        if (newStatus == ReservationStatus.AWAITING_PAYMENT && reservation.getPaymentDueDate() == null) {
+            reservation.setPaymentDueDate(paymentSettingsService.defaultDueDate(reservation.getCheckIn()));
+        }
         Reservation updated = reservationRepository.save(reservation);
         return toResponse(updated);
     }

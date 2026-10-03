@@ -230,6 +230,7 @@ public class SuiteService {
                 .icalExportUrl(icalExportUrl(suite))
                 .icalLastSyncAt(suite.getIcalLastSyncAt())
                 .icalLastSyncError(suite.getIcalLastSyncError())
+                .icalExportReadAt(suite.getIcalExportReadAt())
                 .descriptionEn(suite.getDescriptionEn())
                 .descriptionEs(suite.getDescriptionEs())
                 .sizeM2(suite.getSizeM2())

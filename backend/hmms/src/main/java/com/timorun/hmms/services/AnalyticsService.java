@@ -1,12 +1,17 @@
 package com.timorun.hmms.services;
 
-import com.timorun.hmms.dto.AnalyticsReportResponse;
-import com.timorun.hmms.dto.MonthlyAnalyticsResponse;
+import com.timorun.hmms.dto.AnalyticsOutlook;
+import com.timorun.hmms.dto.AnalyticsOverview;
 import com.timorun.hmms.entities.Reservation;
 import com.timorun.hmms.entities.ReservationStatus;
+import com.timorun.hmms.entities.Suite;
+import com.timorun.hmms.entities.SuiteRate;
 import com.timorun.hmms.repositories.ReservationRepository;
+import com.timorun.hmms.repositories.SuiteRateRepository;
 import com.timorun.hmms.repositories.SuiteRepository;
+import com.timorun.hmms.util.Channels;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -16,707 +21,313 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
-import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
+/**
+ * Numbers for the Analytics page. Every sold stay is split into nights, each carrying an equal
+ * share of the stay's price and of the platform commission; totals, channels, weekdays and months
+ * are sums over those nights, so they always agree with each other.
+ */
 @Service
+@Transactional(readOnly = true)
 public class AnalyticsService {
+    // Stays that count as sold: pending requests and unpaid ones are not revenue yet
+    private static final Set<ReservationStatus> SOLD = EnumSet.of(
+            ReservationStatus.CONFIRMED, ReservationStatus.CHECKED_IN, ReservationStatus.CHECKED_OUT);
+    private static final int MAX_DAYS = 731;
+    private static final int OUTLOOK_GRID_DAYS = 14;
+
     private final ReservationRepository reservationRepository;
     private final SuiteRepository suiteRepository;
+    private final SuiteRateRepository suiteRateRepository;
+    private final CommissionRateService commissionRateService;
 
-    private static final Set<ReservationStatus> STAY_STATUSES = EnumSet.of(
-            ReservationStatus.CONFIRMED,
-            ReservationStatus.CHECKED_IN,
-            ReservationStatus.CHECKED_OUT
-    );
-    private static final int MAX_DAYS_IN_REPORT = 730;
-    private static final int TOP_REVENUE_DAY_COUNT = 3;
-    private static final String COMPARISON_MODE_SAME_DATES_LAST_YEAR = "SAME_DATES_LAST_YEAR";
-    private static final String COMPARISON_MODE_PREVIOUS_EQUAL_DAYS = "PREVIOUS_EQUAL_DAYS";
-    private static final String COMPARISON_MODE_CUSTOM_RANGE = "CUSTOM_RANGE";
-
-    public AnalyticsService(ReservationRepository reservationRepository, SuiteRepository suiteRepository) {
+    public AnalyticsService(ReservationRepository reservationRepository, SuiteRepository suiteRepository,
+                            SuiteRateRepository suiteRateRepository, CommissionRateService commissionRateService) {
         this.reservationRepository = reservationRepository;
         this.suiteRepository = suiteRepository;
+        this.suiteRateRepository = suiteRateRepository;
+        this.commissionRateService = commissionRateService;
     }
 
-    /**
-     * Get analytics for a specific month.
-     */
-    public MonthlyAnalyticsResponse getMonthlyAnalytics(YearMonth month) {
-        LocalDate startDate = month.atDay(1);
-        LocalDate endDate = month.atEndOfMonth();
-        AnalyticsReportResponse.SummaryMetrics currentSummary = computePeriod(startDate, endDate, false, null).summary;
+    /** A period (inclusive) compared with the same dates a year earlier. */
+    public AnalyticsOverview overview(LocalDate from, LocalDate to) {
+        if (from == null || to == null || to.isBefore(from)) {
+            throw new IllegalArgumentException("Choose a period whose end is on or after its start");
+        }
+        if (ChronoUnit.DAYS.between(from, to) >= MAX_DAYS) {
+            throw new IllegalArgumentException("Choose a period of at most 2 years");
+        }
+        LocalDate compareFrom = from.minusYears(1);
+        LocalDate compareTo = to.minusYears(1);
+        int year = to.getYear();
+        LocalDate loadFrom = min(compareFrom, LocalDate.of(year - 1, 1, 1));
+        LocalDate loadTo = max(to, LocalDate.of(year, 12, 31));
 
-        YearMonth previousMonth = month.minusMonths(1);
-        LocalDate prevStartDate = previousMonth.atDay(1);
-        LocalDate prevEndDate = previousMonth.atEndOfMonth();
-        AnalyticsReportResponse.SummaryMetrics previousSummary = computePeriod(prevStartDate, prevEndDate, false, null).summary;
+        int suites = activeSuites().size();
+        List<Night> nights = soldNights(loadFrom, loadTo);
+        List<Night> current = between(nights, from, to);
+        List<Night> previous = between(nights, compareFrom, compareTo);
 
-        return MonthlyAnalyticsResponse.builder()
-                .month(month)
-                .totalRevenue(currentSummary.getTotalRevenue())
-                .occupancyPercentage(currentSummary.getOccupancyPercentage())
-                .averagePricePerNight(currentSummary.getAverageDailyRate())
-                .totalReservations(currentSummary.getReservationsOverlappingPeriod())
-                .totalNights(currentSummary.getOccupiedNights())
-                .previousMonthRevenue(previousSummary.getTotalRevenue())
-                .previousMonthOccupancy(previousSummary.getOccupancyPercentage())
-                .previousMonthAvgPrice(previousSummary.getAverageDailyRate())
-                .revenueChange(calculatePercentageChange(previousSummary.getTotalRevenue(), currentSummary.getTotalRevenue()))
-                .occupancyChange(roundToTwoDecimals(currentSummary.getOccupancyPercentage() - previousSummary.getOccupancyPercentage()))
-                .avgPriceChange(calculatePercentageChange(previousSummary.getAverageDailyRate(), currentSummary.getAverageDailyRate()))
-                .build();
+        return new AnalyticsOverview(
+                from, to, compareFrom, compareTo, suites,
+                totals(current, suites * days(from, to)),
+                totals(previous, suites * days(compareFrom, compareTo)),
+                channels(current, previous),
+                weekdays(current, previous, from, to, compareFrom, compareTo, suites),
+                year,
+                months(nights, year, suites));
     }
 
-    /**
-     * Get advanced analytics report for an arbitrary date range.
-     */
-    public AnalyticsReportResponse getAnalyticsReport(LocalDate from, LocalDate to) {
-        return getAnalyticsReport(from, to, false);
+    /** Nights booked from today on, and the empty nights of the next two weeks with their price. */
+    public AnalyticsOutlook outlook() {
+        LocalDate today = LocalDate.now();
+        List<Suite> suites = activeSuites();
+        List<Reservation> reservations = reservationRepository.findByCheckInBeforeAndCheckOutAfter(today.plusDays(90), today)
+                .stream()
+                .filter(reservation -> reservation.getStatus() != ReservationStatus.CANCELLED
+                        && reservation.getStatus() != ReservationStatus.NO_SHOW)
+                .toList();
+
+        List<LocalDate> days = today.datesUntil(today.plusDays(OUTLOOK_GRID_DAYS)).toList();
+        Map<String, BigDecimal> prices = suiteRateRepository.findBySuiteIdInAndRateDateBetween(
+                        suites.stream().map(Suite::getSuiteId).toList(), today, today.plusDays(OUTLOOK_GRID_DAYS - 1L))
+                .stream()
+                .collect(Collectors.toMap(rate -> rateKey(rate.getSuiteId(), rate.getRateDate()), SuiteRate::getPrice));
+
+        List<AnalyticsOutlook.SuiteNights> grid = suites.stream()
+                .map(suite -> new AnalyticsOutlook.SuiteNights(suite.getSuiteId(), suite.getSuiteName(), days.stream()
+                        .map(day -> night(suite, day, reservations, prices))
+                        .toList()))
+                .toList();
+
+        return new AnalyticsOutlook(today, window(reservations, today, 30, suites.size()),
+                window(reservations, today, 90, suites.size()), days, grid);
     }
 
-    /**
-     * Get advanced analytics report for an arbitrary date range.
-     * Comparison can be enabled to include baseline periods and delta metrics.
-     */
-    public AnalyticsReportResponse getAnalyticsReport(LocalDate from, LocalDate to, boolean includeComparison) {
-        return getAnalyticsReport(from, to, includeComparison, null, null, null, null);
+    // ===== Overview =====
+
+    /** One sold night with its share of the stay's price and commission. */
+    private record Night(LocalDate date, long reservationId, String channel, BigDecimal revenue, BigDecimal commission) {
+        boolean direct() {
+            return Channels.DIRECT.equals(channel);
+        }
     }
 
-    /**
-     * Get advanced analytics report with optional comparison controls and nationality filtering.
-     */
-    public AnalyticsReportResponse getAnalyticsReport(
-            LocalDate from,
-            LocalDate to,
-            boolean includeComparison,
-            String comparisonMode,
-            LocalDate comparisonFrom,
-            LocalDate comparisonTo,
-            String nationalityCode) {
-        validateDateRange(from, to);
-        String normalizedNationalityCode = normalizeNationalityCode(nationalityCode);
-
-        int daysInPeriod = inclusiveDays(from, to);
-        ComparisonPeriod comparisonPeriod = includeComparison
-                ? resolveComparisonPeriod(from, to, daysInPeriod, comparisonMode, comparisonFrom, comparisonTo)
-                : null;
-
-        PeriodComputation currentPeriod = computePeriod(from, to, true, normalizedNationalityCode);
-        PeriodComputation previousPeriod = includeComparison
-                ? computePeriod(comparisonPeriod.fromDate, comparisonPeriod.toDate, false, normalizedNationalityCode)
-                : null;
-
-        AnalyticsReportResponse.DeltaMetrics deltas = includeComparison
-                ? buildDeltas(currentPeriod.summary, previousPeriod.summary)
-                : null;
-
-        return AnalyticsReportResponse.builder()
-                .fromDate(from)
-                .toDate(to)
-                .daysInPeriod(daysInPeriod)
-                .currency("EUR")
-                .comparisonFromDate(includeComparison ? comparisonPeriod.fromDate : null)
-                .comparisonToDate(includeComparison ? comparisonPeriod.toDate : null)
-                .comparisonMode(includeComparison ? comparisonPeriod.mode : null)
-                .summary(currentPeriod.summary)
-                .previousPeriodSummary(includeComparison ? previousPeriod.summary : null)
-                .deltas(deltas)
-                .dailyTrend(currentPeriod.dailyTrend)
-                .channelPerformance(currentPeriod.channelPerformance)
-                .reservationStatusBreakdown(currentPeriod.statusBreakdown)
-                .topRevenueDays(currentPeriod.topRevenueDays)
-                .insights(buildInsights(currentPeriod, deltas, includeComparison))
-                .build();
-    }
-
-    private ComparisonPeriod resolveComparisonPeriod(
-            LocalDate from,
-            LocalDate to,
-            int daysInPeriod,
-            String comparisonMode,
-            LocalDate comparisonFrom,
-            LocalDate comparisonTo) {
-        String resolvedMode = normalizeComparisonMode(comparisonMode);
-
-        if (COMPARISON_MODE_CUSTOM_RANGE.equals(resolvedMode)) {
-            if (comparisonFrom == null || comparisonTo == null) {
-                throw new IllegalArgumentException("comparisonFrom and comparisonTo are required for CUSTOM_RANGE mode");
+    private List<Night> soldNights(LocalDate from, LocalDate to) {
+        CommissionRateService.Rates rates = commissionRateService.rates();
+        List<Night> nights = new ArrayList<>();
+        for (Reservation reservation : reservationRepository.findByCheckInBeforeAndCheckOutAfter(to.plusDays(1), from)) {
+            if (!SOLD.contains(reservation.getStatus())) {
+                continue;
             }
-            validateDateRange(comparisonFrom, comparisonTo);
-            return new ComparisonPeriod(comparisonFrom, comparisonTo, COMPARISON_MODE_CUSTOM_RANGE);
-        }
-
-        if (COMPARISON_MODE_PREVIOUS_EQUAL_DAYS.equals(resolvedMode)) {
-            LocalDate previousTo = from.minusDays(1);
-            LocalDate previousFrom = previousTo.minusDays(daysInPeriod - 1L);
-            return new ComparisonPeriod(previousFrom, previousTo, COMPARISON_MODE_PREVIOUS_EQUAL_DAYS);
-        }
-
-        LocalDate previousYearFrom = from.minusYears(1);
-        LocalDate previousYearTo = to.minusYears(1);
-        validateDateRange(previousYearFrom, previousYearTo);
-        return new ComparisonPeriod(previousYearFrom, previousYearTo, COMPARISON_MODE_SAME_DATES_LAST_YEAR);
-    }
-
-    private PeriodComputation computePeriod(LocalDate from, LocalDate to, boolean includeDetailedData, String nationalityCode) {
-        int activeSuiteCount = getActiveSuiteCount();
-        int daysInPeriod = inclusiveDays(from, to);
-        int availableNights = activeSuiteCount * daysInPeriod;
-
-        List<Reservation> overlappingReservations = findOverlappingReservations(from, to, nationalityCode);
-        List<Reservation> stayReservations = overlappingReservations.stream()
-                .filter(this::isStayReservation)
-                .collect(Collectors.toList());
-
-        List<ReservationSlice> slices = stayReservations.stream()
-                .map(reservation -> buildSlice(reservation, from, to))
-                .filter(slice -> slice.nightsInPeriod > 0)
-                .collect(Collectors.toList());
-
-        BigDecimal totalRevenue = slices.stream()
-                .map(slice -> slice.revenueInPeriod)
-                .reduce(BigDecimal.ZERO, BigDecimal::add)
-                .setScale(2, RoundingMode.HALF_UP);
-        int occupiedNights = slices.stream().mapToInt(slice -> slice.nightsInPeriod).sum();
-
-        List<Reservation> reservationsStartingInPeriod = findReservationsStartingInPeriod(from, to, nationalityCode);
-        int startingReservationCount = reservationsStartingInPeriod.size();
-        int cancelledReservations = countByStatus(reservationsStartingInPeriod, ReservationStatus.CANCELLED);
-
-        double occupancyPercentage = availableNights > 0
-                ? (occupiedNights * 100.0) / availableNights
-                : 0.0;
-        BigDecimal averageDailyRate = occupiedNights > 0
-                ? totalRevenue.divide(BigDecimal.valueOf(occupiedNights), 2, RoundingMode.HALF_UP)
-                : BigDecimal.ZERO;
-        BigDecimal revenuePerAvailableNight = availableNights > 0
-                ? totalRevenue.divide(BigDecimal.valueOf(availableNights), 2, RoundingMode.HALF_UP)
-                : BigDecimal.ZERO;
-
-        double cancellationRate = startingReservationCount > 0
-                ? (cancelledReservations * 100.0) / startingReservationCount
-                : 0.0;
-
-        double averageLengthOfStay = reservationsStartingInPeriod.stream()
-                .filter(this::isStayReservation)
-                .mapToInt(this::calculateReservationNights)
-                .average()
-                .orElse(0.0);
-
-        AnalyticsReportResponse.SummaryMetrics summary = AnalyticsReportResponse.SummaryMetrics.builder()
-                .totalRevenue(totalRevenue)
-                .occupancyPercentage(roundToTwoDecimals(occupancyPercentage))
-                .averageDailyRate(averageDailyRate)
-                .revenuePerAvailableNight(revenuePerAvailableNight)
-                .occupiedNights(occupiedNights)
-                .availableNights(availableNights)
-                .reservationsOverlappingPeriod(slices.size())
-                .reservationsStartingInPeriod(startingReservationCount)
-                .cancelledReservations(cancelledReservations)
-                .cancellationRate(roundToTwoDecimals(cancellationRate))
-                .averageLengthOfStay(roundToTwoDecimals(averageLengthOfStay))
-                .build();
-
-        if (!includeDetailedData) {
-            return new PeriodComputation(summary, List.of(), List.of(), List.of(), List.of());
-        }
-
-        List<AnalyticsReportResponse.DailyTrendPoint> dailyTrend = buildDailyTrend(from, to, activeSuiteCount, stayReservations);
-        List<AnalyticsReportResponse.ChannelPerformance> channelPerformance = buildChannelPerformance(slices, totalRevenue);
-        List<AnalyticsReportResponse.StatusBreakdown> statusBreakdown = buildStatusBreakdown(reservationsStartingInPeriod);
-        List<AnalyticsReportResponse.DayHighlight> topRevenueDays = buildTopRevenueDays(dailyTrend, totalRevenue, daysInPeriod);
-
-        return new PeriodComputation(summary, dailyTrend, channelPerformance, statusBreakdown, topRevenueDays);
-    }
-
-    private List<AnalyticsReportResponse.DailyTrendPoint> buildDailyTrend(
-            LocalDate from,
-            LocalDate to,
-            int activeSuiteCount,
-            List<Reservation> stayReservations) {
-        List<AnalyticsReportResponse.DailyTrendPoint> points = new ArrayList<>();
-        LocalDate day = from;
-
-        while (!day.isAfter(to)) {
-            int occupiedNights = 0;
-            BigDecimal revenue = BigDecimal.ZERO;
-            int arrivals = 0;
-            int departures = 0;
-
-            for (Reservation reservation : stayReservations) {
-                if (occupiesDate(reservation, day)) {
-                    occupiedNights++;
-
-                    int reservationNights = calculateReservationNights(reservation);
-                    BigDecimal priceTotal = reservation.getPriceTotal();
-                    if (reservationNights > 0 && priceTotal != null) {
-                        revenue = revenue.add(
-                                priceTotal.divide(BigDecimal.valueOf(reservationNights), 4, RoundingMode.HALF_UP)
-                        );
-                    }
-                }
-
-                if (reservation.getCheckIn() != null && reservation.getCheckIn().isEqual(day)) {
-                    arrivals++;
-                }
-
-                if (reservation.getCheckOut() != null && reservation.getCheckOut().isEqual(day)) {
-                    departures++;
-                }
+            long stayNights = ChronoUnit.DAYS.between(reservation.getCheckIn(), reservation.getCheckOut());
+            if (stayNights <= 0) {
+                continue;
             }
+            String channel = Channels.normalize(reservation.getChannel());
+            BigDecimal price = reservation.getPriceTotal() != null ? reservation.getPriceTotal() : BigDecimal.ZERO;
+            LocalDate bookedOn = reservation.getCreatedAt() != null ? reservation.getCreatedAt().toLocalDate() : reservation.getCheckIn();
+            BigDecimal commission = rates.commissionOn(price, channel, bookedOn);
+            BigDecimal nightRevenue = price.divide(BigDecimal.valueOf(stayNights), 6, RoundingMode.HALF_UP);
+            BigDecimal nightCommission = commission.divide(BigDecimal.valueOf(stayNights), 6, RoundingMode.HALF_UP);
 
-            double occupancyPercentage = activeSuiteCount > 0
-                    ? (occupiedNights * 100.0) / activeSuiteCount
-                    : 0.0;
-            BigDecimal averageDailyRate = occupiedNights > 0
-                    ? revenue.divide(BigDecimal.valueOf(occupiedNights), 2, RoundingMode.HALF_UP)
-                    : BigDecimal.ZERO;
-            BigDecimal revPar = activeSuiteCount > 0
-                    ? revenue.divide(BigDecimal.valueOf(activeSuiteCount), 2, RoundingMode.HALF_UP)
-                    : BigDecimal.ZERO;
-
-            points.add(AnalyticsReportResponse.DailyTrendPoint.builder()
-                    .date(day)
-                    .occupiedNights(occupiedNights)
-                    .availableNights(activeSuiteCount)
-                    .occupancyPercentage(roundToTwoDecimals(occupancyPercentage))
-                    .revenue(revenue.setScale(2, RoundingMode.HALF_UP))
-                    .averageDailyRate(averageDailyRate)
-                    .revenuePerAvailableNight(revPar)
-                    .arrivals(arrivals)
-                    .departures(departures)
-                    .build());
-
-            day = day.plusDays(1);
+            LocalDate first = max(reservation.getCheckIn(), from);
+            LocalDate end = min(reservation.getCheckOut(), to.plusDays(1));
+            for (LocalDate day = first; day.isBefore(end); day = day.plusDays(1)) {
+                nights.add(new Night(day, reservation.getReservationId(), channel, nightRevenue, nightCommission));
+            }
         }
-
-        return points;
+        return nights;
     }
 
-    private List<AnalyticsReportResponse.ChannelPerformance> buildChannelPerformance(
-            List<ReservationSlice> slices,
-            BigDecimal totalRevenue) {
-        Map<String, ChannelAggregate> aggregatedByChannel = new LinkedHashMap<>();
+    private static List<Night> between(List<Night> nights, LocalDate from, LocalDate to) {
+        return nights.stream().filter(night -> !night.date().isBefore(from) && !night.date().isAfter(to)).toList();
+    }
 
-        for (ReservationSlice slice : slices) {
-            String channel = normalizeChannel(slice.reservation.getChannel());
-            ChannelAggregate aggregate = aggregatedByChannel.computeIfAbsent(channel, key -> new ChannelAggregate());
-            aggregate.revenue = aggregate.revenue.add(slice.revenueInPeriod);
-            aggregate.reservations += 1;
-            aggregate.occupiedNights += slice.nightsInPeriod;
-        }
+    private static AnalyticsOverview.Totals totals(List<Night> nights, int nightsAvailable) {
+        BigDecimal revenue = sum(nights, Night::revenue);
+        BigDecimal commission = sum(nights, Night::commission);
+        List<Night> direct = nights.stream().filter(Night::direct).toList();
+        List<Night> platform = nights.stream().filter(Predicate.not(Night::direct)).toList();
+        return new AnalyticsOverview.Totals(
+                money(revenue),
+                money(commission),
+                money(revenue.subtract(commission)),
+                nights.size(),
+                nightsAvailable,
+                percent(nights.size(), nightsAvailable),
+                nights.isEmpty() ? BigDecimal.ZERO : revenue.divide(BigDecimal.valueOf(nights.size()), 2, RoundingMode.HALF_UP),
+                bookings(nights),
+                direct.size(),
+                money(sum(direct, Night::revenue)),
+                platform.size(),
+                money(sum(platform, Night::revenue)));
+    }
 
-        return aggregatedByChannel.entrySet().stream()
-                .map(entry -> {
-                    ChannelAggregate aggregate = entry.getValue();
-                    BigDecimal revenue = aggregate.revenue.setScale(2, RoundingMode.HALF_UP);
-                    double share = totalRevenue.compareTo(BigDecimal.ZERO) > 0
-                            ? revenue.multiply(BigDecimal.valueOf(100))
-                                    .divide(totalRevenue, 4, RoundingMode.HALF_UP)
-                                    .doubleValue()
-                            : 0.0;
-                    BigDecimal averageBookingValue = aggregate.reservations > 0
-                            ? revenue.divide(BigDecimal.valueOf(aggregate.reservations), 2, RoundingMode.HALF_UP)
-                            : BigDecimal.ZERO;
-
-                    return AnalyticsReportResponse.ChannelPerformance.builder()
-                            .channel(entry.getKey())
-                            .revenue(revenue)
-                            .reservations(aggregate.reservations)
-                            .occupiedNights(aggregate.occupiedNights)
-                            .revenueSharePercentage(roundToTwoDecimals(share))
-                            .averageBookingValue(averageBookingValue)
-                            .build();
+    private static List<AnalyticsOverview.ChannelRow> channels(List<Night> current, List<Night> previous) {
+        Map<String, List<Night>> currentByChannel = current.stream().collect(Collectors.groupingBy(Night::channel));
+        Map<String, List<Night>> previousByChannel = previous.stream().collect(Collectors.groupingBy(Night::channel));
+        Set<String> names = new LinkedHashSet<>(currentByChannel.keySet());
+        names.addAll(previousByChannel.keySet());
+        return names.stream()
+                .map(channel -> {
+                    List<Night> now = currentByChannel.getOrDefault(channel, List.of());
+                    List<Night> before = previousByChannel.getOrDefault(channel, List.of());
+                    return new AnalyticsOverview.ChannelRow(
+                            channel,
+                            !Channels.DIRECT.equals(channel),
+                            bookings(now),
+                            now.size(),
+                            money(sum(now, Night::revenue)),
+                            money(sum(now, Night::commission)),
+                            before.size(),
+                            money(sum(before, Night::revenue)));
                 })
-                .sorted(Comparator.comparing(AnalyticsReportResponse.ChannelPerformance::getRevenue).reversed())
-                .collect(Collectors.toList());
+                .sorted(Comparator.comparingInt(AnalyticsOverview.ChannelRow::nights).reversed()
+                        .thenComparing(AnalyticsOverview.ChannelRow::previousNights, Comparator.reverseOrder())
+                        .thenComparing(AnalyticsOverview.ChannelRow::channel))
+                .toList();
     }
 
-    private List<AnalyticsReportResponse.StatusBreakdown> buildStatusBreakdown(List<Reservation> reservations) {
-        int totalReservations = reservations.size();
-        if (totalReservations == 0) {
-            return List.of();
+    private static List<AnalyticsOverview.WeekdayRow> weekdays(List<Night> current, List<Night> previous,
+                                                             LocalDate from, LocalDate to,
+                                                             LocalDate compareFrom, LocalDate compareTo, int suites) {
+        int[] sold = countByWeekday(current);
+        int[] direct = countByWeekday(current.stream().filter(Night::direct).toList());
+        int[] soldBefore = countByWeekday(previous);
+        int[] days = daysByWeekday(from, to);
+        int[] daysBefore = daysByWeekday(compareFrom, compareTo);
+        List<AnalyticsOverview.WeekdayRow> rows = new ArrayList<>();
+        for (int weekday = 1; weekday <= 7; weekday++) {
+            rows.add(new AnalyticsOverview.WeekdayRow(weekday, sold[weekday], direct[weekday], days[weekday] * suites,
+                    soldBefore[weekday], daysBefore[weekday] * suites));
         }
-
-        return reservations.stream()
-                .collect(Collectors.groupingBy(
-                        reservation -> reservation.getStatus() == null
-                                ? "unknown"
-                                : reservation.getStatus().getValue(),
-                        LinkedHashMap::new,
-                        Collectors.counting()))
-                .entrySet().stream()
-                .map(entry -> {
-                    int count = entry.getValue().intValue();
-                    double share = (count * 100.0) / totalReservations;
-                    return AnalyticsReportResponse.StatusBreakdown.builder()
-                            .status(entry.getKey())
-                            .count(count)
-                            .sharePercentage(roundToTwoDecimals(share))
-                            .build();
-                })
-                .sorted(Comparator.comparing(AnalyticsReportResponse.StatusBreakdown::getCount).reversed())
-                .collect(Collectors.toList());
+        return rows;
     }
 
-    private List<AnalyticsReportResponse.DayHighlight> buildTopRevenueDays(
-            List<AnalyticsReportResponse.DailyTrendPoint> dailyTrend,
-            BigDecimal totalRevenue,
-            int daysInPeriod) {
-        if (dailyTrend.isEmpty()) {
-            return List.of();
+    private static List<AnalyticsOverview.MonthRow> months(List<Night> nights, int year, int suites) {
+        Map<YearMonth, List<Night>> byMonth = nights.stream().collect(Collectors.groupingBy(night -> YearMonth.from(night.date())));
+        List<AnalyticsOverview.MonthRow> rows = new ArrayList<>();
+        for (int month = 1; month <= 12; month++) {
+            YearMonth current = YearMonth.of(year, month);
+            YearMonth previous = current.minusYears(1);
+            List<Night> now = byMonth.getOrDefault(current, List.of());
+            List<Night> before = byMonth.getOrDefault(previous, List.of());
+            rows.add(new AnalyticsOverview.MonthRow(
+                    current.toString(),
+                    now.size(),
+                    current.lengthOfMonth() * suites,
+                    money(sum(now, Night::revenue)),
+                    (int) now.stream().filter(Night::direct).count(),
+                    money(sum(now.stream().filter(Night::direct).toList(), Night::revenue)),
+                    before.size(),
+                    previous.lengthOfMonth() * suites,
+                    money(sum(before, Night::revenue))));
         }
-
-        BigDecimal averageDailyRevenue = daysInPeriod > 0
-                ? totalRevenue.divide(BigDecimal.valueOf(daysInPeriod), 2, RoundingMode.HALF_UP)
-                : BigDecimal.ZERO;
-
-        return dailyTrend.stream()
-                .sorted(Comparator
-                        .comparing(AnalyticsReportResponse.DailyTrendPoint::getRevenue).reversed()
-                .thenComparing(AnalyticsReportResponse.DailyTrendPoint::getOccupancyPercentage, Comparator.reverseOrder()))
-                .limit(TOP_REVENUE_DAY_COUNT)
-                .map(point -> AnalyticsReportResponse.DayHighlight.builder()
-                        .date(point.getDate())
-                        .revenue(point.getRevenue())
-                        .occupancyPercentage(point.getOccupancyPercentage())
-                        .note(describeTopDay(point, averageDailyRevenue))
-                        .build())
-                .collect(Collectors.toList());
+        return rows;
     }
 
-    private AnalyticsReportResponse.DeltaMetrics buildDeltas(
-            AnalyticsReportResponse.SummaryMetrics current,
-            AnalyticsReportResponse.SummaryMetrics previous) {
-        return AnalyticsReportResponse.DeltaMetrics.builder()
-                .revenueChangePercentage(calculatePercentageChange(previous.getTotalRevenue(), current.getTotalRevenue()))
-                .occupancyChangePercentagePoints(
-                        roundToTwoDecimals(current.getOccupancyPercentage() - previous.getOccupancyPercentage()))
-                .averageDailyRateChangePercentage(
-                        calculatePercentageChange(previous.getAverageDailyRate(), current.getAverageDailyRate()))
-                .revParChangePercentage(
-                        calculatePercentageChange(previous.getRevenuePerAvailableNight(), current.getRevenuePerAvailableNight()))
-                .cancellationRateChangePercentagePoints(
-                        roundToTwoDecimals(current.getCancellationRate() - previous.getCancellationRate()))
-                .build();
+    private static int[] countByWeekday(List<Night> nights) {
+        int[] counts = new int[8];
+        nights.forEach(night -> counts[night.date().getDayOfWeek().getValue()]++);
+        return counts;
     }
 
-    private List<String> buildInsights(
-            PeriodComputation current,
-            AnalyticsReportResponse.DeltaMetrics deltas,
-            boolean includeComparison) {
-        List<String> insights = new ArrayList<>();
+    private static int[] daysByWeekday(LocalDate from, LocalDate to) {
+        int[] counts = new int[8];
+        from.datesUntil(to.plusDays(1)).forEach(day -> counts[day.getDayOfWeek().getValue()]++);
+        return counts;
+    }
 
-        if (includeComparison && deltas != null) {
-            double revenueDelta = safeDouble(deltas.getRevenueChangePercentage());
-            if (revenueDelta >= 0) {
-                insights.add("Revenue increased by " + formatOneDecimal(revenueDelta)
-                        + "% versus the selected comparison baseline.");
-            } else {
-                insights.add("Revenue declined by " + formatOneDecimal(Math.abs(revenueDelta))
-                        + "% versus the selected comparison baseline.");
+    private static int bookings(List<Night> nights) {
+        return (int) nights.stream().mapToLong(Night::reservationId).distinct().count();
+    }
+
+    // ===== Outlook =====
+
+    private static AnalyticsOutlook.Window window(List<Reservation> reservations, LocalDate today, int days, int suites) {
+        LocalDate end = today.plusDays(days);
+        int booked = 0;
+        int awaitingPayment = 0;
+        BigDecimal revenue = BigDecimal.ZERO;
+        for (Reservation reservation : reservations) {
+            long stayNights = ChronoUnit.DAYS.between(reservation.getCheckIn(), reservation.getCheckOut());
+            long inWindow = ChronoUnit.DAYS.between(max(reservation.getCheckIn(), today), min(reservation.getCheckOut(), end));
+            if (stayNights <= 0 || inWindow <= 0) {
+                continue;
             }
-        } else {
-            insights.add("Comparison is disabled; metrics reflect the selected period only.");
-        }
-
-        double occupancy = safeDouble(current.summary.getOccupancyPercentage());
-        if (occupancy >= 80) {
-            insights.add("Occupancy is running at a high " + formatOneDecimal(occupancy)
-                    + "%, indicating strong demand.");
-        } else if (occupancy < 55) {
-            insights.add("Occupancy is " + formatOneDecimal(occupancy)
-                    + "%; consider tactical pricing or channel pushes to lift fill rate.");
-        }
-
-        double cancellationRate = safeDouble(current.summary.getCancellationRate());
-        if (cancellationRate >= 10) {
-            insights.add("Cancellation rate is " + formatOneDecimal(cancellationRate)
-                    + "%, which may justify stricter deposit or reminder policies.");
-        }
-
-        if (!current.channelPerformance.isEmpty()) {
-            AnalyticsReportResponse.ChannelPerformance topChannel = current.channelPerformance.get(0);
-            if (safeDouble(topChannel.getRevenueSharePercentage()) >= 45) {
-                insights.add("" + normalizeChannelLabel(topChannel.getChannel()) + " drives "
-                        + formatOneDecimal(topChannel.getRevenueSharePercentage())
-                        + "% of revenue; monitor channel concentration risk.");
+            if (SOLD.contains(reservation.getStatus())) {
+                booked += (int) inWindow;
+                if (reservation.getPriceTotal() != null) {
+                    revenue = revenue.add(reservation.getPriceTotal().multiply(BigDecimal.valueOf(inWindow))
+                            .divide(BigDecimal.valueOf(stayNights), 6, RoundingMode.HALF_UP));
+                }
+            } else if (reservation.getStatus() == ReservationStatus.AWAITING_PAYMENT) {
+                awaitingPayment += (int) inWindow;
             }
         }
-
-        if (!current.topRevenueDays.isEmpty()) {
-            AnalyticsReportResponse.DayHighlight topDay = current.topRevenueDays.get(0);
-            insights.add("Top revenue day was " + topDay.getDate() + " with €"
-                    + topDay.getRevenue().setScale(0, RoundingMode.HALF_UP).toPlainString()
-                    + " and occupancy at " + formatOneDecimal(topDay.getOccupancyPercentage()) + "%.");
-        }
-
-        if (insights.isEmpty()) {
-            insights.add("Performance is stable across revenue, occupancy, and operational quality metrics.");
-        }
-
-        return insights;
+        return new AnalyticsOutlook.Window(days, days * suites, booked, awaitingPayment, money(revenue));
     }
 
-    private ReservationSlice buildSlice(Reservation reservation, LocalDate periodStart, LocalDate periodEnd) {
-        int nightsInPeriod = calculateNightsInPeriod(reservation, periodStart, periodEnd);
-        int reservationNights = calculateReservationNights(reservation);
-        BigDecimal revenueInPeriod = calculateRevenueInPeriod(reservation, reservationNights, nightsInPeriod);
-        return new ReservationSlice(reservation, nightsInPeriod, reservationNights, revenueInPeriod);
-    }
-
-    private boolean occupiesDate(Reservation reservation, LocalDate day) {
-        if (reservation == null || reservation.getCheckIn() == null || reservation.getCheckOut() == null) {
-            return false;
+    private static AnalyticsOutlook.Night night(Suite suite, LocalDate day, List<Reservation> reservations, Map<String, BigDecimal> prices) {
+        Reservation stay = reservations.stream()
+                .filter(reservation -> reservation.getSuite().getSuiteId().equals(suite.getSuiteId())
+                        && !reservation.getCheckIn().isAfter(day) && reservation.getCheckOut().isAfter(day))
+                // A sold stay wins over a request for the same night
+                .min(Comparator.comparing((Reservation reservation) -> !SOLD.contains(reservation.getStatus())))
+                .orElse(null);
+        if (stay == null) {
+            return new AnalyticsOutlook.Night(day, "empty", prices.get(rateKey(suite.getSuiteId(), day)));
         }
-
-        return !day.isBefore(reservation.getCheckIn()) && day.isBefore(reservation.getCheckOut());
+        String state = switch (stay.getStatus()) {
+            case PENDING -> "pending";
+            case AWAITING_PAYMENT -> "awaiting_payment";
+            default -> Channels.isDirect(stay.getChannel()) ? "direct" : "platform";
+        };
+        return new AnalyticsOutlook.Night(day, state, null);
     }
 
-    private int getActiveSuiteCount() {
-        return (int) suiteRepository.findAll().stream()
+    // ===== Helpers =====
+
+    private List<Suite> activeSuites() {
+        return suiteRepository.findAll().stream()
                 .filter(suite -> Boolean.TRUE.equals(suite.getActive()))
-                .count();
+                .sorted(Comparator.comparing(Suite::getSuiteName))
+                .toList();
     }
 
-    private List<Reservation> findOverlappingReservations(LocalDate from, LocalDate to, String nationalityCode) {
-        if (nationalityCode == null) {
-            return reservationRepository.findByCheckInBeforeAndCheckOutAfter(to.plusDays(1), from);
-        }
-
-        return reservationRepository.findByCheckInBeforeAndCheckOutAfterAndGuestNationalityNationalityCodeIgnoreCase(
-                to.plusDays(1),
-                from,
-                nationalityCode
-        );
+    private static String rateKey(Long suiteId, LocalDate date) {
+        return suiteId + "|" + date;
     }
 
-    private List<Reservation> findReservationsStartingInPeriod(LocalDate from, LocalDate to, String nationalityCode) {
-        if (nationalityCode == null) {
-            return reservationRepository.findByCheckInBetween(from, to);
-        }
-
-        return reservationRepository.findByCheckInBetweenAndGuestNationalityNationalityCodeIgnoreCase(
-                from,
-                to,
-                nationalityCode
-        );
-    }
-
-    private String normalizeComparisonMode(String comparisonMode) {
-        if (comparisonMode == null || comparisonMode.isBlank()) {
-            return COMPARISON_MODE_SAME_DATES_LAST_YEAR;
-        }
-
-        String normalized = comparisonMode.trim().toUpperCase(Locale.ROOT);
-        if (COMPARISON_MODE_SAME_DATES_LAST_YEAR.equals(normalized)
-                || COMPARISON_MODE_PREVIOUS_EQUAL_DAYS.equals(normalized)
-                || COMPARISON_MODE_CUSTOM_RANGE.equals(normalized)) {
-            return normalized;
-        }
-
-        throw new IllegalArgumentException("Invalid comparisonMode: " + comparisonMode);
-    }
-
-    private String normalizeNationalityCode(String nationalityCode) {
-        if (nationalityCode == null || nationalityCode.isBlank()) {
-            return null;
-        }
-
-        return nationalityCode.trim().toUpperCase(Locale.ROOT);
-    }
-
-    private void validateDateRange(LocalDate from, LocalDate to) {
-        if (from == null || to == null) {
-            throw new IllegalArgumentException("From and to dates are required");
-        }
-        if (from.isAfter(to)) {
-            throw new IllegalArgumentException("From date must be before or equal to to date");
-        }
-
-        int days = inclusiveDays(from, to);
-        if (days > MAX_DAYS_IN_REPORT) {
-            throw new IllegalArgumentException("Date range is too large. Please use up to " + MAX_DAYS_IN_REPORT + " days.");
-        }
-    }
-
-    private int inclusiveDays(LocalDate from, LocalDate to) {
+    private static int days(LocalDate from, LocalDate to) {
         return (int) ChronoUnit.DAYS.between(from, to) + 1;
     }
 
-    private int countByStatus(List<Reservation> reservations, ReservationStatus status) {
-        return (int) reservations.stream()
-                .filter(reservation -> reservation.getStatus() == status)
-                .count();
+    private static BigDecimal sum(List<Night> nights, Function<Night, BigDecimal> amount) {
+        return nights.stream().map(amount).reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    private boolean isStayReservation(Reservation reservation) {
-        return reservation != null
-                && reservation.getStatus() != null
-                && STAY_STATUSES.contains(reservation.getStatus());
+    private static BigDecimal money(BigDecimal amount) {
+        return amount.setScale(2, RoundingMode.HALF_UP);
     }
 
-    private int calculateReservationNights(Reservation reservation) {
-        if (reservation == null || reservation.getCheckIn() == null || reservation.getCheckOut() == null) {
-            return 0;
-        }
-
-        return Math.max(0, (int) ChronoUnit.DAYS.between(reservation.getCheckIn(), reservation.getCheckOut()));
+    private static double percent(int part, int whole) {
+        return whole > 0 ? Math.round(part * 1000.0 / whole) / 10.0 : 0.0;
     }
 
-    private int calculateNightsInPeriod(Reservation reservation, LocalDate periodStart, LocalDate periodEnd) {
-        if (reservation == null || reservation.getCheckIn() == null || reservation.getCheckOut() == null) {
-            return 0;
-        }
-
-        LocalDate effectiveStart = reservation.getCheckIn().isBefore(periodStart)
-                ? periodStart
-                : reservation.getCheckIn();
-        LocalDate effectiveEndExclusive = reservation.getCheckOut().isAfter(periodEnd.plusDays(1))
-                ? periodEnd.plusDays(1)
-                : reservation.getCheckOut();
-
-        if (!effectiveStart.isBefore(effectiveEndExclusive)) {
-            return 0;
-        }
-
-        return (int) ChronoUnit.DAYS.between(effectiveStart, effectiveEndExclusive);
+    private static LocalDate min(LocalDate a, LocalDate b) {
+        return a.isBefore(b) ? a : b;
     }
 
-    private BigDecimal calculateRevenueInPeriod(Reservation reservation, int reservationNights, int nightsInPeriod) {
-        if (reservation == null || reservation.getPriceTotal() == null) {
-            return BigDecimal.ZERO;
-        }
-        if (reservationNights <= 0 || nightsInPeriod <= 0) {
-            return BigDecimal.ZERO;
-        }
-
-        if (reservationNights == nightsInPeriod) {
-            return reservation.getPriceTotal();
-        }
-
-        return reservation.getPriceTotal()
-                .multiply(BigDecimal.valueOf(nightsInPeriod))
-                .divide(BigDecimal.valueOf(reservationNights), 4, RoundingMode.HALF_UP);
-    }
-
-    private Double calculatePercentageChange(BigDecimal oldValue, BigDecimal newValue) {
-        BigDecimal safeOld = oldValue == null ? BigDecimal.ZERO : oldValue;
-        BigDecimal safeNew = newValue == null ? BigDecimal.ZERO : newValue;
-
-        if (safeOld.compareTo(BigDecimal.ZERO) == 0) {
-            return safeNew.compareTo(BigDecimal.ZERO) > 0 ? 100.0 : 0.0;
-        }
-
-        BigDecimal change = safeNew.subtract(safeOld);
-        BigDecimal percentageChange = change
-                .divide(safeOld, 4, RoundingMode.HALF_UP)
-                .multiply(BigDecimal.valueOf(100));
-        return roundToTwoDecimals(percentageChange.doubleValue());
-    }
-
-    private String normalizeChannel(String channel) {
-        if (channel == null || channel.isBlank()) {
-            return "other";
-        }
-        return channel.trim().toLowerCase();
-    }
-
-    private String normalizeChannelLabel(String channel) {
-        if (channel == null || channel.isBlank()) {
-            return "Other";
-        }
-        if ("booking.com".equalsIgnoreCase(channel)) {
-            return "Booking.com";
-        }
-        return Character.toUpperCase(channel.charAt(0)) + channel.substring(1).toLowerCase();
-    }
-
-    private String describeTopDay(AnalyticsReportResponse.DailyTrendPoint point, BigDecimal averageDailyRevenue) {
-        if (safeDouble(point.getOccupancyPercentage()) >= 90) {
-            return "Peak occupancy day";
-        }
-
-        BigDecimal threshold = averageDailyRevenue.multiply(BigDecimal.valueOf(1.25));
-        if (point.getRevenue() != null && point.getRevenue().compareTo(threshold) >= 0) {
-            return "Revenue spike day";
-        }
-
-        if (safeDouble(point.getOccupancyPercentage()) >= 75) {
-            return "Strong occupancy day";
-        }
-
-        return "Solid performance day";
-    }
-
-    private String formatOneDecimal(Double value) {
-        return String.format("%.1f", safeDouble(value));
-    }
-
-    private double safeDouble(Double value) {
-        return value == null ? 0.0 : value;
-    }
-
-    private double roundToTwoDecimals(double value) {
-        return Math.round(value * 100.0) / 100.0;
-    }
-
-    private static class PeriodComputation {
-        final AnalyticsReportResponse.SummaryMetrics summary;
-        final List<AnalyticsReportResponse.DailyTrendPoint> dailyTrend;
-        final List<AnalyticsReportResponse.ChannelPerformance> channelPerformance;
-        final List<AnalyticsReportResponse.StatusBreakdown> statusBreakdown;
-        final List<AnalyticsReportResponse.DayHighlight> topRevenueDays;
-
-        PeriodComputation(
-                AnalyticsReportResponse.SummaryMetrics summary,
-                List<AnalyticsReportResponse.DailyTrendPoint> dailyTrend,
-                List<AnalyticsReportResponse.ChannelPerformance> channelPerformance,
-                List<AnalyticsReportResponse.StatusBreakdown> statusBreakdown,
-                List<AnalyticsReportResponse.DayHighlight> topRevenueDays) {
-            this.summary = summary;
-            this.dailyTrend = dailyTrend;
-            this.channelPerformance = channelPerformance;
-            this.statusBreakdown = statusBreakdown;
-            this.topRevenueDays = topRevenueDays;
-        }
-    }
-
-    private static class ReservationSlice {
-        final Reservation reservation;
-        final int nightsInPeriod;
-        final int reservationNights;
-        final BigDecimal revenueInPeriod;
-
-        ReservationSlice(Reservation reservation, int nightsInPeriod, int reservationNights, BigDecimal revenueInPeriod) {
-            this.reservation = reservation;
-            this.nightsInPeriod = nightsInPeriod;
-            this.reservationNights = reservationNights;
-            this.revenueInPeriod = revenueInPeriod;
-        }
-    }
-
-    private static class ChannelAggregate {
-        BigDecimal revenue = BigDecimal.ZERO;
-        int reservations = 0;
-        int occupiedNights = 0;
-    }
-
-    private static class ComparisonPeriod {
-        final LocalDate fromDate;
-        final LocalDate toDate;
-        final String mode;
-
-        ComparisonPeriod(LocalDate fromDate, LocalDate toDate, String mode) {
-            this.fromDate = fromDate;
-            this.toDate = toDate;
-            this.mode = mode;
-        }
+    private static LocalDate max(LocalDate a, LocalDate b) {
+        return a.isAfter(b) ? a : b;
     }
 }

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { format, parseISO } from 'date-fns';
-import { CalendarSync, Copy, RefreshCw, Save } from 'lucide-react';
+import { AlertTriangle, CalendarSync, Copy, RefreshCw, Save } from 'lucide-react';
 import { syncBookingCalendars, updateSuite } from '../../api/backend';
 import { useI18n } from '../../context/I18nContext';
 import { copyTextToClipboard } from '../../utils/clipboard';
@@ -62,6 +62,10 @@ export default function CalendarSyncPanel({ suites, onChanged, onNotice, onError
     }
   };
 
+  const when = (value) => format(parseISO(value), 'd MMM HH:mm', { locale: dateLocale });
+  // booking.com can only download a public https address, not e.g. http://127.0.0.1:8080
+  const unreachable = (url) => Boolean(url) && !url.startsWith('https://');
+
   const copy = async (text) => {
     const ok = await copyTextToClipboard(text);
     onNotice(ok ? tr('Copied to clipboard.', 'Copiado.') : tr('Could not copy.', 'No se pudo copiar.'));
@@ -76,9 +80,10 @@ export default function CalendarSyncPanel({ suites, onChanged, onNotice, onError
         </button>
       </div>
       <ol className="settings-steps">
-        <li>{tr('In the booking.com extranet open Rates & Availability → Sync calendars, and choose "Export calendar" for each room. Paste that link below.', 'En la extranet de booking.com abre Tarifas y disponibilidad → Sincronizar calendarios y elige "Exportar calendario" para cada habitacion. Pega ese enlace abajo.')}</li>
-        <li>{tr('Then "Import calendar" on booking.com with this app\'s link for the same suite, so dates booked here are closed there.', 'Despues usa "Importar calendario" en booking.com con el enlace de esta app para la misma suite, asi se cierran alli las fechas reservadas aqui.')}</li>
-        <li>{tr('Imported stays appear with a placeholder guest; upload the reservations export below to fill in names and prices. Booking.com refreshes imported calendars every few hours.', 'Las estancias importadas aparecen con un huesped provisional; sube abajo la exportacion de reservas para completar nombres y precios. Booking.com actualiza los calendarios importados cada pocas horas.')}</li>
+        <li>{tr('In the booking.com extranet, open Calendar, choose the room and find the "Sync calendars" box. Each suite needs its own room type on booking.com, with 1 unit.', 'En la extranet de booking.com abre Calendario, elige la habitación y busca el cuadro "Sincronizar calendarios". Cada suite necesita su propio tipo de habitación en booking.com, con 1 unidad.')}</li>
+        <li>{tr('Export calendar: copy booking.com\'s link and paste it below as "Booking.com export link" of the same suite. This app reads it every 15 minutes: booking.com stays block those dates here.', 'Exportar calendario: copia el enlace de booking.com y pégalo abajo como "Enlace de exportación de booking.com" de la misma suite. Esta app lo lee cada 15 minutos: las estancias de booking.com bloquean esas fechas aquí.')}</li>
+        <li>{tr('Import calendar: paste this app\'s "Link for booking.com to import" of the suite on booking.com. Booking.com reads it about every 2 hours (or at once with its Refresh button) and closes the dates booked here.', 'Importar calendario: pega en booking.com el "Enlace para importar en booking.com" de la suite. Booking.com lo lee más o menos cada 2 horas (o al momento con su botón Actualizar) y cierra las fechas reservadas aquí.')}</li>
+        <li>{tr('The links only carry dates. Imported stays get a placeholder guest: upload the reservations export below to fill in names and prices.', 'Los enlaces solo llevan fechas. Las estancias importadas tienen un huésped provisional: sube abajo la exportación de reservas para completar nombres y precios.')}</li>
       </ol>
 
       <div className="calendar-sync-list">
@@ -92,7 +97,7 @@ export default function CalendarSyncPanel({ suites, onChanged, onNotice, onError
                   {suite.icalLastSyncError
                     ? tr(`Last sync failed: ${suite.icalLastSyncError}`, `Ultima sincronizacion fallida: ${suite.icalLastSyncError}`)
                     : suite.icalLastSyncAt
-                      ? tr(`Synced ${format(parseISO(suite.icalLastSyncAt), 'd MMM HH:mm', { locale: dateLocale })}`, `Sincronizado ${format(parseISO(suite.icalLastSyncAt), 'd MMM HH:mm', { locale: dateLocale })}`)
+                      ? tr(`Read from booking.com ${when(suite.icalLastSyncAt)}`, `Leído de booking.com ${when(suite.icalLastSyncAt)}`)
                       : tr('Not synced yet', 'Aun no sincronizado')}
                 </span>
               </div>
@@ -128,6 +133,18 @@ export default function CalendarSyncPanel({ suites, onChanged, onNotice, onError
                     <Copy size={14} />
                   </button>
                 </div>
+                {unreachable(suite.icalExportUrl) ? (
+                  <span className="field-hint error calendar-sync-warning">
+                    <AlertTriangle size={13} />
+                    {tr('Booking.com can\'t reach this address: it must start with https:// and your API\'s domain. On the server, nginx has to pass the Host and X-Forwarded-Proto headers.', 'Booking.com no puede llegar a esta dirección: debe empezar por https:// y el dominio de tu API. En el servidor, nginx tiene que pasar las cabeceras Host y X-Forwarded-Proto.')}
+                  </span>
+                ) : (
+                  <span className="field-hint">
+                    {suite.icalExportReadAt
+                      ? tr(`Booking.com last read this calendar ${when(suite.icalExportReadAt)}`, `Booking.com leyó este calendario por última vez ${when(suite.icalExportReadAt)}`)
+                      : tr('Booking.com hasn\'t read this calendar yet', 'Booking.com aún no ha leído este calendario')}
+                  </span>
+                )}
               </div>
             </div>
           );

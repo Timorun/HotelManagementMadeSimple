@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigInteger;
+import java.time.LocalDate;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
@@ -34,6 +35,19 @@ public class PaymentSettingsService {
         String days = value(DEADLINE_DAYS);
         return new PaymentSettings(value(IBAN), value(ACCOUNT_HOLDER), value(BIZUM_PHONE),
                 days != null ? Integer.valueOf(days) : DEFAULT_DEADLINE_DAYS);
+    }
+
+    /** Pay-by date for a stay: today plus the days to pay, but never after the day of arrival. */
+    public LocalDate defaultDueDate(LocalDate checkIn) {
+        return defaultDueDate(checkIn, get().deadlineDays(), LocalDate.now());
+    }
+
+    static LocalDate defaultDueDate(LocalDate checkIn, int deadlineDays, LocalDate today) {
+        LocalDate dueDate = today.plusDays(deadlineDays);
+        if (dueDate.isAfter(checkIn)) {
+            dueDate = checkIn.isBefore(today) ? today : checkIn;
+        }
+        return dueDate;
     }
 
     @Transactional
