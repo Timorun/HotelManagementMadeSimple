@@ -1,3 +1,6 @@
+# Environment file with passwords (see .env.example)
+.env
+
 target/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/

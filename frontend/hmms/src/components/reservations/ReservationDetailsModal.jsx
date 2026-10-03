@@ -4,6 +4,9 @@ import { AlertCircle, CalendarDays, Check, Copy, Euro, Hotel, Mail, MessageCircl
 import { STATUS_META, getStatusLabel, getTransitionWarning } from '../../api/reservationStatus';
 import { useI18n } from '../../context/I18nContext';
 import { copyTextToClipboard } from '../../utils/clipboard';
+import { CHANNEL_OPTIONS, formatChannel } from '../../utils/channels';
+import { formatPhoneDisplay, toWhatsAppLink } from '../../utils/phone';
+import { confirmContactWithoutConsent } from '../../utils/communications';
 
 function parseNumeric(value) {
   const parsed = Number(value);
@@ -70,20 +73,6 @@ function getPricePerNight(checkIn, checkOut, totalPrice) {
   return total / nights;
 }
 
-function toWhatsAppLink(phone) {
-  const cleaned = String(phone || '').replace(/[^\d+]/g, '');
-  if (!cleaned) {
-    return null;
-  }
-
-  const normalized = cleaned.startsWith('+') ? cleaned.slice(1) : cleaned.replace(/^0+/, '');
-  if (!normalized) {
-    return null;
-  }
-
-  return `https://wa.me/${normalized}`;
-}
-
 export function ReservationDetailsModal({
   reservation,
   suites,
@@ -115,10 +104,15 @@ export function ReservationDetailsModal({
   const reservationNightCount = getNightCount(reservation.checkIn, reservation.checkOut);
   const editNightCount = getNightCount(editForm.checkIn, editForm.checkOut);
   const reservationPricePerNight = getPricePerNight(reservation.checkIn, reservation.checkOut, reservation.priceTotal);
-  const editPricePerNight = getPricePerNight(editForm.checkIn, editForm.checkOut, editForm.priceTotal);
 
   const mailtoLink = reservation.email ? `mailto:${reservation.email}` : null;
   const whatsappLink = toWhatsAppLink(reservation.phone);
+  // Warn before contacting a guest without marketing consent (stay-related messages are fine).
+  const confirmGuestContact = () => confirmContactWithoutConsent(
+    { marketingConsent: reservation.guestMarketingConsent },
+    reservation.guestDisplayName || reservation.guestName,
+    tr,
+  );
 
   useEffect(() => {
     setPriceInputSource('total');
@@ -260,7 +254,7 @@ export function ReservationDetailsModal({
                 <div className="reservation-contact-line">
                   <span className="reservation-contact-value">
                     <Phone size={13} />
-                    {reservation.phone}
+                    {formatPhoneDisplay(reservation.phone)}
                   </span>
                   <span className="contact-actions-inline">
                     {whatsappLink ? (
@@ -269,6 +263,9 @@ export function ReservationDetailsModal({
                         href={whatsappLink}
                         target="_blank"
                         rel="noreferrer noopener"
+                        onClick={(e) => {
+                          if (!confirmGuestContact()) e.preventDefault();
+                        }}
                         aria-label={tr('Open WhatsApp chat', 'Abrir chat de WhatsApp')}
                       >
                         <MessageCircle size={13} />
@@ -277,7 +274,7 @@ export function ReservationDetailsModal({
                     <button
                       type="button"
                       className="contact-action-btn action-copy"
-                      onClick={() => handleCopyContact('phone', reservation.phone)}
+                      onClick={() => confirmGuestContact() && handleCopyContact('phone', reservation.phone)}
                       aria-label={tr('Copy phone number', 'Copiar numero de telefono')}
                     >
                       {copiedField === 'phone' ? <Check size={13} /> : <Copy size={13} />}
@@ -359,7 +356,10 @@ export function ReservationDetailsModal({
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                  <InfoRow label={tr('Channel', 'Canal')} value={reservation.channel || '-'} capitalize />
+                  <InfoRow label={tr('Channel', 'Canal')} value={reservation.channel ? formatChannel(reservation.channel, tr) : '-'} />
+                  {reservation.externalRef && (
+                    <InfoRow label={tr('Booking.com reservation no.', 'N.º de reserva de booking.com')} value={reservation.externalRef} />
+                  )}
                   <InfoRow label={tr('Status', 'Estado')} value={getStatusLabel(status, tr) || '-'} />
                 </div>
 
@@ -367,6 +367,11 @@ export function ReservationDetailsModal({
                   label={`${tr('Guest Notes of', 'Notas del huesped de')} ${reservation.guestDisplayName || reservation.guestName || `${tr('Guest', 'Huesped')} #${reservation.guestId}`}`}
                   value={reservation.guestNotes || '-'}
                 />
+                {reservation.syncConflict && (
+                  <div className="error-message">
+                    {tr('This booking.com stay overlaps another reservation in the same suite. Move or cancel one of them.', 'Esta estancia de booking.com coincide con otra reserva en la misma suite. Mueve o cancela una de ellas.')}
+                  </div>
+                )}
                 <InfoRow label={tr('Reservation Notes', 'Notas de reserva')} value={reservation.notes || '-'} />
               </div>
             ) : (
@@ -485,11 +490,9 @@ export function ReservationDetailsModal({
                       value={editForm.channel}
                       onChange={(e) => handleFieldChange('channel', e.target.value)}
                     >
-                      <option value="direct">{tr('Direct', 'Directo')}</option>
-                      <option value="booking.com">Booking.com</option>
-                      <option value="airbnb">Airbnb</option>
-                      <option value="expedia">Expedia</option>
-                      <option value="other">{tr('Other', 'Otro')}</option>
+                      {CHANNEL_OPTIONS.map((channel) => (
+                        <option key={channel} value={channel}>{formatChannel(channel, tr)}</option>
+                      ))}
                     </select>
                   </div>
 

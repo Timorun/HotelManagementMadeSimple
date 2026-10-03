@@ -1,0 +1,15 @@
+spring:
+  datasource:
+    url: ${TEST_DATASOURCE_URL:jdbc:postgresql://localhost:5433/hotel_test}
+    username: ${TEST_DATASOURCE_USERNAME:hotel_user}
+    password: ${TEST_DATASOURCE_PASSWORD:welkom}
+  jpa:
+    show-sql: false
+  flyway:
+    locations: classpath:db/migration
+    clean-disabled: false
+
+hmms:
+  auth:
+    bootstrap-admin:
+      enabled: false

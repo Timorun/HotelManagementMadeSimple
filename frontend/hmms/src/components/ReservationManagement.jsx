@@ -1,11 +1,15 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { fetchReservations, fetchSuites, fetchNationalities, createReservation, updateReservation, cancelReservation, searchGuests, updateReservationStatus, fetchGuest, updateGuest } from '../api/backend';
-import { Calendar, Plus, Search, AlertCircle, CheckCircle, Users, Euro, Download, Eye } from 'lucide-react';
+import { Calendar, Plus, Search, AlertCircle, CheckCircle, Users, Euro, Download, Eye, SlidersHorizontal, ChevronDown, ChevronRight } from 'lucide-react';
 import { format, differenceInDays, parseISO, isBefore, addDays, startOfDay, startOfMonth, endOfMonth } from 'date-fns';
 import { STATUS_META, getStatusLabel, getTransitionWarning } from '../api/reservationStatus';
 import { exportRowsToExcel } from '../utils/excelExport';
+import { CHANNEL_OPTIONS, formatChannel } from '../utils/channels';
+import PhoneInput from './common/PhoneInput';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { useI18n } from '../context/I18nContext';
+import { isIsoDate, useSessionState } from '../hooks/useSessionState';
 import { ConfirmCancelReservationModal, ReservationDetailsModal } from './reservations/ReservationDetailsModal';
 
 const STATUS_FILTER_DEFAULTS = Object.keys(STATUS_META).reduce((accumulator, statusKey) => {
@@ -25,13 +29,16 @@ export default function ReservationManagement() {
   const [suites, setSuites] = useState([]);
   const [nationalities, setNationalities] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const isMobile = useIsMobile();
   const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [editingReservation, setEditingReservation] = useState(null);
-  const [dateFrom, setDateFrom] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
-  const [dateTo, setDateTo] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
-  const [dateFromDraft, setDateFromDraft] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
-  const [dateToDraft, setDateToDraft] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [dateFrom, setDateFrom] = useSessionState('reservations.dateFrom', () => format(startOfMonth(new Date()), 'yyyy-MM-dd'), isIsoDate);
+  const [dateTo, setDateTo] = useSessionState('reservations.dateTo', () => format(endOfMonth(new Date()), 'yyyy-MM-dd'), isIsoDate);
+  const [dateFromDraft, setDateFromDraft] = useState(dateFrom);
+  const [dateToDraft, setDateToDraft] = useState(dateTo);
   const [searchTerm, setSearchTerm] = useState('');
   const [guestSearchResults, setGuestSearchResults] = useState([]);
   const [searchingGuests, setSearchingGuests] = useState(false);
@@ -278,14 +285,6 @@ export default function ReservationManagement() {
     }
   }, [formData.checkIn]);
 
-  const canApplyDateFilters = useMemo(() => {
-    if (!isCompleteDateValue(dateFromDraft) || !isCompleteDateValue(dateToDraft)) {
-      return false;
-    }
-
-    return dateFromDraft !== dateFrom || dateToDraft !== dateTo;
-  }, [dateFromDraft, dateToDraft, dateFrom, dateTo]);
-
   const statusFilterSummary = useMemo(() => {
     const availableStatuses = Object.keys(STATUS_META);
     const enabledStatuses = availableStatuses.filter((status) => Boolean(statusFilters[status]));
@@ -379,7 +378,10 @@ export default function ReservationManagement() {
         setError(errorMsg);
         showToast(errorMsg, 'error');
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        setLoading(false);
+        setHasLoaded(true);
+      });
   }, [dateFrom, dateTo, showToast]);
 
   const applyDateFilterDraft = useCallback(() => {
@@ -393,7 +395,7 @@ export default function ReservationManagement() {
 
     setDateFrom(dateFromDraft);
     setDateTo(dateToDraft);
-  }, [dateFromDraft, dateToDraft, dateFrom, dateTo]);
+  }, [dateFromDraft, dateToDraft, dateFrom, dateTo, setDateFrom, setDateTo]);
 
   const scheduleDateFilterApply = useCallback(() => {
     if (dateApplyTimerRef.current) {
@@ -746,6 +748,8 @@ export default function ReservationManagement() {
           email: formData.email,
           phone: formData.phone,
           nationalityCode: formData.nationalityCode,
+          // New guests get their profile notes saved in the same request.
+          guestNotes: formData.guestId ? undefined : formData.guestNotes,
           notes: formData.notes,
         });
 
@@ -756,6 +760,7 @@ export default function ReservationManagement() {
         reservationSuccessMessage = tr('Reservation created successfully', 'Reserva creada correctamente');
       }
 
+      // Existing guests: save edited profile notes separately. New inline guests already have them.
       const guestIdFromForm = formData.guestId ? parseInt(formData.guestId) : NaN;
       const guestIdFromEdit = editingReservation?.guestId ? parseInt(editingReservation.guestId) : NaN;
       const guestIdToUpdate = Number.isNaN(guestIdFromForm) ? guestIdFromEdit : guestIdFromForm;
@@ -798,6 +803,31 @@ export default function ReservationManagement() {
       }
     } catch (err) {
       const errorMsg = err?.message || tr('Failed to save reservation', 'No se pudo guardar la reserva');
+
+      // The email or name matches a guest that already exists: offer to use that guest.
+      if (err?.status === 409 && err?.data?.existingGuestId) {
+        const useExisting = window.confirm(`${errorMsg}\n\n${tr(
+          `Use the existing guest "${err.data.existingGuestName}" for this reservation?`,
+          `¿Usar el huesped existente "${err.data.existingGuestName}" para esta reserva?`,
+        )}`);
+        if (useExisting) {
+          try {
+            const existingGuest = await fetchGuest(err.data.existingGuestId);
+            setGuestMode('existing');
+            handleSelectGuest({
+              ...existingGuest,
+              notes: formData.guestNotes || existingGuest.notes,
+            });
+            showToast(tr('Existing guest selected. Review and save again.', 'Huesped existente seleccionado. Revisa y guarda de nuevo.'), 'success');
+          } catch (guestErr) {
+            showToast(guestErr?.message || tr('Failed to load guest', 'No se pudo cargar el huesped'), 'error');
+          }
+        } else {
+          setError(errorMsg);
+        }
+        return;
+      }
+
       setError(errorMsg);
       showToast(errorMsg, 'error');
       if (String(errorMsg).toLowerCase().includes('already exists')) {
@@ -806,7 +836,7 @@ export default function ReservationManagement() {
     } finally {
       setSubmitting(false);
     }
-  }, [editingReservation, formData, guestMode, loadData, navigate, reservations, showToast, tr]);
+  }, [editingReservation, formData, guestMode, handleSelectGuest, loadData, navigate, reservations, showToast, tr]);
 
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
@@ -825,10 +855,6 @@ export default function ReservationManagement() {
       ...prev,
       [status]: !prev[status],
     }));
-  }, []);
-
-  const resetStatusFilters = useCallback(() => {
-    setStatusFilters(STATUS_FILTER_DEFAULTS);
   }, []);
 
   const enableAllStatusFilters = useCallback(() => {
@@ -1193,7 +1219,8 @@ export default function ReservationManagement() {
       : 'none'
   ), [sortBy, sortDirection]);
 
-  if (loading) {
+  // Full-page spinner only on the first load; later reloads keep the header and filters visible.
+  if (loading && !hasLoaded) {
     return (
       <div className="loading-spinner">
         <div className="spinner"></div>
@@ -1276,9 +1303,16 @@ export default function ReservationManagement() {
           </div>
         )}
 
-        <div className="form-group reservation-filters-panel">
+        <div className={`form-group reservation-filters-panel collapsible-filters ${filtersOpen ? 'open' : ''}`}>
           <div className="list-filters-head">
             <div>
+              {/* Phones: filters are folded away behind this toggle */}
+              <button type="button" className="filters-toggle" onClick={() => setFiltersOpen((open) => !open)} aria-expanded={filtersOpen}>
+                <SlidersHorizontal size={16} />
+                {tr('Filters', 'Filtros')}
+                {activeReservationFilterCount > 0 && <span className="nav-badge">{activeReservationFilterCount}</span>}
+                <ChevronDown size={16} className="filters-toggle-chevron" />
+              </button>
               <h3 className="list-filters-title">{tr('Filter Reservations', 'Filtrar reservas')}</h3>
               <p className="list-filters-subtitle">{tr('Narrow the list quickly by status, dates, channel, and guest name.', 'Reduce la lista rapidamente por estado, fechas, canal y nombre del huesped.')}</p>
             </div>
@@ -1343,7 +1377,7 @@ export default function ReservationManagement() {
                     </div>
 
                     <div className="status-filter-menu-list">
-                      {Object.entries(STATUS_META).map(([status, meta]) => (
+                      {Object.keys(STATUS_META).map((status) => (
                         <label key={status} className="status-filter-option">
                           <input
                             type="checkbox"
@@ -1362,11 +1396,9 @@ export default function ReservationManagement() {
               <label className="form-label">{t('filters.channel')}:</label>
               <select className="form-select" value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)}>
                 <option value="all">{t('filters.all')}</option>
-                <option value="direct">{tr('Direct', 'Directo')}</option>
-                <option value="booking.com">Booking.com</option>
-                <option value="airbnb">Airbnb</option>
-                <option value="expedia">Expedia</option>
-                <option value="other">{tr('Other', 'Otro')}</option>
+                {CHANNEL_OPTIONS.map((channel) => (
+                  <option key={channel} value={channel}>{formatChannel(channel, tr)}</option>
+                ))}
               </select>
             </div>
             <div>
@@ -1382,141 +1414,178 @@ export default function ReservationManagement() {
           </div>
         </div>
 
-        {filteredReservations.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-state-icon">📅</div>
-            <p>{tr('No reservations found for this date range', 'No se encontraron reservas para este rango de fechas')}</p>
-          </div>
-        ) : (
-          <table className="data-table reservation-table">
-            <thead>
-              <tr>
-                <th className="col-id">ID</th>
-                <th className="col-guest" aria-sort={getAriaSort('guest')}>
-                  <button
-                    type="button"
-                    className={`sort-header-btn ${sortBy === 'guest' ? 'active' : ''}`}
-                    onClick={() => handleTableSort('guest')}
-                  >
-                    <span>{tr('Guest', 'Huesped')}</span>
-                    <span className="sort-indicator" aria-hidden="true">{getSortIndicator('guest')}</span>
-                  </button>
-                </th>
-                <th className="col-suite">{tr('Suite', 'Suite')}</th>
-                <th className="col-checkin" aria-sort={getAriaSort('checkIn')}>
-                  <button
-                    type="button"
-                    className={`sort-header-btn ${sortBy === 'checkIn' ? 'active' : ''}`}
-                    onClick={() => handleTableSort('checkIn')}
-                  >
-                    <span>{tr('Check-In', 'Check-In')}</span>
-                    <span className="sort-indicator" aria-hidden="true">{getSortIndicator('checkIn')}</span>
-                  </button>
-                </th>
-                <th className="col-checkout" aria-sort={getAriaSort('checkOut')}>
-                  <button
-                    type="button"
-                    className={`sort-header-btn ${sortBy === 'checkOut' ? 'active' : ''}`}
-                    onClick={() => handleTableSort('checkOut')}
-                  >
-                    <span>{tr('Check-Out', 'Check-Out')}</span>
-                    <span className="sort-indicator" aria-hidden="true">{getSortIndicator('checkOut')}</span>
-                  </button>
-                </th>
-                <th className="col-guests">{tr('Guests', 'Huespedes')}</th>
-                <th className="col-price" aria-sort={getAriaSort('priceTotal')}>
-                  <button
-                    type="button"
-                    className={`sort-header-btn ${sortBy === 'priceTotal' ? 'active' : ''}`}
-                    onClick={() => handleTableSort('priceTotal')}
-                  >
-                    <span>{tr('Price', 'Precio')}</span>
-                    <span className="sort-indicator" aria-hidden="true">{getSortIndicator('priceTotal')}</span>
-                  </button>
-                </th>
-                <th className="col-channel">{tr('Channel', 'Canal')}</th>
-                <th className="col-status" aria-sort={getAriaSort('status')}>
-                  <button
-                    type="button"
-                    className={`sort-header-btn ${sortBy === 'status' ? 'active' : ''}`}
-                    onClick={() => handleTableSort('status')}
-                  >
-                    <span>{tr('Status', 'Estado')}</span>
-                    <span className="sort-indicator" aria-hidden="true">{getSortIndicator('status')}</span>
-                  </button>
-                </th>
-                <th className="col-actions">{tr('Actions', 'Acciones')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredReservations.map((res) => (
-                <tr key={res.reservationId}>
-                  <td className="col-id">#{res.reservationId}</td>
-                  <td className="col-guest reservation-guest-cell" style={{ fontWeight: 600 }}>
-                    {res.guestAnonymized && (
-                      <span style={{ color: 'var(--dark-gray)' }}>{tr('Anonymized/Deleted', 'Anonimizado/Eliminado')}</span>
-                    )}
-                    {!res.guestAnonymized && (
-                      <>{res.guestDisplayName || res.guestName}</>
-                    )}
-                  </td>
-                  <td className="col-suite reservation-suite-cell">{res.suiteName}</td>
-                  <td className="col-checkin">{format(parseISO(res.checkIn), 'dd/MM/yyyy')}</td>
-                  <td className="col-checkout">{format(parseISO(res.checkOut), 'dd/MM/yyyy', { locale: dateLocale })}</td>
-                  <td className="col-guests">{res.numGuests}</td>
-                  <td className="col-price reservation-price-cell">
-                    {(() => {
-                      const total = Number.parseFloat(res.priceTotal || 0);
-                      const nights = Math.max(0, differenceInDays(parseISO(res.checkOut), parseISO(res.checkIn)));
-                      const perNight = nights > 0 ? total / nights : null;
-
-                      return (
-                        <>
-                          <div className="reservation-price-total">{new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(total)}</div>
-                          <div className="reservation-price-night">
-                            {perNight === null
-                              ? '-'
-                              : `${new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(perNight)} / ${tr('night', 'noche')}`}
-                          </div>
-                        </>
-                      );
-                    })()}
-                  </td>
-                  <td className="col-channel" style={{ textTransform: 'capitalize' }}>{res.channel}</td>
-                  <td className="col-status">
-                    <span
-                      className={getStatusBadgeClass(res.status)}
-                      style={{
-                        background: STATUS_META[res.status]?.color || '#BDC3C7',
-                        color: '#fff',
-                        padding: '0.4rem 0.8rem',
-                        borderRadius: '4px',
-                        fontSize: '0.875rem',
-                        fontWeight: 600,
-                        textTransform: 'capitalize',
-                        display: 'inline-block',
-                      }}
+        <div className={`loading-region ${loading ? 'is-loading' : ''}`} aria-busy={loading}>
+          {loading && (
+            <div className="loading-overlay">
+              <div className="spinner spinner-sm" />
+            </div>
+          )}
+          {filteredReservations.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-state-icon">📅</div>
+              <p>{tr('No reservations found for this date range', 'No se encontraron reservas para este rango de fechas')}</p>
+            </div>
+          ) : isMobile ? (
+            <ul className="mobile-card-list">
+              {filteredReservations.map((res) => {
+                const nights = Math.max(0, differenceInDays(parseISO(res.checkOut), parseISO(res.checkIn)));
+                return (
+                  <li key={res.reservationId}>
+                    <button type="button" className="mobile-card" onClick={() => openReservationModal(res)}>
+                      <div className="mobile-card-top">
+                        <span className="mobile-card-title">
+                          {res.guestAnonymized ? tr('Anonymized/Deleted', 'Anonimizado/Eliminado') : (res.guestDisplayName || res.guestName)}
+                        </span>
+                        <span className="status-pill" style={{ background: STATUS_META[res.status]?.color || '#BDC3C7' }}>
+                          {getStatusLabel(res.status, tr) || res.status}
+                        </span>
+                      </div>
+                      <div className="mobile-card-line">
+                        {res.suiteName} · {format(parseISO(res.checkIn), 'd MMM', { locale: dateLocale })} → {format(parseISO(res.checkOut), 'd MMM yyyy', { locale: dateLocale })} · {nights} {nights === 1 ? tr('night', 'noche') : tr('nights', 'noches')}
+                      </div>
+                      <div className="mobile-card-line muted">
+                        <span><Users size={13} /> {res.numGuests}</span>
+                        <span>{new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR' }).format(Number.parseFloat(res.priceTotal || 0))}</span>
+                        <span>{formatChannel(res.channel, tr)}</span>
+                        <span className="mobile-card-ref">#{res.reservationId}</span>
+                      </div>
+                      <ChevronRight size={18} className="mobile-card-chevron" />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <table className="data-table reservation-table">
+              <thead>
+                <tr>
+                  <th className="col-id">ID</th>
+                  <th className="col-guest" aria-sort={getAriaSort('guest')}>
+                    <button
+                      type="button"
+                      className={`sort-header-btn ${sortBy === 'guest' ? 'active' : ''}`}
+                      onClick={() => handleTableSort('guest')}
                     >
-                      {getStatusLabel(res.status, tr) || res.status}
-                    </span>
-                  </td>
-                  <td className="col-actions">
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <button
-                        onClick={() => openReservationModal(res)}
-                        className="btn btn-primary btn-sm"
-                        title={tr('Open reservation', 'Abrir reserva')}
-                      >
-                        <Eye size={14} />
-                        {tr('Open', 'Abrir')}
-                      </button>
-                    </div>
-                  </td>
+                      <span>{tr('Guest', 'Huesped')}</span>
+                      <span className="sort-indicator" aria-hidden="true">{getSortIndicator('guest')}</span>
+                    </button>
+                  </th>
+                  <th className="col-suite">{tr('Suite', 'Suite')}</th>
+                  <th className="col-checkin" aria-sort={getAriaSort('checkIn')}>
+                    <button
+                      type="button"
+                      className={`sort-header-btn ${sortBy === 'checkIn' ? 'active' : ''}`}
+                      onClick={() => handleTableSort('checkIn')}
+                    >
+                      <span>{tr('Check-In', 'Check-In')}</span>
+                      <span className="sort-indicator" aria-hidden="true">{getSortIndicator('checkIn')}</span>
+                    </button>
+                  </th>
+                  <th className="col-checkout" aria-sort={getAriaSort('checkOut')}>
+                    <button
+                      type="button"
+                      className={`sort-header-btn ${sortBy === 'checkOut' ? 'active' : ''}`}
+                      onClick={() => handleTableSort('checkOut')}
+                    >
+                      <span>{tr('Check-Out', 'Check-Out')}</span>
+                      <span className="sort-indicator" aria-hidden="true">{getSortIndicator('checkOut')}</span>
+                    </button>
+                  </th>
+                  <th className="col-guests">{tr('Guests', 'Huespedes')}</th>
+                  <th className="col-price" aria-sort={getAriaSort('priceTotal')}>
+                    <button
+                      type="button"
+                      className={`sort-header-btn ${sortBy === 'priceTotal' ? 'active' : ''}`}
+                      onClick={() => handleTableSort('priceTotal')}
+                    >
+                      <span>{tr('Price', 'Precio')}</span>
+                      <span className="sort-indicator" aria-hidden="true">{getSortIndicator('priceTotal')}</span>
+                    </button>
+                  </th>
+                  <th className="col-channel">{tr('Channel', 'Canal')}</th>
+                  <th className="col-status" aria-sort={getAriaSort('status')}>
+                    <button
+                      type="button"
+                      className={`sort-header-btn ${sortBy === 'status' ? 'active' : ''}`}
+                      onClick={() => handleTableSort('status')}
+                    >
+                      <span>{tr('Status', 'Estado')}</span>
+                      <span className="sort-indicator" aria-hidden="true">{getSortIndicator('status')}</span>
+                    </button>
+                  </th>
+                  <th className="col-actions">{tr('Actions', 'Acciones')}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+              </thead>
+              <tbody>
+                {filteredReservations.map((res) => (
+                  <tr key={res.reservationId}>
+                    <td className="col-id">#{res.reservationId}</td>
+                    <td className="col-guest reservation-guest-cell" style={{ fontWeight: 600 }}>
+                      {res.guestAnonymized && (
+                        <span style={{ color: 'var(--dark-gray)' }}>{tr('Anonymized/Deleted', 'Anonimizado/Eliminado')}</span>
+                      )}
+                      {!res.guestAnonymized && (
+                        <>{res.guestDisplayName || res.guestName}</>
+                      )}
+                    </td>
+                    <td className="col-suite reservation-suite-cell">{res.suiteName}</td>
+                    <td className="col-checkin">{format(parseISO(res.checkIn), 'dd/MM/yyyy')}</td>
+                    <td className="col-checkout">{format(parseISO(res.checkOut), 'dd/MM/yyyy', { locale: dateLocale })}</td>
+                    <td className="col-guests">{res.numGuests}</td>
+                    <td className="col-price reservation-price-cell">
+                      {(() => {
+                        const total = Number.parseFloat(res.priceTotal || 0);
+                        const nights = Math.max(0, differenceInDays(parseISO(res.checkOut), parseISO(res.checkIn)));
+                        const perNight = nights > 0 ? total / nights : null;
+
+                        return (
+                          <>
+                            <div className="reservation-price-total">{new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(total)}</div>
+                            <div className="reservation-price-night">
+                              {perNight === null
+                                ? '-'
+                                : `${new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(perNight)} / ${tr('night', 'noche')}`}
+                            </div>
+                          </>
+                        );
+                      })()}
+                    </td>
+                    <td className="col-channel">{formatChannel(res.channel, tr)}</td>
+                    <td className="col-status">
+                      <span
+                        className={getStatusBadgeClass(res.status)}
+                        style={{
+                          background: STATUS_META[res.status]?.color || '#BDC3C7',
+                          color: '#fff',
+                          padding: '0.4rem 0.8rem',
+                          borderRadius: '4px',
+                          fontSize: '0.875rem',
+                          fontWeight: 600,
+                          textTransform: 'capitalize',
+                          display: 'inline-block',
+                        }}
+                      >
+                        {getStatusLabel(res.status, tr) || res.status}
+                      </span>
+                    </td>
+                    <td className="col-actions">
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                          onClick={() => openReservationModal(res)}
+                          className="btn btn-primary btn-sm"
+                          title={tr('Open reservation', 'Abrir reserva')}
+                        >
+                          <Eye size={14} />
+                          {tr('Open', 'Abrir')}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
 
       {/* Modal */}
@@ -1722,12 +1791,9 @@ export default function ReservationManagement() {
                       </div>
                       <div className="form-group">
                         <label className="form-label">{tr('Phone', 'Telefono')}</label>
-                        <input
-                          type="tel"
-                          className="form-input"
+                        <PhoneInput
                           value={formData.phone}
-                          onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                          placeholder="+31 6 12345678"
+                          onChange={(phone) => setFormData((prev) => ({ ...prev, phone }))}
                         />
                       </div>
                       <div className="form-group">
@@ -1943,11 +2009,9 @@ export default function ReservationManagement() {
                     onChange={(e) => setFormData({ ...formData, channel: e.target.value })}
                     required
                   >
-                    <option value="direct">{tr('Direct', 'Directo')}</option>
-                    <option value="booking.com">Booking.com</option>
-                    <option value="airbnb">Airbnb</option>
-                    <option value="expedia">Expedia</option>
-                    <option value="other">{tr('Other', 'Otro')}</option>
+                    {CHANNEL_OPTIONS.map((channel) => (
+                      <option key={channel} value={channel}>{formatChannel(channel, tr)}</option>
+                    ))}
                   </select>
                 </div>
                 {editingReservation && (

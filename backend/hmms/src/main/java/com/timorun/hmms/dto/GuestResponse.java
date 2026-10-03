@@ -28,4 +28,7 @@ public class GuestResponse {
     private LocalDateTime anonymizedAt;
     private Boolean anonymized;
     private Integer reservationCount; // Number of reservations for this guest
+    private String preferredLanguage;
+    private LocalDateTime marketingOptOutAt;
+    private LocalDateTime deletionRequestedAt;
 }

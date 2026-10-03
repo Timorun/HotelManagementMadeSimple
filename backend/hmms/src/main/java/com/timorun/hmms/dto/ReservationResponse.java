@@ -27,6 +27,7 @@ public class ReservationResponse {
     private String email;
     private String phone;
     private String guestNotes;
+    private Boolean guestMarketingConsent;
     private LocalDate checkIn;
     private LocalDate checkOut;
     private Integer numGuests;
@@ -37,4 +38,7 @@ public class ReservationResponse {
     private String statusLabel; // Human-readable label
     private String statusColor; // Hex color for UI
     private LocalDateTime createdAt;
+    private String externalRef;    // booking.com reservation number
+    private Boolean importedFromCalendar;
+    private Boolean syncConflict;
 }

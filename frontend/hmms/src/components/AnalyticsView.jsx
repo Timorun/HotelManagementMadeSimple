@@ -35,7 +35,9 @@ import {
 } from 'date-fns';
 import { exportSheetsToExcel } from '../utils/excelExport';
 import { useI18n } from '../context/I18nContext';
+import { isIsoDate, useSessionState } from '../hooks/useSessionState';
 import { getStatusLabel } from '../api/reservationStatus';
+import { formatChannel } from '../utils/channels';
 
 ChartJS.register(
   ArcElement,
@@ -60,16 +62,16 @@ function isCompleteDateValue(value) {
 export default function AnalyticsView() {
   const { tr, locale, dateLocale } = useI18n();
   const [report, setReport] = useState(null);
-  const [dateFrom, setDateFrom] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
-  const [dateTo, setDateTo] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [dateFrom, setDateFrom] = useSessionState('analytics.dateFrom', () => format(startOfMonth(new Date()), 'yyyy-MM-dd'), isIsoDate);
+  const [dateTo, setDateTo] = useSessionState('analytics.dateTo', () => format(new Date(), 'yyyy-MM-dd'), isIsoDate);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [activePreset, setActivePreset] = useState('mtd');
-  const [comparisonMode, setComparisonMode] = useState(COMPARISON_MODE_SAME_DATES_LAST_YEAR);
-  const [comparisonFrom, setComparisonFrom] = useState('');
-  const [comparisonTo, setComparisonTo] = useState('');
+  const [activePreset, setActivePreset] = useSessionState('analytics.preset', 'mtd');
+  const [comparisonMode, setComparisonMode] = useSessionState('analytics.comparisonMode', COMPARISON_MODE_SAME_DATES_LAST_YEAR);
+  const [comparisonFrom, setComparisonFrom] = useSessionState('analytics.comparisonFrom', '');
+  const [comparisonTo, setComparisonTo] = useSessionState('analytics.comparisonTo', '');
   const [nationalities, setNationalities] = useState([]);
-  const [selectedNationalityCode, setSelectedNationalityCode] = useState('all');
+  const [selectedNationalityCode, setSelectedNationalityCode] = useSessionState('analytics.nationality', 'all');
 
   const formatCurrency = useCallback((value, maximumFractionDigits = 0) => (
     new Intl.NumberFormat(locale, {
@@ -91,23 +93,7 @@ export default function AnalyticsView() {
     `${formatNumber(value, digits)}%`
   ), [formatNumber]);
 
-  const formatChannelLabel = useCallback((channel) => {
-    if (!channel) return tr('Other', 'Otro');
-    if (channel.toLowerCase() === 'booking.com') return 'Booking.com';
-    const normalized = channel.replaceAll('_', ' ').toLowerCase();
-    const mapped = {
-      direct: tr('Direct', 'Directo'),
-      website: tr('Website', 'Sitio web'),
-      phone: tr('Phone', 'Telefono'),
-      'walk in': tr('Walk In', 'Sin reserva'),
-    };
-
-    if (mapped[normalized]) {
-      return mapped[normalized];
-    }
-
-    return normalized.replace(/\b\w/g, (letter) => letter.toUpperCase());
-  }, [tr]);
+  const formatChannelLabel = useCallback((channel) => formatChannel(channel, tr), [tr]);
 
   const formatStatusLabel = useCallback((status) => {
     if (!status) return tr('Unknown', 'Desconocido');
@@ -173,7 +159,7 @@ export default function AnalyticsView() {
     setDateFrom(from);
     setDateTo(to);
     setActivePreset(rangeKey);
-  }, [quickRanges]);
+  }, [quickRanges, setActivePreset, setDateFrom, setDateTo]);
 
   const defaultComparisonRange = useMemo(() => {
     const parsedFrom = parseISO(dateFrom);
@@ -195,7 +181,7 @@ export default function AnalyticsView() {
 
     setComparisonFrom(defaultComparisonRange.from);
     setComparisonTo(defaultComparisonRange.to);
-  }, [comparisonMode, defaultComparisonRange.from, defaultComparisonRange.to]);
+  }, [comparisonMode, defaultComparisonRange.from, defaultComparisonRange.to, setComparisonFrom, setComparisonTo]);
 
   const sortedNationalities = useMemo(() => (
     [...nationalities].sort((left, right) => {

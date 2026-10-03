@@ -1,7 +1,6 @@
 package com.timorun.hmms.controllers;
 
 import com.timorun.hmms.dto.ReservationResponse;
-import com.timorun.hmms.dto.RoomCleaningResponse;
 import com.timorun.hmms.services.OperationalViewService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -56,16 +55,6 @@ public class OperationalViewController {
     public ResponseEntity<List<ReservationResponse>> getDepartures(@RequestParam LocalDate date) {
         List<ReservationResponse> departures = operationalViewService.getDepartures(date);
         return ResponseEntity.ok(departures);
-    }
-
-    /**
-     * Get rooms to clean (rooms with departures today or past checkouts not marked as cleaned).
-     * GET /api/operations/rooms-to-clean
-     */
-    @GetMapping("/rooms-to-clean")
-    public ResponseEntity<List<RoomCleaningResponse>> getRoomsToClean() {
-        List<RoomCleaningResponse> rooms = operationalViewService.getRoomsToClean();
-        return ResponseEntity.ok(rooms);
     }
 
     /**

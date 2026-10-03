@@ -29,6 +29,8 @@ public class CreateReservationRequest {
     private String email;
     private String phone;
     private String nationalityCode;
+    // Guest profile notes, saved on the guest when a new guest is created inline.
+    private String guestNotes;
     // Reservation notes for this stay.
     private String notes;
 }

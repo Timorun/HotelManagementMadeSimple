@@ -1,19 +1,20 @@
 package com.timorun.hmms.services;
 
 import com.timorun.hmms.dto.CreateReservationRequest;
+import com.timorun.hmms.dto.GuestRequest;
 import com.timorun.hmms.dto.ReservationResponse;
 import com.timorun.hmms.dto.UpdateReservationRequest;
 import com.timorun.hmms.dto.UpdateReservationStatusRequest;
 import com.timorun.hmms.entities.Guest;
-import com.timorun.hmms.entities.Nationality;
 import com.timorun.hmms.entities.Reservation;
 import com.timorun.hmms.entities.ReservationStatus;
 import com.timorun.hmms.entities.Suite;
+import com.timorun.hmms.exceptions.GuestConflictException;
 import com.timorun.hmms.repositories.GuestRepository;
-import com.timorun.hmms.repositories.NationalityRepository;
 import com.timorun.hmms.repositories.ReservationRepository;
 import com.timorun.hmms.repositories.SuiteRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -25,23 +26,24 @@ public class ReservationService {
     private final ReservationRepository reservationRepository;
     private final GuestRepository guestRepository;
     private final SuiteRepository suiteRepository;
-    private final NationalityRepository nationalityRepository;
+    private final GuestService guestService;
 
     public ReservationService(
             ReservationRepository reservationRepository,
             GuestRepository guestRepository,
             SuiteRepository suiteRepository,
-            NationalityRepository nationalityRepository) {
+            GuestService guestService) {
         this.reservationRepository = reservationRepository;
         this.guestRepository = guestRepository;
         this.suiteRepository = suiteRepository;
-        this.nationalityRepository = nationalityRepository;
+        this.guestService = guestService;
     }
 
     /**
      * Create a new reservation.
      * Can either link to existing guest (via guestId) or create new guest from request data.
      */
+    @Transactional
     public ReservationResponse createReservation(CreateReservationRequest request) {
         validateReservationDates(request.getCheckIn(), request.getCheckOut());
         
@@ -194,13 +196,7 @@ public class ReservationService {
      * Used to check suite availability.
      */
     public List<Reservation> getOverlappingReservations(Long suiteId, LocalDate checkIn, LocalDate checkOut, Long excludeReservationId) {
-        List<Reservation> overlapping = reservationRepository.findByCheckInBeforeAndCheckOutAfter(checkOut, checkIn);
-        
-        return overlapping.stream()
-                .filter(r -> r.getSuite().getSuiteId().equals(suiteId))
-                .filter(r -> r.getStatus() != ReservationStatus.CANCELLED)
-                .filter(r -> excludeReservationId == null || !r.getReservationId().equals(excludeReservationId))
-                .collect(Collectors.toList());
+        return reservationRepository.findActiveOverlapping(suiteId, checkIn, checkOut, excludeReservationId);
     }
 
     // ===== PRIVATE HELPER METHODS =====
@@ -212,31 +208,30 @@ public class ReservationService {
                     .orElseThrow(() -> new IllegalArgumentException("Guest not found with ID: " + request.getGuestId()));
         }
         
-        // Try to find guest by email
-        if (request.getEmail() != null && !request.getEmail().isBlank()) {
-            var existing = guestRepository.findByEmail(request.getEmail());
-            if (existing.isPresent()) {
-                return existing.get();
+        // Reuse a guest with the same email only when it is clearly the same person;
+        // otherwise surface the clash instead of silently attaching the stay to someone else.
+        var existing = guestService.findActiveGuestByEmail(request.getEmail());
+        if (existing.isPresent()) {
+            Guest guest = existing.get();
+            if (GuestService.hasSameName(guest, request.getFirstName(), request.getLastName())) {
+                return guest;
             }
+            throw new GuestConflictException(
+                    "This email already belongs to " + GuestService.fullName(guest)
+                            + ". Select that guest or use a different email.",
+                    guest.getGuestId(),
+                    GuestService.fullName(guest));
         }
         
-        // Create new guest
-        Guest guest = new Guest();
-        guest.setFirstName(request.getFirstName());
-        guest.setLastName(request.getLastName());
-        guest.setEmail(request.getEmail());
-        guest.setPhone(request.getPhone());
-        guest.setMarketingConsent(false);
-        guest.setCreatedAt(LocalDateTime.now());
-        
-        // Set nationality if provided
-        if (request.getNationalityCode() != null && !request.getNationalityCode().isBlank()) {
-            Nationality nationality = nationalityRepository.findById(request.getNationalityCode())
-                    .orElse(null);
-            guest.setNationality(nationality);
-        }
-        
-        return guestRepository.save(guest);
+        GuestRequest guestRequest = new GuestRequest();
+        guestRequest.setFirstName(request.getFirstName());
+        guestRequest.setLastName(request.getLastName());
+        guestRequest.setEmail(request.getEmail());
+        guestRequest.setPhone(request.getPhone());
+        guestRequest.setNationalityCode(request.getNationalityCode());
+        guestRequest.setNotes(request.getGuestNotes());
+        guestRequest.setMarketingConsent(false);
+        return guestService.createGuestEntity(guestRequest);
     }
 
     private void validateReservationDates(LocalDate checkIn, LocalDate checkOut) {
@@ -278,7 +273,7 @@ public class ReservationService {
                 || status == ReservationStatus.CHECKED_IN;
     }
 
-    private ReservationResponse toResponse(Reservation reservation) {
+    public ReservationResponse toResponse(Reservation reservation) {
         boolean guestAnonymized = reservation.getGuest().getAnonymizedAt() != null;
         String guestName = reservation.getGuest().getFirstName() + " " + reservation.getGuest().getLastName();
         String guestDisplayName = guestAnonymized
@@ -296,6 +291,7 @@ public class ReservationService {
             .email(guestAnonymized ? null : reservation.getGuest().getEmail())
             .phone(guestAnonymized ? null : reservation.getGuest().getPhone())
             .guestNotes(guestAnonymized ? null : reservation.getGuest().getNotes())
+            .guestMarketingConsent(Boolean.TRUE.equals(reservation.getGuest().getMarketingConsent()))
                 .checkIn(reservation.getCheckIn())
                 .checkOut(reservation.getCheckOut())
                 .numGuests(reservation.getNumGuests())
@@ -306,6 +302,9 @@ public class ReservationService {
                 .statusLabel(reservation.getStatus().getLabel())
                 .statusColor(reservation.getStatus().getColor())
                 .createdAt(reservation.getCreatedAt())
+                .externalRef(reservation.getExternalRef())
+                .importedFromCalendar(reservation.getExternalUid() != null)
+                .syncConflict(reservation.isSyncConflict())
                 .build();
     }
 }

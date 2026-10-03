@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { fetchCalendar, fetchSuites, fetchGuests, updateReservation, cancelReservation, updateReservationStatus, fetchGuest, updateGuest } from '../api/backend';
 import { 
   format, 
@@ -18,6 +18,9 @@ import {
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
 import { STATUS_META, getStatusLabel } from '../api/reservationStatus';
 import { useI18n } from '../context/I18nContext';
+import { isIsoDate, useSessionState } from '../hooks/useSessionState';
+import PeriodPicker from './calendar/PeriodPicker';
+import { MOBILE_BREAKPOINT, useIsMobile } from '../hooks/useIsMobile';
 import { ConfirmCancelReservationModal, ReservationDetailsModal } from './reservations/ReservationDetailsModal';
 
 const STATUS_FILTER_DEFAULTS = {
@@ -59,12 +62,27 @@ function countryCodeToFlag(code) {
 
 export default function CalendarView() {
   const { tr, dateLocale } = useI18n();
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState(VIEW_MODE.MONTH);
+  // The visible period is kept in sessionStorage so it survives switching tabs.
+  const [currentDateIso, setCurrentDateIso] = useSessionState('calendar.date', () => format(new Date(), 'yyyy-MM-dd'), isIsoDate);
+  const currentDate = useMemo(() => parseISO(currentDateIso), [currentDateIso]);
+  const setCurrentDate = useCallback((next) => {
+    setCurrentDateIso((previousIso) => {
+      const nextDate = typeof next === 'function' ? next(parseISO(previousIso)) : next;
+      return format(nextDate, 'yyyy-MM-dd');
+    });
+  }, [setCurrentDateIso]);
+  const isMobile = useIsMobile();
+  const [viewMode, setViewMode] = useSessionState(
+    'calendar.viewMode',
+    // A week fits a phone screen much better than a month
+    () => (window.matchMedia?.(`(max-width: ${MOBILE_BREAKPOINT}px)`).matches ? VIEW_MODE.WEEK : VIEW_MODE.MONTH),
+    (value) => Object.values(VIEW_MODE).includes(value),
+  );
   const [reservations, setReservations] = useState([]);
   const [suites, setSuites] = useState([]);
   const [guests, setGuests] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState(null);
   const [selectedReservation, setSelectedReservation] = useState(null);
   const [showReservationModal, setShowReservationModal] = useState(false);
@@ -115,6 +133,7 @@ export default function CalendarView() {
       setGuests([]);
     } finally {
       setLoading(false);
+      setHasLoaded(true);
     }
   };
 
@@ -402,7 +421,8 @@ export default function CalendarView() {
     setStatusFilters(STATUS_FILTER_DEFAULTS);
   };
 
-  if (loading) {
+  // Full-page spinner only on the first load; navigating keeps the header in place.
+  if (loading && !hasLoaded) {
     return (
       <div className="loading-spinner">
         <div className="spinner"></div>
@@ -414,29 +434,34 @@ export default function CalendarView() {
   return (
     <div className="calendar-view">
       {/* Header */}
-      <div className="card mb-3">
-        <div className="card-header" style={{ alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
+      <div className="card mb-3 has-popover">
+        <div className="card-header calendar-header">
           <h2>
             <CalendarIcon size={28} />
             {tr('Calendar & Planning', 'Calendario y planificacion')}
           </h2>
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <div className="calendar-controls">
+            <div className="calendar-nav">
               <button type="button" onClick={goToToday} className="btn btn-outline btn-sm">
                 {tr('Today', 'Hoy')}
               </button>
               <button type="button" onClick={previousPeriod} className="btn btn-primary btn-sm" aria-label={previousPeriodLabel}>
                 <ChevronLeft size={16} />
               </button>
-              <h3 style={{ margin: 0, fontSize: '1.2rem', minWidth: '220px', textAlign: 'center' }}>
-                {currentPeriodLabel}
-              </h3>
+              <PeriodPicker
+                viewMode={viewMode}
+                currentDate={currentDate}
+                onSelect={setCurrentDate}
+                label={currentPeriodLabel}
+                dateLocale={dateLocale}
+                tr={tr}
+              />
               <button type="button" onClick={nextPeriod} className="btn btn-primary btn-sm" aria-label={nextPeriodLabel}>
                 <ChevronRight size={16} />
               </button>
             </div>
 
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <div className="calendar-modes">
               <button
                 type="button"
                 className={`btn btn-sm ${viewMode === VIEW_MODE.MONTH ? 'btn-primary' : 'btn-outline'}`}
@@ -464,32 +489,40 @@ export default function CalendarView() {
         </div>
       )}
 
-      {/* Main Calendar Content */}
-      {activeSuites.length === 0 ? (
-        <div className="card">
-          <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--dark-gray)' }}>
-            <CalendarIcon size={48} style={{ marginBottom: '1rem', opacity: 0.5 }} />
-            <p style={{ fontSize: '1.125rem', marginBottom: '0.5rem' }}>{tr('No active suites', 'No hay suites activas')}</p>
-            <p style={{ fontSize: '0.875rem' }}>{tr('Add suites to start managing reservations', 'Agrega suites para empezar a gestionar reservas')}</p>
+      <div className={`loading-region ${loading ? 'is-loading' : ''}`} aria-busy={loading}>
+        {loading && (
+          <div className="loading-overlay">
+            <div className="spinner spinner-sm" />
           </div>
-        </div>
-      ) : (
-        <TimelineView 
-          suites={activeSuites} 
-          reservations={filteredReservations}
-          allReservations={reservations}
-          daysInView={daysInView}
-          viewStart={viewStart}
-          viewMode={viewMode}
-          guestById={guestById}
-          onReservationClick={openReservationModal}
-          statusFilters={statusFilters}
-          onToggleStatusFilter={toggleStatusFilter}
-          onResetStatusFilters={resetStatusFilters}
-          tr={tr}
-          dateLocale={dateLocale}
-        />
-      )}
+        )}
+        {/* Main Calendar Content */}
+        {activeSuites.length === 0 ? (
+          <div className="card">
+            <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--dark-gray)' }}>
+              <CalendarIcon size={48} style={{ marginBottom: '1rem', opacity: 0.5 }} />
+              <p style={{ fontSize: '1.125rem', marginBottom: '0.5rem' }}>{tr('No active suites', 'No hay suites activas')}</p>
+              <p style={{ fontSize: '0.875rem' }}>{tr('Add suites to start managing reservations', 'Agrega suites para empezar a gestionar reservas')}</p>
+            </div>
+          </div>
+        ) : (
+          <TimelineView 
+            suites={activeSuites} 
+            reservations={filteredReservations}
+            allReservations={reservations}
+            daysInView={daysInView}
+            viewStart={viewStart}
+            viewMode={viewMode}
+            guestById={guestById}
+            onReservationClick={openReservationModal}
+            statusFilters={statusFilters}
+            onToggleStatusFilter={toggleStatusFilter}
+            onResetStatusFilters={resetStatusFilters}
+            tr={tr}
+            dateLocale={dateLocale}
+            isMobile={isMobile}
+          />
+        )}
+      </div>
 
       {showReservationModal && selectedReservation && (
         <ReservationDetailsModal
@@ -537,6 +570,7 @@ function TimelineView({
   onResetStatusFilters,
   tr,
   dateLocale,
+  isMobile = false,
 }) {
   const getReservationsForSuite = (suiteId, source = reservations) => {
     return source.filter((res) => res.suiteId === suiteId);
@@ -635,9 +669,13 @@ function TimelineView({
   const getStatusColor = (status) => STATUS_META[status?.toLowerCase()]?.color || STATUS_META.pending.color;
   const isWeekView = viewMode === VIEW_MODE.WEEK;
   const isDenseMonth = viewMode === VIEW_MODE.MONTH && daysInView.length >= 30;
-  const suiteColumnWidth = isWeekView ? 196 : (isDenseMonth ? 184 : 196);
-  const dayColumnWidth = isWeekView ? 120 : (isDenseMonth ? 30 : 34);
-  const timelineMinWidth = Math.max(isWeekView ? 900 : 760, daysInView.length * dayColumnWidth);
+  // Phones: narrow suite column and day columns; the grid scrolls sideways with the suite column pinned.
+  const suiteColumnWidth = isMobile ? 92 : (isWeekView ? 196 : (isDenseMonth ? 184 : 196));
+  const dayColumnWidth = isMobile ? (isWeekView ? 64 : 34) : (isWeekView ? 120 : (isDenseMonth ? 30 : 34));
+  const timelineMinWidth = isMobile
+    ? daysInView.length * dayColumnWidth
+    : Math.max(isWeekView ? 900 : 760, daysInView.length * dayColumnWidth);
+  const suiteCellPadding = isMobile ? '0.6rem 0.5rem' : '1rem 1.125rem';
   const laneHeight = isWeekView ? 28 : (isDenseMonth ? 26 : 28);
   const laneInsetTop = isWeekView ? 12 : (isDenseMonth ? 10 : 12);
   const barHeight = isWeekView ? 22 : (isDenseMonth ? 20 : 22);
@@ -665,7 +703,8 @@ function TimelineView({
         <div style={{ display: 'flex', borderBottom: '2px solid var(--gray)', position: 'sticky', top: 0, zIndex: 40, background: 'var(--white)' }}>
           <div style={{ 
             minWidth: `${suiteColumnWidth}px`, 
-            padding: '1rem 1.125rem', 
+            maxWidth: `${suiteColumnWidth}px`,
+            padding: suiteCellPadding, 
             fontWeight: 700,
             borderRight: '2px solid var(--gray)',
             background: 'var(--light-gray)',
@@ -718,7 +757,8 @@ function TimelineView({
             <div key={suite.suiteId} style={{ display: 'flex', borderBottom: '1px solid var(--gray)' }}>
               <div style={{ 
                 minWidth: `${suiteColumnWidth}px`, 
-                padding: '1rem 1.125rem',
+                maxWidth: `${suiteColumnWidth}px`,
+                padding: suiteCellPadding,
                 borderRight: '2px solid var(--gray)',
                 background: 'var(--light-gray)',
                 display: 'flex',
@@ -728,8 +768,10 @@ function TimelineView({
                 left: 0,
                 zIndex: 30,
               }}>
-                <div style={{ fontWeight: 700, fontSize: isDenseMonth ? '0.85rem' : '0.93rem' }}>{suite.suiteName}</div>
-                <div style={{ fontSize: isDenseMonth ? '0.72rem' : '0.8rem', color: 'var(--dark-gray)' }}>{tr('Capacity:', 'Capacidad:')} {suite.capacity}</div>
+                <div style={{ fontWeight: 700, fontSize: isMobile ? '0.8rem' : (isDenseMonth ? '0.85rem' : '0.93rem') }}>{suite.suiteName}</div>
+                <div style={{ fontSize: isDenseMonth || isMobile ? '0.72rem' : '0.8rem', color: 'var(--dark-gray)' }}>
+                  {isMobile ? `👤 ${suite.capacity}` : `${tr('Capacity:', 'Capacidad:')} ${suite.capacity}`}
+                </div>
               </div>
               <div style={{ 
                 flex: 1, 

@@ -18,4 +18,5 @@ public class GuestRequest {
     private String nationalityCode;
     private String notes;
     private Boolean marketingConsent;
+    private String preferredLanguage; // "en" or "es"; null keeps the current value on update
 }

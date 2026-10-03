@@ -1,17 +1,19 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { addDays, format, parseISO, subDays } from 'date-fns';
-import { ClipboardCheck, Eye, Home, LogIn, LogOut, RefreshCw } from 'lucide-react';
+import { Check, ClipboardCheck, Eye, Home, LogIn, LogOut, RefreshCw, Undo2 } from 'lucide-react';
 import {
   fetchGuest,
   fetchGuests,
   fetchOperationsDashboard,
   fetchReservations,
   fetchSuites,
+  fetchSyncConflicts,
   updateGuest,
   updateReservation,
   updateReservationStatus,
   cancelReservation,
 } from '../api/backend';
+import { STATUS_META, getStatusLabel } from '../api/reservationStatus';
 import { useI18n } from '../context/I18nContext';
 import { ConfirmCancelReservationModal, ReservationDetailsModal } from './reservations/ReservationDetailsModal';
 
@@ -70,6 +72,18 @@ function countryCodeToFlag(code) {
   return String.fromCodePoint(...normalized.split('').map((char) => 127397 + char.charCodeAt(0)));
 }
 
+function StatusPill({ status, tr }) {
+  const key = String(status || '').toLowerCase();
+  return (
+    <span className="status-pill" style={{ background: STATUS_META[key]?.color || '#BDC3C7' }}>
+      {getStatusLabel(key, tr) || key}
+    </span>
+  );
+}
+
+const EXPECTED_ARRIVAL_STATUSES = ['pending', 'confirmed'];
+const IN_HOUSE_STATUSES = ['confirmed', 'checked_in'];
+
 export default function TodaysOperationsView() {
   const { tr, dateLocale } = useI18n();
   const [arrivalsToday, setArrivalsToday] = useState([]);
@@ -81,6 +95,10 @@ export default function TodaysOperationsView() {
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [error, setError] = useState(null);
+  const [updatingIds, setUpdatingIds] = useState(() => new Set());
+  const [syncConflicts, setSyncConflicts] = useState([]);
+  const [toast, setToast] = useState(null);
+  const toastTimerRef = useRef(null);
 
   const [selectedReservation, setSelectedReservation] = useState(null);
   const [showReservationModal, setShowReservationModal] = useState(false);
@@ -196,6 +214,8 @@ export default function TodaysOperationsView() {
       setReservations(reservationsData || []);
       setGuests(guestsData || []);
       setLastUpdated(new Date());
+      // Double bookings found by the booking.com calendar sync (non-blocking)
+      fetchSyncConflicts().then((conflicts) => setSyncConflicts(conflicts || [])).catch(() => {});
       setError(null);
     } catch (err) {
       setError(err?.message || String(err));
@@ -234,16 +254,6 @@ export default function TodaysOperationsView() {
     });
     setIsEditingReservation(false);
     setShowReservationModal(true);
-  };
-
-  const openReservationById = (reservationId) => {
-    const reservation = reservations.find((item) => Number(item.reservationId) === Number(reservationId));
-    if (!reservation) {
-      setError(tr('Reservation details are not available in the current quick view range.', 'Los detalles de la reserva no estan disponibles en el rango actual de vista rapida.'));
-      return;
-    }
-
-    openReservationModal(reservation);
   };
 
   const closeReservationModal = () => {
@@ -375,6 +385,143 @@ export default function TodaysOperationsView() {
     }
   };
 
+  const showToast = useCallback((message, type = 'success', onUndo = null) => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+    setToast({ message, type, onUndo });
+    toastTimerRef.current = setTimeout(() => setToast(null), onUndo ? 8000 : 4000);
+  }, []);
+
+  useEffect(() => () => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+  }, []);
+
+  const applyStatusLocally = (reservationId, status) => {
+    const update = (list) => list.map((item) => (
+      Number(item.reservationId) === Number(reservationId) ? { ...item, status } : item
+    ));
+    setArrivalsToday(update);
+    setDeparturesToday(update);
+    setReservations(update);
+  };
+
+  // Optimistically switch a reservation's status (check-in / check-out) with an undo option.
+  const changeStatus = async (reservation, nextStatus, { allowUndo = true } = {}) => {
+    const reservationId = reservation.reservationId;
+    const previousStatus = reservation.status;
+    const guestName = reservation.guestDisplayName || reservation.guestName;
+
+    setUpdatingIds((prev) => new Set(prev).add(reservationId));
+    applyStatusLocally(reservationId, nextStatus);
+
+    try {
+      await updateReservationStatus(reservationId, nextStatus);
+
+      let message = tr('Status updated', 'Estado actualizado');
+      if (nextStatus === 'checked_in') {
+        message = tr(`${guestName} checked in`, `${guestName} ha hecho check-in`);
+      } else if (nextStatus === 'checked_out') {
+        message = tr(`${guestName} checked out`, `${guestName} ha hecho check-out`);
+      }
+
+      showToast(
+        message,
+        'success',
+        allowUndo
+          ? () => changeStatus({ ...reservation, status: nextStatus }, previousStatus, { allowUndo: false })
+          : null,
+      );
+    } catch (err) {
+      applyStatusLocally(reservationId, previousStatus);
+      showToast(err?.message || tr('Failed to update status', 'No se pudo actualizar el estado'), 'error');
+    } finally {
+      setUpdatingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(reservationId);
+        return next;
+      });
+    }
+  };
+
+  const renderOperationsItem = (reservation, kind) => {
+    const status = String(reservation.status || '').toLowerCase();
+    const isUpdating = updatingIds.has(reservation.reservationId);
+    const guestName = reservation.guestDisplayName || reservation.guestName;
+
+    let action = null;
+    if (kind === 'arrival') {
+      if (EXPECTED_ARRIVAL_STATUSES.includes(status)) {
+        action = (
+          <button
+            type="button"
+            className="btn btn-success btn-sm"
+            disabled={isUpdating}
+            onClick={() => changeStatus(reservation, 'checked_in')}
+          >
+            <LogIn size={14} />
+            {tr('Check in', 'Hacer check-in')}
+          </button>
+        );
+      } else if (status === 'checked_in') {
+        action = (
+          <span className="operations-done">
+            <Check size={14} />
+            {tr('Arrived', 'Ha llegado')}
+          </span>
+        );
+      }
+    } else if (IN_HOUSE_STATUSES.includes(status)) {
+      action = (
+        <button
+          type="button"
+          className="btn btn-accent btn-sm"
+          disabled={isUpdating}
+          onClick={() => changeStatus(reservation, 'checked_out')}
+        >
+          <LogOut size={14} />
+          {tr('Check out', 'Hacer check-out')}
+        </button>
+      );
+    } else if (status === 'checked_out') {
+      action = (
+        <span className="operations-done">
+          <Check size={14} />
+          {tr('Left', 'Se ha ido')}
+        </span>
+      );
+    }
+
+    return (
+      <li key={reservation.reservationId} className={`operations-item status-${status}`}>
+        <div className="operations-item-main">
+          <div className="operations-item-title">
+            {guestName}
+            <StatusPill status={status} tr={tr} />
+          </div>
+          <div className="operations-item-sub">{reservation.suiteName}</div>
+          <em className="operations-item-sub muted">
+            {pluralize(reservation.numGuests, tr('guest', 'huesped'), tr('guests', 'huespedes'))} | {tr('Ref', 'Ref')} #{reservation.reservationId}
+          </em>
+        </div>
+        <div className="operations-item-actions">
+          {action}
+          <button
+            type="button"
+            className="btn btn-outline btn-sm btn-icon"
+            onClick={() => openReservationModal(reservation)}
+            aria-label={tr('View reservation', 'Ver reserva')}
+            title={tr('View reservation', 'Ver reserva')}
+          >
+            <Eye size={16} />
+          </button>
+        </div>
+      </li>
+    );
+  };
+
   if (loading) {
     return (
       <div className="loading-spinner">
@@ -417,6 +564,26 @@ export default function TodaysOperationsView() {
         </div>
       </section>
 
+      {syncConflicts.length > 0 && (
+        <section className="card sync-conflicts mb-3" role="alert">
+          <strong>
+            {tr(
+              'Possible double booking: these booking.com stays overlap another reservation in the same suite.',
+              'Posible doble reserva: estas estancias de booking.com coinciden con otra reserva en la misma suite.',
+            )}
+          </strong>
+          <ul>
+            {syncConflicts.map((conflict) => (
+              <li key={conflict.reservationId}>
+                <button type="button" className="link-button" onClick={() => openReservationModal(conflict)}>
+                  {conflict.suiteName}: {format(parseISO(conflict.checkIn), 'd MMM', { locale: dateLocale })} – {format(parseISO(conflict.checkOut), 'd MMM yyyy', { locale: dateLocale })} (#{conflict.reservationId})
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section className="card operations-quick-view mb-3">
         <div className="card-header quick-view-header">
           <div>
@@ -445,15 +612,37 @@ export default function TodaysOperationsView() {
                     {entry.reservation.guestDisplayName || entry.reservation.guestName}
                   </div>
                   <div className="suite-room-meta">{entry.nationality} {entry.flag} </div>
-                  <button
-                    type="button"
-                    className="btn btn-outline btn-sm"
-                    style={{ marginTop: '1.2rem' }}
-                    onClick={() => openReservationModal(entry.reservation)}
-                  >
-                    <Eye size={14} />
-                    {tr('Open', 'Abrir')}
-                  </button>
+                  <div className="suite-room-meta">
+                    {tr('Check-out', 'Salida')}: <strong>{format(parseISO(entry.reservation.checkOut), 'EEE d MMM', { locale: dateLocale })}</strong>
+                  </div>
+
+                  {EXPECTED_ARRIVAL_STATUSES.includes(String(entry.reservation.status || '').toLowerCase()) && (
+                    <div className="suite-room-nudge">
+                      <span>{tr('Has the guest checked in?', '¿Ha llegado el huesped?')}</span>
+                      <button
+                        type="button"
+                        className="btn btn-success btn-sm"
+                        disabled={updatingIds.has(entry.reservation.reservationId)}
+                        onClick={() => changeStatus(entry.reservation, 'checked_in')}
+                      >
+                        <Check size={14} />
+                        {tr('Yes, checked in', 'Si, ha llegado')}
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="suite-room-footer">
+                    <StatusPill status={entry.reservation.status} tr={tr} />
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm btn-icon"
+                      onClick={() => openReservationModal(entry.reservation)}
+                      aria-label={tr('View reservation', 'Ver reserva')}
+                      title={tr('View reservation', 'Ver reserva')}
+                    >
+                      <Eye size={16} />
+                    </button>
+                  </div>
                 </>
               ) : (
                 <>
@@ -477,25 +666,7 @@ export default function TodaysOperationsView() {
 
           {departuresToday.length > 0 ? (
             <ul className="operations-list">
-              {departuresToday.map((departure) => (
-                <li key={departure.reservationId} className="operations-item">
-                  <div>
-                    <div className="operations-item-title">{departure.guestName}</div>
-                    <div className="operations-item-sub">{departure.suiteName}</div>
-                    <em className="operations-item-sub muted">
-                      {pluralize(departure.numGuests, tr('guest', 'huesped'), tr('guests', 'huespedes'))} | {tr('Ref', 'Ref')} #{departure.reservationId}
-                    </em>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn btn-outline btn-sm"
-                    onClick={() => openReservationById(departure.reservationId)}
-                  >
-                    <Eye size={14} />
-                    {tr('Open', 'Abrir')}
-                  </button>
-                </li>
-              ))}
+              {departuresToday.map((departure) => renderOperationsItem(departure, 'departure'))}
             </ul>
           ) : (
             <div className="empty-state compact-empty">{tr('No check-outs scheduled.', 'No hay check-outs programados.')}</div>
@@ -513,31 +684,33 @@ export default function TodaysOperationsView() {
 
           {arrivalsToday.length > 0 ? (
             <ul className="operations-list">
-              {arrivalsToday.map((arrival) => (
-                <li key={arrival.reservationId} className="operations-item">
-                  <div>
-                    <div className="operations-item-title">{arrival.guestName}</div>
-                    <div className="operations-item-sub">{arrival.suiteName}</div>
-                    <em className="operations-item-sub muted">
-                      {pluralize(arrival.numGuests, tr('guest', 'huesped'), tr('guests', 'huespedes'))} | {tr('Ref', 'Ref')} #{arrival.reservationId}
-                    </em>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn btn-outline btn-sm"
-                    onClick={() => openReservationById(arrival.reservationId)}
-                  >
-                    <Eye size={14} />
-                    {tr('Open', 'Abrir')}
-                  </button>
-                </li>
-              ))}
+              {arrivalsToday.map((arrival) => renderOperationsItem(arrival, 'arrival'))}
             </ul>
           ) : (
             <div className="empty-state compact-empty">{tr('No check-ins scheduled.', 'No hay check-ins programados.')}</div>
           )}
         </article>
       </section>
+
+      {toast && (
+        <div className={`ops-toast ${toast.type}`} role="status">
+          <span>{toast.message}</span>
+          {toast.onUndo && (
+            <button
+              type="button"
+              className="ops-toast-undo"
+              onClick={() => {
+                const undo = toast.onUndo;
+                setToast(null);
+                undo();
+              }}
+            >
+              <Undo2 size={14} />
+              {tr('Undo', 'Deshacer')}
+            </button>
+          )}
+        </div>
+      )}
 
       {showReservationModal && selectedReservation && (
         <ReservationDetailsModal

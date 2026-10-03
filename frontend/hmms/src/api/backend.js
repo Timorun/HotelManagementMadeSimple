@@ -229,7 +229,10 @@ async function request(url, options = {}, errorMessage = 'Request failed') {
     }
 
     const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.error || errorMessage);
+    const error = new Error(errorData.error || errorMessage);
+    error.status = res.status;
+    error.data = errorData;
+    throw error;
   }
 
   if (res.status === 204) {
@@ -364,16 +367,14 @@ export async function fetchAnalyticsReport(from, to, options = {}) {
 }
 
 export async function fetchOperationsDashboard() {
-  const [arrivalsToday, departuresToday, roomsToClean] = await Promise.all([
+  const [arrivalsToday, departuresToday] = await Promise.all([
     getJson(`${BASE_URL}/operations/arrivals/today`, 'Failed to fetch arrivals'),
     getJson(`${BASE_URL}/operations/departures/today`, 'Failed to fetch departures'),
-    getJson(`${BASE_URL}/operations/rooms-to-clean`, 'Failed to fetch rooms to clean'),
   ]);
 
   return {
     arrivalsToday: withStubFallback(arrivalsToday, STUB_DATA.operations.arrivalsToday),
     departuresToday: withStubFallback(departuresToday, STUB_DATA.operations.departuresToday),
-    roomsToClean: withStubFallback(roomsToClean, STUB_DATA.operations.roomsToClean),
   };
 }
 
@@ -472,4 +473,94 @@ export async function updateReservationStatus(reservationId, status) {
     },
     'Failed to update reservation status',
   );
+}
+
+// ===== Suites (settings) =====
+
+export async function createSuite(suiteData) {
+  return request(`${BASE_URL}/suites`, { method: 'POST', body: JSON.stringify(suiteData) }, 'Failed to create suite');
+}
+
+export async function updateSuite(id, suiteData) {
+  return request(`${BASE_URL}/suites/${id}`, { method: 'PUT', body: JSON.stringify(suiteData) }, 'Failed to update suite');
+}
+
+export async function fetchSettings() {
+  return request(`${BASE_URL}/settings`, { method: 'GET' }, 'Failed to load settings');
+}
+
+// ===== Guest communication =====
+
+export async function fetchGuestPreferencesLink(guestId) {
+  const data = await request(`${BASE_URL}/guests/${guestId}/preferences-link`, { method: 'GET' }, 'Failed to create preferences link');
+  return data?.url;
+}
+
+// ===== Booking requests (solicitudes) =====
+
+export async function fetchBookingRequests() {
+  return request(`${BASE_URL}/booking-requests`, { method: 'GET' }, 'Failed to load booking requests');
+}
+
+export async function fetchBookingRequestCount() {
+  const data = await request(`${BASE_URL}/booking-requests/count`, { method: 'GET' }, 'Failed to load booking requests');
+  return data?.pending ?? 0;
+}
+
+export async function confirmBookingRequest(id, decision) {
+  return request(`${BASE_URL}/booking-requests/${id}/confirm`, { method: 'PATCH', body: JSON.stringify(decision || {}) }, 'Failed to confirm request');
+}
+
+export async function rejectBookingRequest(id, decision) {
+  return request(`${BASE_URL}/booking-requests/${id}/reject`, { method: 'PATCH', body: JSON.stringify(decision || {}) }, 'Failed to reject request');
+}
+
+// ===== Public (no login): booking page and guest preferences =====
+
+export async function fetchPublicHotel() {
+  return request(`${BASE_URL}/public/hotel`, { method: 'GET' }, 'Failed to load hotel');
+}
+
+export async function fetchPublicAvailability(checkIn, checkOut, guests) {
+  const params = new URLSearchParams({ checkIn, checkOut, guests: String(guests) });
+  return request(`${BASE_URL}/public/availability?${params}`, { method: 'GET' }, 'Failed to check availability');
+}
+
+export async function fetchPublicNationalities() {
+  return request(`${BASE_URL}/public/nationalities`, { method: 'GET' }, 'Failed to load countries');
+}
+
+export async function submitBookingRequest(bookingData) {
+  return request(`${BASE_URL}/public/booking-requests`, { method: 'POST', body: JSON.stringify(bookingData) }, 'Failed to send booking request');
+}
+
+export async function requestPreferencesLink(email) {
+  return request(`${BASE_URL}/public/preferences/request-link`, { method: 'POST', body: JSON.stringify({ email }) }, 'Failed to send link');
+}
+
+export async function fetchPreferences(token) {
+  return request(`${BASE_URL}/public/preferences/${encodeURIComponent(token)}`, { method: 'GET' }, 'This link is invalid or has expired');
+}
+
+export async function optOutOfMarketing(token) {
+  return request(`${BASE_URL}/public/preferences/${encodeURIComponent(token)}/opt-out`, { method: 'POST' }, 'Failed to update preferences');
+}
+
+export async function requestDataDeletion(token) {
+  return request(`${BASE_URL}/public/preferences/${encodeURIComponent(token)}/delete-request`, { method: 'POST' }, 'Failed to send request');
+}
+
+// ===== Booking.com sync =====
+
+export async function syncBookingCalendars(suiteId) {
+  const url = suiteId ? `${BASE_URL}/booking-sync/ical/${suiteId}` : `${BASE_URL}/booking-sync/ical`;
+  return request(url, { method: 'POST' }, 'Calendar sync failed');
+}
+
+export async function fetchSyncConflicts() {
+  return request(`${BASE_URL}/booking-sync/conflicts`, { method: 'GET' }, 'Failed to load conflicts');
+}
+
+export async function importBookingExport(rows, dryRun) {
+  return request(`${BASE_URL}/booking-sync/import`, { method: 'POST', body: JSON.stringify({ rows, dryRun }) }, 'Import failed');
 }

@@ -1,26 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchGuests, createGuest, updateGuest, fetchNationalities, anonymizeGuest } from '../api/backend';
-import { Users, Plus, Edit, Search, Globe, UserX, Download, Copy, Check, MessageCircle, Send } from 'lucide-react';
+import { Users, Plus, Edit, Search, Globe, UserX, Download, Copy, Check, MessageCircle, Send, SlidersHorizontal, ChevronDown } from 'lucide-react';
 import { exportRowsToExcel } from '../utils/excelExport';
 import { useI18n } from '../context/I18nContext';
+import { formatPhoneDisplay, toWhatsAppLink } from '../utils/phone';
+import { confirmContactWithoutConsent } from '../utils/communications';
+import PhoneInput from './common/PhoneInput';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { copyTextToClipboard } from '../utils/clipboard';
 
 function normalizeNamePart(value) {
-  return String(value || '').trim().toLowerCase();
-}
-
-function buildWhatsAppLink(phone) {
-  const cleaned = String(phone || '').replace(/[^\d+]/g, '');
-  if (!cleaned) {
-    return null;
-  }
-
-  const normalized = cleaned.startsWith('+') ? cleaned.slice(1) : cleaned.replace(/^0+/, '');
-  if (!normalized) {
-    return null;
-  }
-
-  return `https://wa.me/${normalized}`;
+  return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
 export default function GuestManagement() {
@@ -41,6 +31,8 @@ export default function GuestManagement() {
   const [sortBy, setSortBy] = useState('name');
   const [sortDirection, setSortDirection] = useState('asc');
   const [copiedContactKey, setCopiedContactKey] = useState(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -391,9 +383,16 @@ export default function GuestManagement() {
           </div>
         )}
 
-        <div className="form-group reservation-filters-panel guest-filters-panel">
+        <div className={`form-group reservation-filters-panel guest-filters-panel collapsible-filters ${filtersOpen ? 'open' : ''}`}>
           <div className="list-filters-head">
             <div>
+              {/* Phones: only the search box stays visible; other filters fold behind this toggle */}
+              <button type="button" className="filters-toggle" onClick={() => setFiltersOpen((open) => !open)} aria-expanded={filtersOpen}>
+                <SlidersHorizontal size={16} />
+                {tr('Filters', 'Filtros')}
+                {activeGuestFilterCount > 0 && <span className="nav-badge">{activeGuestFilterCount}</span>}
+                <ChevronDown size={16} className="filters-toggle-chevron" />
+              </button>
               <h3 className="list-filters-title">{tr('Filter Guests', 'Filtrar huespedes')}</h3>
               <p className="list-filters-subtitle">{tr('Search by identity and refine by profile tags or activity.', 'Busca por identidad y refina por etiquetas de perfil o actividad.')}</p>
             </div>
@@ -451,6 +450,56 @@ export default function GuestManagement() {
             <div className="empty-state-icon">👥</div>
             <p>{searchTerm ? tr('No guests found matching your search', 'No se encontraron huespedes para tu busqueda') : tr('No guests in the system', 'No hay huespedes en el sistema')}</p>
           </div>
+        ) : isMobile ? (
+          <ul className="mobile-card-list">
+            {filteredGuests.map((guest) => {
+              const name = `${guest.firstName} ${guest.lastName}`;
+              const whatsappLink = toWhatsAppLink(guest.phone);
+              const confirmContact = (e) => {
+                if (!confirmContactWithoutConsent(guest, name, tr)) e.preventDefault();
+              };
+              return (
+                <li key={guest.guestId} className="mobile-card static">
+                  <div className="mobile-card-top">
+                    <span className="mobile-card-title">{guest.anonymized ? tr('Anonymized/Deleted', 'Anonimizado/Eliminado') : name}</span>
+                    {!guest.anonymized && (
+                      <span className={`consent-badge ${guest.marketingConsent ? 'yes' : guest.marketingOptOutAt ? 'opted-out' : 'no'}`}>
+                        {guest.marketingConsent ? tr('Marketing', 'Marketing') : guest.marketingOptOutAt ? tr('Opted out', 'Baja') : tr('No marketing', 'Sin marketing')}
+                      </span>
+                    )}
+                  </div>
+                  {guest.deletionRequestedAt && !guest.anonymized && (
+                    <span className="consent-badge opted-out">{tr('Deletion requested', 'Pide eliminar datos')}</span>
+                  )}
+                  <div className="mobile-card-line muted">
+                    <span><Globe size={13} /> {guest.nationalityName || '-'}</span>
+                    <span>{tr(`${guest.reservationCount || 0} stays`, `${guest.reservationCount || 0} estancias`)}</span>
+                    <span className="mobile-card-ref">#{guest.guestId}</span>
+                  </div>
+                  {!guest.anonymized && (
+                    <div className="mobile-card-actions">
+                      {guest.email && (
+                        <a className="btn btn-outline btn-sm" href={`mailto:${guest.email}`} onClick={confirmContact}>
+                          <Send size={14} /> {tr('Email', 'Correo')}
+                        </a>
+                      )}
+                      {whatsappLink && (
+                        <a className="btn btn-outline btn-sm" href={whatsappLink} target="_blank" rel="noreferrer noopener" onClick={confirmContact}>
+                          <MessageCircle size={14} /> {formatPhoneDisplay(guest.phone)}
+                        </a>
+                      )}
+                      <button type="button" className="btn btn-primary btn-sm btn-icon" onClick={() => openEditModal(guest)} aria-label={tr('Edit guest', 'Editar huesped')}>
+                        <Edit size={14} />
+                      </button>
+                      <button type="button" className="btn btn-danger btn-sm btn-icon" onClick={() => handleAnonymize(guest)} aria-label={tr('Anonymize guest', 'Anonimizar huesped')}>
+                        <UserX size={14} />
+                      </button>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         ) : (
           <table className="data-table guest-table">
             <thead>
@@ -485,7 +534,7 @@ export default function GuestManagement() {
             </thead>
             <tbody>
               {filteredGuests.map((guest) => {
-                const whatsappLink = buildWhatsAppLink(guest.phone);
+                const whatsappLink = toWhatsAppLink(guest.phone);
                 const emailCopyKey = `guest-email-${guest.guestId}`;
                 const phoneCopyKey = `guest-phone-${guest.guestId}`;
 
@@ -499,6 +548,14 @@ export default function GuestManagement() {
                       {!guest.anonymized && (
                         <span>{guest.firstName} {guest.lastName}</span>
                       )}
+                      {!guest.anonymized && guest.deletionRequestedAt && (
+                        <span
+                          className="consent-badge opted-out guest-flag"
+                          title={tr('The guest asked for their data to be deleted. Use the anonymize button to do so.', 'El huesped ha pedido eliminar sus datos. Usa el boton de anonimizar.')}
+                        >
+                          {tr('Deletion requested', 'Pide eliminar datos')}
+                        </span>
+                      )}
                     </td>
                     <td>
                       <div className="contact-cell">
@@ -511,6 +568,9 @@ export default function GuestManagement() {
                                   <a
                                     className="contact-action-btn action-primary compact"
                                     href={`mailto:${guest.email}`}
+                                    onClick={(e) => {
+                                      if (!confirmContactWithoutConsent(guest, `${guest.firstName} ${guest.lastName}`, tr)) e.preventDefault();
+                                    }}
                                     aria-label={`${tr('Send email to', 'Enviar correo a')} ${guest.firstName} ${guest.lastName}`}
                                     title={tr('Send email', 'Enviar correo')}
                                   >
@@ -538,7 +598,7 @@ export default function GuestManagement() {
                           guest.phone
                             ? (
                               <span className="contact-data-group">
-                                <span className="contact-value" title={guest.phone}>{guest.phone}</span>
+                                <span className="contact-value" title={guest.phone}>{formatPhoneDisplay(guest.phone)}</span>
                                 <span className="contact-actions-inline guest-contact-actions">
                                   {whatsappLink ? (
                                     <a
@@ -546,6 +606,9 @@ export default function GuestManagement() {
                                       href={whatsappLink}
                                       target="_blank"
                                       rel="noreferrer noopener"
+                                      onClick={(e) => {
+                                        if (!confirmContactWithoutConsent(guest, `${guest.firstName} ${guest.lastName}`, tr)) e.preventDefault();
+                                      }}
                                       aria-label={`${tr('Open WhatsApp chat for', 'Abrir chat de WhatsApp para')} ${guest.firstName} ${guest.lastName}`}
                                       title={tr('Open WhatsApp', 'Abrir WhatsApp')}
                                     >
@@ -555,7 +618,11 @@ export default function GuestManagement() {
                                   <button
                                     type="button"
                                     className="contact-action-btn action-copy compact"
-                                    onClick={() => handleCopyContact(guest.phone, phoneCopyKey)}
+                                    onClick={() => {
+                                      if (confirmContactWithoutConsent(guest, `${guest.firstName} ${guest.lastName}`, tr)) {
+                                        handleCopyContact(guest.phone, phoneCopyKey);
+                                      }
+                                    }}
                                     aria-label={`${tr('Copy phone for', 'Copiar telefono de')} ${guest.firstName} ${guest.lastName}`}
                                     title={copiedContactKey === phoneCopyKey ? tr('Copied', 'Copiado') : tr('Copy phone', 'Copiar telefono')}
                                   >
@@ -582,6 +649,10 @@ export default function GuestManagement() {
                     <td>
                       {guest.marketingConsent ? (
                         <span className="status-badge status-checked-in">{tr('Yes', 'Si')}</span>
+                      ) : guest.marketingOptOutAt ? (
+                        <span className="status-badge status-cancelled" title={tr('Unsubscribed through their preferences link', 'Se dio de baja con su enlace de preferencias')}>
+                          {tr('Opted out', 'Baja')}
+                        </span>
                       ) : (
                         <span className="status-badge status-cancelled">{tr('No', 'No')}</span>
                       )}
@@ -709,12 +780,9 @@ export default function GuestManagement() {
                 </div>
                 <div className="form-group">
                   <label className="form-label">{tr('Phone', 'Telefono')}</label>
-                  <input
-                    type="tel"
-                    className="form-input"
+                  <PhoneInput
                     value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    placeholder="+31 6 12345678"
+                    onChange={(phone) => setFormData((prev) => ({ ...prev, phone }))}
                   />
                 </div>
                 <div className="form-group">

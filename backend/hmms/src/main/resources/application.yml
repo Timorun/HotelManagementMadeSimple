@@ -1,4 +1,16 @@
+logging:
+  level:
+    # Internet scanners send garbage to any open port (TLS or SOCKS on plain http, malformed
+    # cookies). Tomcat logs each such request at INFO; they are not errors of this app.
+    org.apache.coyote.http11.Http11Processor: WARN
+    org.apache.tomcat.util.http.parser.Cookie: WARN
+
 spring:
+  autoconfigure:
+    # Auth is handled by our own token filter (see SecurityConfig/AuthService), so skip Boot's
+    # default in-memory user and its "Using generated security password" log line.
+    exclude: org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
+
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/hotel}
     username: ${SPRING_DATASOURCE_USERNAME:hotel_user}
@@ -13,7 +25,32 @@ spring:
     enabled: true
     locations: ${SPRING_FLYWAY_LOCATIONS:classpath:db/migration}
 
+  # SMTP for outgoing mail (only used when hmms.mail.enabled=true)
+  mail:
+    host: ${SPRING_MAIL_HOST:}
+    port: ${SPRING_MAIL_PORT:587}
+    username: ${SPRING_MAIL_USERNAME:}
+    password: ${SPRING_MAIL_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${SPRING_MAIL_SMTP_AUTH:true}
+      mail.smtp.starttls.enable: ${SPRING_MAIL_STARTTLS:true}
+
 hmms:
+  hotel:
+    name: ${HMMS_HOTEL_NAME:Carmen Suites}
+    # Where booking requests and data-deletion requests are reported
+    owner-email: ${HMMS_HOTEL_OWNER_EMAIL:}
+    # Region assumed for phone numbers typed without a country code (ISO 3166 code)
+    default-phone-region: ${HMMS_DEFAULT_PHONE_REGION:ES}
+  mail:
+    # When false, mails are written to the log instead of being sent
+    enabled: ${HMMS_MAIL_ENABLED:false}
+    from: ${HMMS_MAIL_FROM:no-reply@localhost}
+  public:
+    # Frontend URL used in links inside emails (booking page, preference links)
+    base-url: ${HMMS_PUBLIC_BASE_URL:http://localhost:5173}
+    # Secret for signing guest preference links; must be set in production
+    token-secret: ${HMMS_PUBLIC_TOKEN_SECRET:dev-only-secret-change-me}
   cors:
     allowed-origins: ${HMMS_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
   auth:

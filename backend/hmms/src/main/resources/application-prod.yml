@@ -16,3 +16,6 @@ hmms:
     cookie-same-site: None
     bootstrap-admin:
       password: ${HMMS_BOOTSTRAP_ADMIN_PASSWORD}
+  public:
+    base-url: ${HMMS_PUBLIC_BASE_URL}
+    token-secret: ${HMMS_PUBLIC_TOKEN_SECRET}
