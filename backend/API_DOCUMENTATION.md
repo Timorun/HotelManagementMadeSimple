@@ -30,9 +30,23 @@ Create a new reservation. Can either link to an existing guest or create a new o
   "phone": "+31612345678",
   "nationalityCode": "NL",
   "guestNotes": "Allergic to feathers",   // saved on the new guest's profile
-  "notes": "Late arrival"                 // reservation notes for this stay
+  "notes": "Late arrival",                // reservation notes for this stay
+  // Optional: the status to start in (default "confirmed")
+  "status": "awaiting_payment",
+  "paymentDueDate": "2024-01-08",         // awaiting payment only; default: today + the days to pay, never after check-in
+  "notifyGuest": true                     // awaiting payment only: email the price and payment details
 }
 ```
+
+`channel` is `direct` (own website, phone, at the door: no commission), `booking.com`, `airbnb`,
+`expedia` or `other` (another platform). Older values `website`, `phone` and `walk in` are saved as
+`direct`; no channel means `direct`.
+
+`status` can be `confirmed`, `awaiting_payment`, `pending`, `checked_in` or `checked_out` (to enter
+a past stay), not `cancelled` or `no_show`. A reservation created as `awaiting_payment` waits with
+the accepted booking requests (`GET /api/booking-requests/awaiting-payment`) until it is marked as
+paid. With `notifyGuest: true` the guest gets the same email as an accepted request; this needs a
+price, the guest's email address and an IBAN or Bizum number under `/api/settings/payment`.
 
 If the email belongs to an existing guest with a **different** name the request is rejected with
 `409 Conflict` (`{"error", "existingGuestId", "existingGuestName"}`) instead of silently attaching
@@ -176,6 +190,8 @@ Backend allows status corrections to any other status. Frontend should show warn
 - Any other transition can still be saved for correction purposes.
 
 When reactivating a cancelled reservation (`cancelled` → active status), suite availability is validated for the reservation dates.
+Changing a reservation to `awaiting_payment` without a pay-by date gives it the default one, so it
+can be flagged as overdue.
 
 ---
 
@@ -422,7 +438,7 @@ Reactivate a deactivated suite.
   "checkOut": "LocalDate (YYYY-MM-DD)",
   "numGuests": "Integer",
   "priceTotal": "BigDecimal",
-  "channel": "String (direct|booking.com|airbnb|etc)",
+  "channel": "String (direct|booking.com|airbnb|expedia|other)",
   "status": "String (pending|awaiting_payment|confirmed|checked_in|checked_out|cancelled|no_show)",
   "paymentDueDate": "LocalDate (accepted booking requests: pay by this date)",
   "paidAt": "LocalDateTime (when the payment was marked as received)",
@@ -459,6 +475,7 @@ Reactivate a deactivated suite.
   "icalExportUrl": "String (this suite's availability feed for booking.com)",
   "icalLastSyncAt": "LocalDateTime (ISO-8601)",
   "icalLastSyncError": "String",
+  "icalExportReadAt": "LocalDateTime (last time booking.com, or anyone with the link, downloaded icalExportUrl)",
   "descriptionEn": "String",
   "descriptionEs": "String",
   "sizeM2": "Integer",
@@ -542,7 +559,7 @@ Check guests in/out with `PATCH /api/reservations/{id}/status` (`{"status": "che
 
 ## BOOKING REQUESTS API ("solicitudes")
 
-Requests from the public booking page are `pending` reservations with channel `website`, with
+Requests from the public booking page are `pending` reservations with channel `direct`, with
 the price the guest was quoted. Accepting one makes it `awaiting_payment`: the dates are held
 (also in the booking.com calendar feed) and the guest is emailed the price, the payment details
 from `/api/settings/payment` and a pay-by date. Marking it as paid confirms the booking. An
@@ -587,8 +604,23 @@ booking request use it to quote the whole stay; a stay with a night without a pr
 | POST | `/api/booking-sync/import` | Import rows of a booking.com reservations export: `{"dryRun": true, "rows": [{bookingNumber, guestName, bookerName, phone, country, checkIn, checkOut, people, price, status, suiteId, remarks}]}` |
 
 Suites carry `bookingIcalUrl` (set with `PUT /api/suites/{id}`) and return `icalExportUrl`,
-`icalLastSyncAt` and `icalLastSyncError`. The calendar of each suite is also imported every
+`icalLastSyncAt`, `icalLastSyncError` and `icalExportReadAt`. The calendar of each suite is also imported every
 15 minutes (`hmms.ical.sync-interval-ms`).
+
+---
+
+## ANALYTICS API
+
+Only confirmed, checked-in and checked-out stays count as sold. A stay's price and commission are
+spread evenly over its nights; available nights = active suites × days.
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/analytics/overview?from=&to=` | A period (inclusive, at most 2 years) and the same dates a year earlier: `current` and `previous` totals (revenue, commission, revenueAfterCommission, nightsSold, nightsAvailable, occupancy %, averageNightlyRate, bookings, direct/platform nights and revenue), `channels` (per channel: bookings, nights, revenue, commission, last year's nights and revenue), `weekdays` (1 = Monday ... 7 = Sunday: nights sold, direct nights, nights available, last year), and `months` (Jan-Dec of the year `to` falls in, against the year before; future months hold what is booked so far) |
+| GET | `/api/analytics/outlook` | From today: `next30` and `next90` (nights available, booked, awaiting payment, revenue of the booked nights), and per suite the next 14 nights with `state` `direct`, `platform`, `awaiting_payment`, `pending` or `empty` (empty nights carry their `price` from `/api/rates`) |
+
+Commission = price × the platform's rate on the day the stay was booked (`createdAt`), from
+`/api/settings/commission`; direct bookings have none.
 
 ---
 
@@ -599,6 +631,9 @@ Suites carry `bookingIcalUrl` (set with `PUT /api/suites/{id}`) and return `ical
 | GET | `/api/settings` | Hotel, mail and public link configuration (read-only) |
 | GET | `/api/settings/payment` | `{iban, accountHolder, bizumPhone, deadlineDays}` sent to accepted guests |
 | PUT | `/api/settings/payment` | Same body. The IBAN is checked (country format and check digits) and needs an account holder; the Bizum number must be Spanish (+34); `deadlineDays` is 1-30 (default 3) |
+| GET | `/api/settings/commission` | `[{channel, validFrom, rate}]`: commission % per platform (`booking.com`, `airbnb`, `expedia`, `other`), each from a date. The starting rate has `validFrom` 2000-01-01 |
+| POST | `/api/settings/commission` | `{"channel": "booking.com", "validFrom": "2027-01-01", "rate": 17}` adds a rate from that date, or changes the rate starting on it. Bookings made before keep the older rate |
+| DELETE | `/api/settings/commission?channel=&validFrom=` | Removes a dated rate; the starting rate can only be changed |
 | GET | `/api/guests/{id}/preferences-link` | `{"url": ...}` personal link to unsubscribe / request deletion |
 
 ---

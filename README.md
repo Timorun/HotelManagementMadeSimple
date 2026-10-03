@@ -7,11 +7,12 @@ A full-stack hotel management system for Carmen Suites, built with a Spring Boot
 - **Backend**: Spring Boot + PostgreSQL REST API with reservations, guests, suites, operations, analytics and GDPR support.
 - **Frontend**: React + Vite app, usable on desktop and phones:
   - **Today**: arrivals and departures with check-in/check-out buttons, plus occupied suites.
-  - **Calendar** with a week/month picker, **Reservations**, **Guests** and **Analytics**.
+  - **Calendar** with a week/month picker, **Reservations** (created in any status, e.g. awaiting payment with the payment details emailed) and **Guests**.
+  - **Analytics**: a period against the same dates last year: direct bookings against booking.com and other platforms with the commission paid, busy and quiet months and nights of the week, and the empty nights coming up with their price.
   - **Requests**: booking requests from the public booking page (`/book`). Accepting one holds the dates and emails the guest the price and how to pay (bank transfer or Bizum) by a deadline; marking it as paid confirms the booking. Unpaid requests past their deadline are flagged.
   - **Prices**: a price per night for each suite and date, set in bulk by date range and day of the week.
   - **Communications**: BCC email via your mail app, or WhatsApp messages, with consent checks and unsubscribe links.
-  - **Settings**: suites, payment details (IBAN, Bizum, days to pay), booking.com calendar sync, and booking.com reservations-export import.
+  - **Settings**: suites, payment details (IBAN, Bizum, days to pay), commission % per platform (with the date each rate starts), booking.com calendar sync, and booking.com reservations-export import.
 - **Guest-facing pages** (no login): `/book` to see the price of a stay and request it, `/preferences` to unsubscribe or request data deletion.
 - **Weekly database backup** via GitHub Actions (`.github/workflows/weekly-db-backup.yml`).
 
