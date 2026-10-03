@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { addDays, addMonths, eachDayOfInterval, endOfMonth, format, isToday, parseISO, startOfMonth, subMonths } from 'date-fns';
 import { ChevronLeft, ChevronRight, Euro, Save, Trash2 } from 'lucide-react';
 import { fetchRates, fetchSuites, setRates } from '../api/backend';
@@ -28,6 +28,8 @@ export default function PricesView() {
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
   const formRef = useRef(null);
+  const gridWrapRef = useRef(null);
+  const todayIndex = days.findIndex((day) => isToday(day));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -57,6 +59,18 @@ export default function PricesView() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // The current month opens scrolled to today when it doesn't fit the screen (phones)
+  useLayoutEffect(() => {
+    const wrap = gridWrapRef.current;
+    if (!wrap) {
+      return;
+    }
+    const suiteColumn = wrap.querySelector('thead .prices-suite-col');
+    const dayCells = wrap.querySelectorAll('thead th:not(.prices-suite-col)');
+    const yesterday = todayIndex > 0 ? dayCells[todayIndex - 1] : null;
+    wrap.scrollLeft = yesterday ? yesterday.offsetLeft - (suiteColumn?.offsetWidth || 0) : 0;
+  }, [monthIso, todayIndex]);
 
   const toggle = (field, value) => setForm((prev) => ({
     ...prev,
@@ -211,7 +225,7 @@ export default function PricesView() {
             <ChevronRight size={16} />
           </button>
         </div>
-        <div className={`prices-grid-wrap ${loading ? 'is-loading' : ''}`}>
+        <div className={`prices-grid-wrap ${loading ? 'is-loading' : ''}`} ref={gridWrapRef}>
           <table className="prices-grid">
             <thead>
               <tr>

@@ -792,6 +792,24 @@ body {
   box-shadow: 0 0 0 3px rgba(230, 126, 34, 0.1);
 }
 
+/* iOS Safari gives date fields a fixed width of their own and ignores width: 100%, so on an
+   iPhone they stuck out of narrow boxes. Without the native look they size like other fields. */
+@supports (-webkit-touch-callout: none) {
+  input[type="date"].form-input {
+    -webkit-appearance: none;
+    appearance: none;
+    display: block;
+    min-width: 0;
+    min-height: 46px;
+    background-color: var(--white);
+    color: inherit;
+  }
+
+  input[type="date"].form-input::-webkit-date-and-time-value {
+    text-align: left;
+  }
+}
+
 .field-hint {
   display: block;
   margin-top: 0.25rem;
@@ -1888,7 +1906,7 @@ body {
   .grid-2,
   .grid-3,
   .grid-4 {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .operations-hero-top {
@@ -1906,7 +1924,7 @@ body {
   }
 
   .reservation-filters-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .list-filters-head {
@@ -1928,7 +1946,7 @@ body {
   }
 
   .guest-filters-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .guest-search-field {
@@ -1944,7 +1962,7 @@ body {
   }
 
   .analytics-date-cluster {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .analytics-control-left {
@@ -1967,7 +1985,7 @@ body {
   }
 
   .analytics-control-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .analytics-date-input {
@@ -1977,11 +1995,11 @@ body {
   .analytics-main-grid,
   .analytics-secondary-grid,
   .analytics-kpi-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .analytics-status-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .analytics-chart-area {
@@ -3267,7 +3285,7 @@ pre {
 
 @media (max-width: 900px) {
   .communications-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -3279,11 +3297,11 @@ pre {
   .public-details,
   .communications-filters,
   .settings-info {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .communications-range {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .communications-range span {
@@ -3391,11 +3409,11 @@ pre {
 
 @media (max-width: 900px) {
   .calendar-sync-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .booking-import-map-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -3595,6 +3613,13 @@ pre {
   margin-top: 0.35rem;
 }
 
+/* Edit and delete stay together at the end of the row, also when the row wraps */
+.mobile-card-icon-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
 .calendar-controls {
   display: flex;
   gap: 1rem;
@@ -3640,7 +3665,15 @@ pre {
   .app-header.mobile .header-language {
     width: 64px;
     padding: 0.4rem 0.3rem;
-    font-size: 0.85rem;
+  }
+
+  /* iPhones zoom into a field whose text is smaller than 16px, and stay zoomed in */
+  .form-input,
+  .form-select,
+  .form-textarea,
+  .app-header.mobile .header-language,
+  .calendar-sync-input .form-input {
+    font-size: 16px;
   }
 
   .quick-action-btn.icon-only {
@@ -3745,23 +3778,37 @@ pre {
 
   /* Wide three-column price/date grids collapse to one column; two-column grids still fit */
   .modal [style*="minmax(170px"] {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: minmax(0, 1fr) !important;
   }
 
-  /* Calendar header */
+  /* Calendar header: the title and Month/Week on one row, the period navigation below it */
   .calendar-header {
-    gap: 0.6rem;
+    gap: 0.5rem;
+    margin-bottom: 0;
+    border-bottom: none;
+  }
+
+  .calendar-header h2 {
+    order: 1;
   }
 
   .calendar-controls {
-    width: 100%;
-    gap: 0.5rem;
-    justify-content: space-between;
+    display: contents;
+  }
+
+  .calendar-modes {
+    order: 2;
+    margin-left: auto;
   }
 
   .calendar-nav {
+    order: 3;
     width: 100%;
     justify-content: space-between;
+  }
+
+  .calendar-timeline-card {
+    padding: 0.5rem;
   }
 
   .period-picker-trigger {
@@ -3772,7 +3819,7 @@ pre {
 
   .period-picker-popover {
     position: fixed;
-    top: 120px;
+    top: var(--popover-top, 120px);
     left: 50%;
     width: min(320px, calc(100vw - 32px));
   }
@@ -3794,12 +3841,25 @@ pre {
   }
 
   .suite-house-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.6rem;
   }
 
   .suite-room-card {
     padding: 0.65rem;
+  }
+
+  /* Two cards per row: the check-in question and its button each get the full card width */
+  .suite-room-nudge {
+    padding: 0.5rem;
+    font-size: 0.8rem;
+  }
+
+  .suite-room-nudge .btn {
+    align-self: stretch;
+    justify-content: center;
+    padding: 0.45rem 0.4rem;
+    white-space: nowrap;
   }
 
   .request-card .request-actions .btn,
@@ -3808,9 +3868,57 @@ pre {
     justify-content: center;
   }
 
-  .settings-suites th,
+  .prices-form-actions .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+    white-space: nowrap;
+  }
+
+  .prices-grid .prices-suite-col {
+    min-width: 0;
+    padding: 0.4rem 0.5rem;
+  }
+
+  /* Settings, suites: a small card per suite instead of a squeezed table row */
+  .settings-suites,
+  .settings-suites tbody {
+    display: block;
+  }
+
+  .settings-suites thead {
+    display: none;
+  }
+
+  .settings-suites tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem 0.75rem;
+    align-items: center;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--light-gray);
+  }
+
+  .settings-suites tbody tr:hover {
+    background: none;
+  }
+
   .settings-suites td {
-    padding: 0.5rem 0.3rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0;
+    border: none;
+  }
+
+  .settings-suites td:first-child,
+  .settings-suites td:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .settings-suites td[data-label]::before {
+    content: attr(data-label);
+    color: var(--dark-gray);
+    font-size: 0.875rem;
   }
 
   .settings-suites .form-input {
@@ -3860,6 +3968,6 @@ pre {
 
 @media (max-width: 380px) {
   .suite-house-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }

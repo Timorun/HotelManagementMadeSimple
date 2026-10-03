@@ -113,9 +113,13 @@ export default function SettingsView() {
                 const changed = Boolean(drafts[suite.suiteId]);
                 return (
                   <tr key={suite.suiteId}>
-                    <td><input className="form-input" value={draft.suiteName} onChange={(e) => setDraftField(suite, 'suiteName', e.target.value)} /></td>
-                    <td><input type="number" min={1} max={20} className="form-input settings-capacity" value={draft.capacity} onChange={(e) => setDraftField(suite, 'capacity', e.target.value)} /></td>
-                    <td><input type="checkbox" checked={Boolean(draft.active)} onChange={(e) => setDraftField(suite, 'active', e.target.checked)} aria-label={tr('Active', 'Activa')} /></td>
+                    <td><input className="form-input" value={draft.suiteName} onChange={(e) => setDraftField(suite, 'suiteName', e.target.value)} aria-label={tr('Name', 'Nombre')} /></td>
+                    <td data-label={tr('Capacity', 'Capacidad')}>
+                      <input type="number" min={1} max={20} className="form-input settings-capacity" value={draft.capacity} onChange={(e) => setDraftField(suite, 'capacity', e.target.value)} aria-label={tr('Capacity', 'Capacidad')} />
+                    </td>
+                    <td data-label={tr('Active', 'Activa')}>
+                      <input type="checkbox" checked={Boolean(draft.active)} onChange={(e) => setDraftField(suite, 'active', e.target.checked)} aria-label={tr('Active', 'Activa')} />
+                    </td>
                     <td>
                       <div className="settings-suite-actions">
                         <button type="button" className="btn btn-primary btn-sm" disabled={!changed || savingId === suite.suiteId} onClick={() => saveSuite(suite)}>

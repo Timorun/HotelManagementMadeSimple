@@ -15,6 +15,7 @@ import {
   subMonths,
 } from 'date-fns';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { WEEK_STARTS_ON } from '../../utils/dates';
 
 /**
  * Date-range label that opens a picker to jump to a month (month view)
@@ -23,6 +24,8 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
  */
 export default function PeriodPicker({ viewMode, currentDate, onSelect, label, dateLocale, tr }) {
   const [open, setOpen] = useState(false);
+  // On phones the popover is fixed to the screen; it opens just below the label
+  const [popoverTop, setPopoverTop] = useState(null);
   const containerRef = useRef(null);
 
   useEffect(() => {
@@ -56,12 +59,19 @@ export default function PeriodPicker({ viewMode, currentDate, onSelect, label, d
     setOpen(false);
   };
 
+  const toggle = () => {
+    if (!open && containerRef.current) {
+      setPopoverTop(Math.round(containerRef.current.getBoundingClientRect().bottom + 6));
+    }
+    setOpen((value) => !value);
+  };
+
   return (
     <div className="period-picker" ref={containerRef}>
       <button
         type="button"
         className="period-picker-trigger"
-        onClick={() => setOpen((value) => !value)}
+        onClick={toggle}
         aria-haspopup="dialog"
         aria-expanded={open}
         title={viewMode === 'week' ? tr('Pick a week', 'Elegir semana') : tr('Pick a month', 'Elegir mes')}
@@ -70,7 +80,12 @@ export default function PeriodPicker({ viewMode, currentDate, onSelect, label, d
       </button>
 
       {open && (
-        <div className="period-picker-popover" role="dialog" aria-label={tr('Choose period', 'Elegir periodo')}>
+        <div
+          className="period-picker-popover"
+          role="dialog"
+          aria-label={tr('Choose period', 'Elegir periodo')}
+          style={popoverTop != null ? { '--popover-top': `${popoverTop}px` } : undefined}
+        >
           {viewMode === 'week' ? (
             <WeekGrid currentDate={currentDate} onSelect={select} dateLocale={dateLocale} tr={tr} />
           ) : (
@@ -123,13 +138,13 @@ function WeekGrid({ currentDate, onSelect, dateLocale, tr }) {
   const [hoveredDay, setHoveredDay] = useState(null);
 
   const days = useMemo(() => eachDayOfInterval({
-    start: startOfWeek(startOfMonth(visibleMonth), { locale: dateLocale }),
-    end: endOfWeek(endOfMonth(visibleMonth), { locale: dateLocale }),
+    start: startOfWeek(startOfMonth(visibleMonth), { locale: dateLocale, weekStartsOn: WEEK_STARTS_ON }),
+    end: endOfWeek(endOfMonth(visibleMonth), { locale: dateLocale, weekStartsOn: WEEK_STARTS_ON }),
   }), [visibleMonth, dateLocale]);
 
   const weekOf = (day) => ({
-    start: startOfWeek(day, { locale: dateLocale }),
-    end: endOfWeek(day, { locale: dateLocale }),
+    start: startOfWeek(day, { locale: dateLocale, weekStartsOn: WEEK_STARTS_ON }),
+    end: endOfWeek(day, { locale: dateLocale, weekStartsOn: WEEK_STARTS_ON }),
   });
   const selectedWeek = weekOf(currentDate);
   const hoveredWeek = hoveredDay ? weekOf(hoveredDay) : null;
