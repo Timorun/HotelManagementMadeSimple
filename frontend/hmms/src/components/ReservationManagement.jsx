@@ -878,6 +878,7 @@ export default function ReservationManagement() {
       checked_in: 'status-checked-in',
       cancelled: 'status-cancelled',
       pending: 'status-pending',
+      awaiting_payment: 'status-awaiting-payment',
     };
     return `status-badge ${statusMap[status] || ''}`;
   };
@@ -2023,6 +2024,7 @@ export default function ReservationManagement() {
                       onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                     >
                       <option value="pending">{getStatusLabel('pending', tr)}</option>
+                      <option value="awaiting_payment">{getStatusLabel('awaiting_payment', tr)}</option>
                       <option value="confirmed">{getStatusLabel('confirmed', tr)}</option>
                       <option value="checked_in">{getStatusLabel('checked_in', tr)}</option>
                       <option value="checked_out">{getStatusLabel('checked_out', tr)}</option>

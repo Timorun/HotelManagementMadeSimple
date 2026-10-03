@@ -1,5 +1,6 @@
 package com.timorun.hmms.dto;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -13,5 +14,7 @@ public record PublicSuiteAvailability(
         String descriptionEn,
         String descriptionEs,
         List<String> amenities,
-        List<String> photoUrls) {
+        List<String> photoUrls,
+        BigDecimal priceTotal,  // the whole stay; null when a night has no price yet ("price on request")
+        int nights) {
 }

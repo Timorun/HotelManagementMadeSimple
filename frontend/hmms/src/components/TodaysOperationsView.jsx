@@ -52,7 +52,7 @@ function getPricePerNightValue(checkIn, checkOut, totalPrice) {
 
 function isReservationOccupyingToday(reservation, todayKey) {
   const status = String(reservation.status || '').toLowerCase();
-  if (!['pending', 'confirmed', 'checked_in'].includes(status)) {
+  if (!['pending', 'awaiting_payment', 'confirmed', 'checked_in'].includes(status)) {
     return false;
   }
 
@@ -81,7 +81,8 @@ function StatusPill({ status, tr }) {
   );
 }
 
-const EXPECTED_ARRIVAL_STATUSES = ['pending', 'confirmed'];
+// Unpaid arrivals can still be checked in (e.g. they pay on arrival); their status pill shows it
+const EXPECTED_ARRIVAL_STATUSES = ['pending', 'awaiting_payment', 'confirmed'];
 const IN_HOUSE_STATUSES = ['confirmed', 'checked_in'];
 
 export default function TodaysOperationsView() {

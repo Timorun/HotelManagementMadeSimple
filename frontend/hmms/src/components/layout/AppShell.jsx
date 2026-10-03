@@ -45,11 +45,12 @@ export default function AppShell({ children }) {
   ]), []);
   const [pendingRequests, setPendingRequests] = useState(0);
 
-  // Badge on the Requests tab; refreshed periodically and after a request is handled.
+  // Badge on the Requests tab: new requests plus unpaid ones past their deadline. Refreshed
+  // periodically and after a request is handled.
   useEffect(() => {
     let cancelled = false;
     const refresh = () => fetchBookingRequestCount()
-      .then((count) => !cancelled && setPendingRequests(count))
+      .then((counts) => !cancelled && setPendingRequests(counts.pending + counts.overdue))
       .catch(() => {});
     refresh();
     const interval = setInterval(refresh, 2 * 60 * 1000);
@@ -79,7 +80,7 @@ export default function AppShell({ children }) {
   };
 
   const badgeFor = (tab) => (tab.id === 'requests' && pendingRequests > 0 ? (
-    <span className="nav-badge" aria-label={`${pendingRequests} pending`}>{pendingRequests}</span>
+    <span className="nav-badge" aria-label={tr(`${pendingRequests} to handle`, `${pendingRequests} por atender`)}>{pendingRequests}</span>
   ) : null);
 
   const languageSelect = (

@@ -3,6 +3,7 @@
  */
 export const RESERVATION_STATUSES = {
   PENDING: 'pending',
+  AWAITING_PAYMENT: 'awaiting_payment',
   CONFIRMED: 'confirmed',
   CHECKED_IN: 'checked_in',
   CHECKED_OUT: 'checked_out',
@@ -15,7 +16,8 @@ export const RESERVATION_STATUSES = {
  * usualTransitionTo is advisory only and used for frontend warnings.
  */
 export const STATUS_META = {
-  pending: { label: 'Pending', labelEs: 'Pendiente', color: '#F39C12', usualTransitionTo: ['confirmed', 'cancelled', 'no_show'] },
+  pending: { label: 'Pending', labelEs: 'Pendiente', color: '#F39C12', usualTransitionTo: ['awaiting_payment', 'confirmed', 'cancelled', 'no_show'] },
+  awaiting_payment: { label: 'Awaiting payment', labelEs: 'Pendiente de pago', color: '#8E44AD', usualTransitionTo: ['confirmed', 'cancelled'] },
   confirmed: { label: 'Confirmed', labelEs: 'Confirmada', color: '#27AE60', usualTransitionTo: ['checked_in', 'cancelled', 'no_show'] },
   checked_in: { label: 'Checked In', labelEs: 'Check-in', color: '#3498DB', usualTransitionTo: ['checked_out'] },
   checked_out: { label: 'Checked Out', labelEs: 'Check-out', color: '#95A5A6', usualTransitionTo: [] },

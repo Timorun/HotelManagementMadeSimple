@@ -54,12 +54,13 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
             @Param("nationalityCode") String nationalityCode
     );
 
-    // Arrivals on a date: still expected (pending/confirmed) or already checked in,
-    // so a guest stays in the list after being marked as arrived.
+    // Arrivals on a date: still expected (pending/awaiting payment/confirmed) or already checked
+    // in, so a guest stays in the list after being marked as arrived.
     @Query("""
             SELECT r FROM Reservation r
             WHERE r.checkIn = :date
               AND r.status IN (com.timorun.hmms.entities.ReservationStatus.PENDING,
+                               com.timorun.hmms.entities.ReservationStatus.AWAITING_PAYMENT,
                                com.timorun.hmms.entities.ReservationStatus.CONFIRMED,
                                com.timorun.hmms.entities.ReservationStatus.CHECKED_IN)
             ORDER BY r.suite.suiteName

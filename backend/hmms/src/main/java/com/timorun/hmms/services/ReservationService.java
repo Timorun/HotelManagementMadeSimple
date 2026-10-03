@@ -269,6 +269,7 @@ public class ReservationService {
 
     private boolean requiresAvailabilityCheck(ReservationStatus status) {
         return status == ReservationStatus.PENDING
+                || status == ReservationStatus.AWAITING_PAYMENT
                 || status == ReservationStatus.CONFIRMED
                 || status == ReservationStatus.CHECKED_IN;
     }
@@ -305,6 +306,16 @@ public class ReservationService {
                 .externalRef(reservation.getExternalRef())
                 .importedFromCalendar(reservation.getExternalUid() != null)
                 .syncConflict(reservation.isSyncConflict())
+                .paymentDueDate(reservation.getPaymentDueDate())
+                .paidAt(reservation.getPaidAt())
+                .paymentOverdue(isPaymentOverdue(reservation))
                 .build();
+    }
+
+    /** An accepted booking request whose payment deadline has passed. */
+    public static boolean isPaymentOverdue(Reservation reservation) {
+        return reservation.getStatus() == ReservationStatus.AWAITING_PAYMENT
+                && reservation.getPaymentDueDate() != null
+                && reservation.getPaymentDueDate().isBefore(LocalDate.now());
     }
 }

@@ -524,6 +524,11 @@ body {
   color: var(--warning);
 }
 
+.status-awaiting-payment {
+  background: rgba(142, 68, 173, 0.13);
+  color: #8e44ad;
+}
+
 /* Form Styles */
 .form-group {
   margin-bottom: 1.5rem;
@@ -876,6 +881,23 @@ body {
   border-radius: 6px;
   color: var(--danger);
   margin: 1rem 0;
+}
+
+/* Warning Message */
+.warning-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  background: rgba(243, 156, 18, 0.12);
+  border-left: 4px solid var(--warning);
+  padding: 1rem;
+  border-radius: 6px;
+  color: #8a5a00;
+}
+
+.warning-message a {
+  color: inherit;
+  text-decoration: underline;
 }
 
 /* Success Message */
@@ -2671,7 +2693,74 @@ pre {
 
 .request-decision {
   margin-top: 1rem;
-  max-width: 520px;
+  max-width: 560px;
+}
+
+.request-decision-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 1rem;
+}
+
+.request-decision-text {
+  margin-bottom: 1rem;
+  color: var(--primary);
+}
+
+.requests-section-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.5rem 0 0.75rem;
+  color: var(--primary);
+  font-size: 1.1rem;
+}
+
+.requests-count {
+  min-width: 1.6rem;
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  background: var(--light-gray);
+  color: var(--primary);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.requests-empty {
+  margin-bottom: 1.25rem;
+  color: var(--dark-gray);
+}
+
+.request-overdue-badge {
+  padding: 0.1rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(231, 76, 60, 0.12);
+  color: var(--danger);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.request-card.overdue {
+  border-left: 4px solid var(--danger);
+}
+
+.request-due {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 8px;
+  background: rgba(142, 68, 173, 0.1);
+  color: #6c3483;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.request-due.overdue {
+  background: rgba(231, 76, 60, 0.12);
+  color: var(--danger);
 }
 
 .request-actions {
@@ -2980,6 +3069,7 @@ pre {
 }
 
 @media (max-width: 640px) {
+  .request-decision-row,
   .public-search,
   .public-details,
   .communications-filters,

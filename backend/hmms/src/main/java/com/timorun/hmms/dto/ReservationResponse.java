@@ -34,11 +34,14 @@ public class ReservationResponse {
     private BigDecimal priceTotal;
     private String channel;
     private String notes;
-    private String status; // confirmed | checked_in | checked_out | pending | no_show | cancelled
+    private String status; // pending | awaiting_payment | confirmed | checked_in | checked_out | no_show | cancelled
     private String statusLabel; // Human-readable label
     private String statusColor; // Hex color for UI
     private LocalDateTime createdAt;
     private String externalRef;    // booking.com reservation number
     private Boolean importedFromCalendar;
     private Boolean syncConflict;
+    private LocalDate paymentDueDate; // accepted booking requests: pay by this date
+    private LocalDateTime paidAt;
+    private Boolean paymentOverdue;   // awaiting payment and the due date has passed
 }

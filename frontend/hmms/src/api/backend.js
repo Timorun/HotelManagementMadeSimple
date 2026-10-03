@@ -502,17 +502,57 @@ export async function fetchBookingRequests() {
   return request(`${BASE_URL}/booking-requests`, { method: 'GET' }, 'Failed to load booking requests');
 }
 
-export async function fetchBookingRequestCount() {
-  const data = await request(`${BASE_URL}/booking-requests/count`, { method: 'GET' }, 'Failed to load booking requests');
-  return data?.pending ?? 0;
+export async function fetchAwaitingPayment() {
+  return request(`${BASE_URL}/booking-requests/awaiting-payment`, { method: 'GET' }, 'Failed to load unpaid requests');
 }
 
-export async function confirmBookingRequest(id, decision) {
-  return request(`${BASE_URL}/booking-requests/${id}/confirm`, { method: 'PATCH', body: JSON.stringify(decision || {}) }, 'Failed to confirm request');
+/** {pending, awaitingPayment, overdue} */
+export async function fetchBookingRequestCount() {
+  const data = await request(`${BASE_URL}/booking-requests/count`, { method: 'GET' }, 'Failed to load booking requests');
+  return { pending: data?.pending ?? 0, awaitingPayment: data?.awaitingPayment ?? 0, overdue: data?.overdue ?? 0 };
+}
+
+export async function acceptBookingRequest(id, decision) {
+  return request(`${BASE_URL}/booking-requests/${id}/accept`, { method: 'PATCH', body: JSON.stringify(decision || {}) }, 'Failed to accept request');
+}
+
+export async function markBookingRequestPaid(id, decision) {
+  return request(`${BASE_URL}/booking-requests/${id}/paid`, { method: 'PATCH', body: JSON.stringify(decision || {}) }, 'Failed to mark as paid');
+}
+
+export async function extendPaymentDeadline(id, decision) {
+  return request(`${BASE_URL}/booking-requests/${id}/payment-deadline`, { method: 'PATCH', body: JSON.stringify(decision || {}) }, 'Failed to change the deadline');
 }
 
 export async function rejectBookingRequest(id, decision) {
   return request(`${BASE_URL}/booking-requests/${id}/reject`, { method: 'PATCH', body: JSON.stringify(decision || {}) }, 'Failed to reject request');
+}
+
+// ===== Prices per suite and date =====
+
+export async function fetchRates(from, to) {
+  const params = new URLSearchParams({ from, to });
+  return request(`${BASE_URL}/rates?${params}`, { method: 'GET' }, 'Failed to load prices');
+}
+
+/** {suiteIds, from, to, weekdays (1 = Monday ... 7 = Sunday, empty = all), price (null clears)} */
+export async function setRates(rates) {
+  return request(`${BASE_URL}/rates`, { method: 'PUT', body: JSON.stringify(rates) }, 'Failed to save prices');
+}
+
+export async function fetchPriceQuote(suiteId, checkIn, checkOut) {
+  const params = new URLSearchParams({ suiteId: String(suiteId), checkIn, checkOut });
+  return request(`${BASE_URL}/rates/quote?${params}`, { method: 'GET' }, 'Failed to calculate the price');
+}
+
+// ===== Payment details (Settings) =====
+
+export async function fetchPaymentSettings() {
+  return request(`${BASE_URL}/settings/payment`, { method: 'GET' }, 'Failed to load payment details');
+}
+
+export async function updatePaymentSettings(settings) {
+  return request(`${BASE_URL}/settings/payment`, { method: 'PUT', body: JSON.stringify(settings) }, 'Failed to save payment details');
 }
 
 // ===== Public (no login): booking page and guest preferences =====

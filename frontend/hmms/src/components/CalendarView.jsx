@@ -28,6 +28,7 @@ const STATUS_FILTER_DEFAULTS = {
   checked_in: true,
   checked_out: true,
   pending: true,
+  awaiting_payment: true,
   no_show: true,
   cancelled: false
 };
